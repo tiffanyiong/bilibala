@@ -1,0 +1,7 @@
+{
+  "name": "Bilibala",
+  "description": "Transform passive YouTube consumption into active English practice with an AI conversation partner.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
