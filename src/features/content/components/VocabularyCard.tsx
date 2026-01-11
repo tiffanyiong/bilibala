@@ -1,5 +1,5 @@
 import React from 'react';
-import { VocabularyItem } from '../types';
+import { VocabularyItem } from '../../../shared/types';
 
 interface VocabularyCardProps {
   items: VocabularyItem[];

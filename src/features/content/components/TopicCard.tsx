@@ -1,5 +1,5 @@
 import React from 'react';
-import { TopicPoint } from '../types';
+import { TopicPoint } from '../../../shared/types';
 
 interface TopicCardProps {
   items: TopicPoint[];

@@ -1,6 +1,6 @@
 import React from 'react';
-import { HistoryItem } from '../types';
-import { BotIcon } from './icons/LiveIcons';
+import { HistoryItem } from '../../../shared/types';
+import { BotIcon } from '../../../shared/components/icons/LiveIcons';
 
 interface TranscriptProps {
   history: HistoryItem[];

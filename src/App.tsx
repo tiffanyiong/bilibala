@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import Layout from './components/Layout';
-import ContentTabs from './components/ContentTabs';
-import LiveVoiceInterface from './components/LiveVoiceInterface';
-import VideoPlayer from './components/VideoPlayer';
-import { AppState, VideoData, TopicPoint, VocabularyItem } from './types';
-import { extractVideoId, fetchVideoMetadata } from './services/youtubeService';
-import { analyzeVideoContent } from './services/geminiService';
-import { LANGUAGES, LEVELS } from './constants';
+import Layout from './shared/components/Layout';
+import ContentTabs from './features/content/components/ContentTabs';
+import LiveVoiceInterface from './features/live-voice/components/LiveVoiceInterface';
+import VideoPlayer from './features/video/components/VideoPlayer';
+import { AppState, VideoData, TopicPoint, VocabularyItem } from './shared/types';
+import { extractVideoId, fetchVideoMetadata } from './features/video/services/youtubeService';
+import { analyzeVideoContent } from './shared/services/geminiService';
+import { LANGUAGES, LEVELS } from './shared/constants';
 
 // Custom Chevron for Dropdowns
 const ChevronDownIcon = () => (

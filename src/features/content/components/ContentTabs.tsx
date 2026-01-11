@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { TopicPoint, VocabularyItem } from '../types';
-import { UI_TRANSLATIONS } from '../constants';
+import { TopicPoint, VocabularyItem } from '../../../shared/types';
+import { UI_TRANSLATIONS } from '../../../shared/constants';
 
 interface ContentTabsProps {
   summary: string;

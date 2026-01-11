@@ -1,5 +1,5 @@
 import React from 'react';
-import { LifebuoyIcon } from './icons/LiveIcons';
+import { LifebuoyIcon } from '../../../shared/components/icons/LiveIcons';
 
 interface RescueRingProps {
   hints: string[];

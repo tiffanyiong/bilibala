@@ -1,5 +1,5 @@
 import { ContentAnalysis } from '../types';
-import { getBackendOrigin } from './backend';
+import { getBackendOrigin } from '../services/backend';
 
 export const analyzeVideoContent = async (
   videoTitle: string, 

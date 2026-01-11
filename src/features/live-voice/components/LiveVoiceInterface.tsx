@@ -1,15 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { generateConversationHints } from '../services/geminiService';
-import { getBackendOrigin, getBackendWsOrigin } from '../services/backend';
-import { VocabularyItem, HistoryItem } from '../types';
+import { generateConversationHints } from '../../../shared/services/geminiService';
+import { getBackendOrigin, getBackendWsOrigin } from '../../../shared/services/backend';
+import { VocabularyItem, HistoryItem } from '../../../shared/types';
 
 // Components
-import { BackIcon } from './icons/LiveIcons';
+import { BackIcon } from '../../../shared/components/icons/LiveIcons';
 import DuckAvatar from './DuckAvatar';
 import RescueRing from './RescueRing';
-import ControlBar from './ControlBar';
-import Transcript from './Transcript';
-import StatusPill from './StatusPill';
+import ControlBar from '../../../shared/components/ControlBar';
+import Transcript from '../../chat/components/Transcript';
+import StatusPill from '../../../shared/components/StatusPill';
 
 // DEV build tag
 if (import.meta.env.DEV) {

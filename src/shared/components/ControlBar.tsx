@@ -1,5 +1,5 @@
 import React from 'react';
-import { MutedIcon, MicIcon, CallEndIcon, LifebuoyIcon } from './icons/LiveIcons';
+import { MutedIcon, MicIcon, CallEndIcon, LifebuoyIcon } from '../components/icons/LiveIcons';
 
 interface ControlBarProps {
   isConnected: boolean;
