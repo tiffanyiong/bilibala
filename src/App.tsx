@@ -138,27 +138,27 @@ const App: React.FC = () => {
     >
       {/* 1. LANDING PAGE */}
       {appState === AppState.LANDING && (
-        <div className="h-full flex flex-col items-center justify-center p-4 overflow-y-auto bg-white">
+        <div className="h-full flex flex-col items-center justify-center p-4 overflow-y-auto">
            <div className="w-full max-w-xl text-center space-y-8">
               <div className="space-y-3">
-                  <h2 className="text-4xl md:text-5xl font-serif text-zinc-900 tracking-tight">
-                    Daily output
+                  <h2 className="text-4xl md:text-5xl font-serif text-stone-800 tracking-tight">
+                    Daily efforts
                   </h2>
-                  <p className="text-base text-zinc-500 max-w-md mx-auto leading-relaxed">
+                  <p className="text-base text-stone-500 max-w-md mx-auto leading-relaxed">
                     Turn any YouTube video into a structured language lesson.
                   </p>
               </div>
 
-              <div className="bg-white p-6 md:p-8 border border-slate-200 shadow-sm rounded-2xl space-y-5 text-left">
+              <div className="bg-[#FAF9F6] p-6 md:p-8 border border-stone-200 shadow-sm rounded-2xl space-y-5 text-left">
                  
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
-                        <label className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 ml-1">I Speak</label>
+                        <label className="text-[11px] font-semibold uppercase tracking-wider text-stone-400 ml-1">I Speak</label>
                         <div className="relative group">
                             <select 
                                 value={nativeLang}
                                 onChange={(e) => setNativeLang(e.target.value)}
-                                className="w-full appearance-none bg-zinc-50 border border-zinc-200 text-zinc-700 text-sm rounded-lg py-2.5 px-3 pr-8 outline-none focus:border-zinc-400 focus:ring-1 focus:ring-zinc-200 transition-all cursor-pointer hover:bg-zinc-100"
+                                className="w-full appearance-none bg-white border border-stone-200 text-stone-700 text-sm rounded-lg py-2.5 px-3 pr-8 outline-none focus:border-stone-400 focus:ring-1 focus:ring-stone-200 transition-all cursor-pointer hover:bg-stone-50"
                             >
                                 {LANGUAGES.map(l => <option key={l.code} value={l.name}>{l.name}</option>)}
                             </select>
@@ -167,12 +167,12 @@ const App: React.FC = () => {
                     </div>
 
                     <div className="space-y-1.5">
-                        <label className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 ml-1">I'm Learning</label>
+                        <label className="text-[11px] font-semibold uppercase tracking-wider text-stone-400 ml-1">I'm Learning</label>
                         <div className="relative group">
                             <select 
                                 value={targetLang}
                                 onChange={(e) => setTargetLang(e.target.value)}
-                                className="w-full appearance-none bg-zinc-50 border border-zinc-200 text-zinc-700 text-sm rounded-lg py-2.5 px-3 pr-8 outline-none focus:border-zinc-400 focus:ring-1 focus:ring-zinc-200 transition-all cursor-pointer hover:bg-zinc-100"
+                                className="w-full appearance-none bg-white border border-stone-200 text-stone-700 text-sm rounded-lg py-2.5 px-3 pr-8 outline-none focus:border-stone-400 focus:ring-1 focus:ring-stone-200 transition-all cursor-pointer hover:bg-stone-50"
                             >
                                 {LANGUAGES.map(l => <option key={l.code} value={l.name}>{l.name}</option>)}
                             </select>
@@ -181,16 +181,16 @@ const App: React.FC = () => {
                     </div>
 
                     <div className="col-span-1 md:col-span-2 space-y-1.5">
-                        <label className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 ml-1">Depth Level</label>
-                        <div className="flex flex-wrap md:flex-nowrap bg-zinc-50 p-1 rounded-lg border border-zinc-200 gap-1">
+                        <label className="text-[11px] font-semibold uppercase tracking-wider text-stone-400 ml-1">Depth Level</label>
+                        <div className="flex flex-wrap md:flex-nowrap bg-white p-1 rounded-lg border border-stone-200 gap-1">
                             {LEVELS.map(l => (
                                 <button
                                     key={l.id}
                                     onClick={() => setLevel(l.id)}
                                     className={`flex-1 py-2 rounded-md text-xs font-medium transition-all ${
                                         level === l.id 
-                                        ? 'bg-white text-zinc-900 shadow-sm border border-zinc-200' 
-                                        : 'text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100'
+                                        ? 'bg-[#FAF9F6] text-stone-800 shadow-sm border border-stone-200' 
+                                        : 'text-stone-500 hover:text-stone-700 hover:bg-stone-50'
                                     }`}
                                 >
                                     {l.label}
@@ -201,10 +201,10 @@ const App: React.FC = () => {
                  </div>
 
                  <div className="space-y-1.5 pt-2">
-                    <label className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 ml-1">Source Material</label>
+                    <label className="text-[11px] font-semibold uppercase tracking-wider text-stone-400 ml-1">Source Material</label>
                     <input
                       type="text"
-                      className="w-full bg-white border border-zinc-300 px-4 py-3 text-sm text-zinc-800 placeholder:text-zinc-400 focus:outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-200 transition-all rounded-lg shadow-sm"
+                      className="w-full bg-white border border-stone-300 px-4 py-3 text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none focus:border-stone-500 focus:ring-1 focus:ring-stone-200 transition-all rounded-lg shadow-sm"
                       placeholder="Paste YouTube Link..."
                       value={videoUrl}
                       onChange={(e) => setVideoUrl(e.target.value)}
@@ -216,7 +216,7 @@ const App: React.FC = () => {
                  <button
                     onClick={handleStart}
                     disabled={!videoUrl}
-                    className="w-full bg-zinc-900 text-white font-medium py-3 text-sm rounded-lg shadow-md hover:bg-black hover:shadow-lg hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
+                    className="w-full bg-stone-800 text-white font-medium py-3 text-sm rounded-lg shadow-md hover:bg-stone-900 hover:shadow-lg hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
                  >
                     Start Analysis
                  </button>
@@ -227,18 +227,18 @@ const App: React.FC = () => {
 
       {/* 2. LOADING STATE */}
       {appState === AppState.LOADING && (
-         <div className="h-full flex flex-col items-center justify-center space-y-6 bg-white">
+         <div className="h-full flex flex-col items-center justify-center space-y-6">
             <div className="relative">
-                <div className="w-16 h-16 border-2 border-zinc-100 border-t-zinc-800 rounded-full animate-spin"></div>
+                <div className="w-16 h-16 border-2 border-stone-200 border-t-stone-800 rounded-full animate-spin"></div>
             </div>
-            <p className="text-zinc-500 text-sm font-medium animate-pulse">Preparing your lesson...</p>
+            <p className="text-stone-500 text-sm font-medium animate-pulse">Preparing your lesson...</p>
          </div>
       )}
 
       {/* 3. DASHBOARD VIEW */}
       {appState === AppState.DASHBOARD && videoData && (
-        <div className="flex flex-col p-4 md:p-6 pt-24 max-w-5xl mx-auto gap-6 md:gap-8 relative min-h-screen bg-white">
-           <div className="w-full aspect-video shrink-0 rounded-xl overflow-hidden shadow-sm border border-zinc-200 bg-zinc-100">
+        <div className="flex flex-col p-4 md:p-6 pt-24 max-w-5xl mx-auto gap-6 md:gap-8 relative min-h-screen">
+           <div className="w-full aspect-video shrink-0 rounded-xl overflow-hidden shadow-sm border border-stone-200 bg-stone-100">
                <VideoPlayer url={videoData.url} onError={handleVideoError} />
            </div>
 
@@ -260,7 +260,7 @@ const App: React.FC = () => {
 
       {/* 4. CALL SESSION VIEW */}
       {appState === AppState.CALL_SESSION && videoData && (
-        <div className="flex flex-col lg:grid lg:grid-cols-12 gap-6 p-4 md:p-6 pt-24 max-w-[1600px] mx-auto min-h-screen bg-white">
+        <div className="flex flex-col lg:grid lg:grid-cols-12 gap-6 p-4 md:p-6 pt-24 max-w-[1600px] mx-auto min-h-screen">
            {/* Left: Phone Interface */}
            <div className="lg:col-span-5 h-[85vh] lg:h-[calc(100vh-140px)] min-h-[550px] shrink-0">
                <LiveVoiceInterface 

@@ -85,8 +85,8 @@ const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, t
   }
 
     const containerClasses = layoutMode === 'fixed' 
-    ? "bg-white h-full flex flex-col overflow-hidden shadow-sm rounded-2xl border border-zinc-200"
-    : "bg-white flex flex-col overflow-hidden shadow-sm rounded-2xl border border-zinc-200";
+    ? "bg-[#FAF9F6] h-full flex flex-col overflow-hidden shadow-sm rounded-2xl border border-stone-200"
+    : "bg-[#FAF9F6] flex flex-col overflow-hidden shadow-sm rounded-2xl border border-stone-200";
 
   const contentAreaClasses = layoutMode === 'fixed'
     ? "flex-1 overflow-y-auto p-5 space-y-5 scrollbar-hide relative"
@@ -95,13 +95,13 @@ const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, t
   return (
     <div className={containerClasses}>
       {/* Tab Header - Minimal */}
-      <div className="flex p-2 gap-2 bg-zinc-50 border-b border-zinc-100 flex-nowrap overflow-x-auto">
+      <div className="flex p-2 gap-2 bg-stone-50 border-b border-stone-100 flex-nowrap overflow-x-auto">
         <button
           onClick={() => setActiveTab('content')}
           className={`flex-1 py-2.5 px-4 rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-all duration-200 whitespace-nowrap min-w-[120px] ${
             activeTab === 'content' 
-              ? 'bg-white text-zinc-900 shadow-sm border border-zinc-200' 
-              : 'text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100'
+              ? 'bg-[#FAF9F6] text-stone-900 shadow-sm border border-stone-200' 
+              : 'text-stone-500 hover:text-stone-700 hover:bg-stone-100'
           }`}
         >
           <ShellIcon /> {uiText.outline}
@@ -110,8 +110,8 @@ const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, t
           onClick={() => setActiveTab('vocab')}
           className={`flex-1 py-2.5 px-4 rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-all duration-200 whitespace-nowrap min-w-[120px] ${
             activeTab === 'vocab' 
-              ? 'bg-white text-zinc-900 shadow-sm border border-zinc-200' 
-              : 'text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100'
+              ? 'bg-[#FAF9F6] text-stone-900 shadow-sm border border-stone-200' 
+              : 'text-stone-500 hover:text-stone-700 hover:bg-stone-100'
           }`}
         >
           <StarfishIcon /> {uiText.slang}
@@ -124,14 +124,14 @@ const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, t
         {activeTab === 'content' ? (
           <div className="space-y-6">
             {/* Summary Section */}
-            <div className="p-6 bg-white rounded-xl border border-zinc-200 shadow-sm">
-                <h4 className="font-serif text-zinc-800 text-lg mb-3 flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-500">
+            <div className="p-6 bg-white rounded-xl border border-stone-200 shadow-sm">
+                <h4 className="font-serif text-stone-800 text-lg mb-3 flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-stone-100 flex items-center justify-center text-stone-500">
                         <BubbleIcon />
                     </div>
                     Start Here
                 </h4>
-                <div className="text-zinc-600 font-sans text-[15px] leading-relaxed">
+                <div className="text-stone-600 font-sans text-[15px] leading-relaxed">
                     <BilingualText 
                         main={summary} 
                         translated={translatedSummary || ""} 
@@ -144,23 +144,23 @@ const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, t
 
             {/* Topics Section */}
             <div>
-                <h4 className="font-serif text-zinc-800 text-lg mb-3 px-1">
+                <h4 className="font-serif text-stone-800 text-lg mb-3 px-1">
                     Journey Steps
                 </h4>
                 <div className="space-y-3">
                     {topics.map((item, index) => (
                       <div 
                         key={index} 
-                        className="flex gap-4 p-5 bg-white rounded-xl items-start border border-zinc-200 hover:border-zinc-300 transition-all group"
+                        className="flex gap-4 p-5 bg-white rounded-xl items-start border border-stone-200 hover:border-stone-300 transition-all group"
                       >
-                        <div className="w-8 h-8 bg-zinc-100 rounded-full flex items-center justify-center text-zinc-600 shrink-0 border border-zinc-200">
+                        <div className="w-8 h-8 bg-stone-100 rounded-full flex items-center justify-center text-stone-600 shrink-0 border border-stone-200">
                             <span className="font-serif text-base">{index + 1}</span>
                         </div>
                         <div className="flex-1 pt-0.5">
-                            <h5 className="font-bold text-zinc-800 text-[15px] font-sans mb-1.5">
+                            <h5 className="font-bold text-stone-800 text-[15px] font-sans mb-1.5">
                                 <BilingualText main={item.title} translated={item.translatedTitle} />
                             </h5>
-                            <div className="text-zinc-500 text-sm leading-relaxed font-normal">
+                            <div className="text-stone-500 text-sm leading-relaxed font-normal">
                                 <BilingualText main={item.description} translated={item.translatedDescription} isBlock />
                             </div>
                         </div>
@@ -172,24 +172,24 @@ const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, t
         ) : (
           <div className="grid grid-cols-1 gap-3">
             {vocabulary.map((item, index) => (
-              <div key={index} className="p-5 bg-white rounded-xl border border-zinc-200 hover:border-zinc-300 transition-all">
+              <div key={index} className="p-5 bg-white rounded-xl border border-stone-200 hover:border-stone-300 transition-all">
                 <div className="flex justify-between items-start mb-2">
-                  <span className="font-serif text-zinc-900 text-xl">{item.word}</span>
-                  <div className="bg-zinc-50 text-zinc-400 p-1.5 rounded-lg">
+                  <span className="font-serif text-stone-900 text-xl">{item.word}</span>
+                  <div className="bg-stone-50 text-stone-400 p-1.5 rounded-lg">
                     <StarfishIcon />
                   </div>
                 </div>
-                <div className="text-zinc-600 text-[15px] mb-3 bg-zinc-50/50 p-3 rounded-lg border border-zinc-100">
+                <div className="text-stone-600 text-[15px] mb-3 bg-stone-50/50 p-3 rounded-lg border border-stone-100">
                      <BilingualText main={item.definition} translated={item.translatedDefinition} label="?" />
                 </div>
-                <div className="text-sm text-zinc-500 bg-zinc-50 px-4 py-3 rounded-lg border border-zinc-100 italic">
+                <div className="text-sm text-stone-500 bg-stone-50 px-4 py-3 rounded-lg border border-stone-100 italic">
                   <BilingualText main={item.context} translated={item.translatedContext} />
                 </div>
               </div>
             ))}
             {vocabulary.length === 0 && (
-                <div className="text-center p-12 bg-zinc-50 rounded-xl border border-dashed border-zinc-200">
-                    <p className="text-zinc-400 text-sm">No vocabulary words found.</p>
+                <div className="text-center p-12 bg-stone-50 rounded-xl border border-dashed border-stone-200">
+                    <p className="text-stone-400 text-sm">No vocabulary words found.</p>
                 </div>
             )}
           </div>

@@ -638,7 +638,7 @@ const LiveVoiceInterface: React.FC<LiveVoiceInterfaceProps> = ({
   const isActiveSession = isConnected && !callEnded;
 
   return (
-    <div className="relative w-full h-full flex flex-col shadow-sm rounded-2xl border border-zinc-200 bg-white overflow-hidden min-h-0">
+    <div className="relative w-full h-full flex flex-col shadow-sm rounded-2xl border border-stone-200 bg-[#FAF9F6] overflow-hidden min-h-0">
       
       {/* Background - Minimal Paper Texture */}
       <div className="absolute inset-0 z-0 opacity-[0.02] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/cream-paper.png')]"></div>
@@ -646,7 +646,7 @@ const LiveVoiceInterface: React.FC<LiveVoiceInterfaceProps> = ({
       <div className="absolute top-6 left-6 z-[60]">
           <button 
              onClick={handleBack}
-             className="p-3 bg-white hover:bg-zinc-50 text-zinc-600 rounded-full shadow-sm border border-zinc-200 transition-all active:scale-95 group cursor-pointer"
+             className="p-3 bg-[#FAF9F6] hover:bg-stone-100 text-stone-600 rounded-full shadow-sm border border-stone-200 transition-all active:scale-95 group cursor-pointer"
              aria-label="Back to Dashboard"
           >
               <BackIcon />
@@ -654,12 +654,12 @@ const LiveVoiceInterface: React.FC<LiveVoiceInterfaceProps> = ({
       </div>
 
       <header className="h-16 md:h-20 pt-6 pb-2 px-6 flex flex-col items-center justify-center z-50 w-full shrink-0 transition-all border-b border-transparent">
-         <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 mb-1">
+         <div className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-1">
              AI Tutor
          </div>
          <div className="flex items-center gap-2">
-             <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-zinc-300'}`}></span>
-             <span className="text-xs font-medium text-zinc-400 tabular-nums">
+             <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-stone-300'}`}></span>
+             <span className="text-xs font-medium text-stone-400 tabular-nums">
                 {isConnected ? formatDuration(durationSeconds) : "00:00"}
              </span>
          </div>
