@@ -1,15 +1,15 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { getBackendOrigin } from '../../../shared/services/backend';
 import { generateConversationHints } from '../../../shared/services/geminiService';
-import { getBackendOrigin, getBackendWsOrigin } from '../../../shared/services/backend';
-import { VocabularyItem, HistoryItem } from '../../../shared/types';
+import { HistoryItem, VocabularyItem } from '../../../shared/types';
 
 // Components
+import ControlBar from '../../../shared/components/ControlBar';
 import { BackIcon } from '../../../shared/components/icons/LiveIcons';
+import StatusPill from '../../../shared/components/StatusPill';
+import Transcript from '../../chat/components/Transcript';
 import DuckAvatar from './DuckAvatar';
 import RescueRing from './RescueRing';
-import ControlBar from '../../../shared/components/ControlBar';
-import Transcript from '../../chat/components/Transcript';
-import StatusPill from '../../../shared/components/StatusPill';
 
 // DEV build tag
 if (import.meta.env.DEV) {
@@ -77,6 +77,7 @@ const LiveVoiceInterface: React.FC<LiveVoiceInterfaceProps> = ({
   const [isAiThinking, setIsAiThinking] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [callEndedNote, setCallEndedNote] = useState<string | null>(null);
   const [durationSeconds, setDurationSeconds] = useState(0);
 
   // --- Transcript States ---
@@ -110,10 +111,20 @@ const LiveVoiceInterface: React.FC<LiveVoiceInterfaceProps> = ({
   const isStoppingRef = useRef(false);
   const hasSetupCompleteRef = useRef(false);
   const mountedRef = useRef(true);
+  const lastDurationRef = useRef(0);
   
   const currentInputRef = useRef('');
   const currentOutputRef = useRef('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const showEndNote = (opts?: { durationSecs?: number }) => {
+    if (!mountedRef.current) return;
+    const dur = opts?.durationSecs ?? lastDurationRef.current ?? durationSeconds;
+    const durLabel = dur > 0 ? ` • ${formatDuration(dur)}` : '';
+    const text = `Call ended${durLabel}.`;
+    setError(null);
+    setCallEndedNote(text);
+  };
 
   // --- Effects ---
 
@@ -125,13 +136,20 @@ const LiveVoiceInterface: React.FC<LiveVoiceInterfaceProps> = ({
     let interval: any;
     if (isConnected) {
       interval = setInterval(() => {
-        setDurationSeconds(prev => prev + 1);
+        setDurationSeconds(prev => {
+          const next = prev + 1;
+          lastDurationRef.current = next;
+          return next;
+        });
       }, 1000);
     } else {
       setDurationSeconds(0);
+      if (durationSeconds > 0) {
+        lastDurationRef.current = durationSeconds;
+      }
     }
     return () => clearInterval(interval);
-  }, [isConnected]);
+  }, [isConnected, durationSeconds]);
 
   // 👇 ADD THIS LINE. It resurrects the component after Strict Mode kills it.
   mountedRef.current = true;
@@ -232,6 +250,9 @@ const LiveVoiceInterface: React.FC<LiveVoiceInterfaceProps> = ({
     setIsHintsLoading(false);
     pendingAudioRef.current = [];
     liveReadyRef.current = false;
+
+    // Friendly end-call note
+    showEndNote({ durationSecs: lastDurationRef.current || durationSeconds });
     
     setTimeout(() => {
       isStoppingRef.current = false;
@@ -253,6 +274,9 @@ const LiveVoiceInterface: React.FC<LiveVoiceInterfaceProps> = ({
     }
 
     setError(null);
+    setCallEndedNote(null);
+    lastDurationRef.current = 0;
+    setDurationSeconds(0);
     dlog('startSession() clicked');
     try {
       hasSetupCompleteRef.current = false;
@@ -365,7 +389,9 @@ const LiveVoiceInterface: React.FC<LiveVoiceInterfaceProps> = ({
         if (msg.type === 'status') {
           if (msg.status === 'closed') {
             setIsConnected(false);
-            if (!isStoppingRef.current) {
+            if (isStoppingRef.current || msg.code === 1000) {
+              showEndNote({ durationSecs: lastDurationRef.current || durationSeconds });
+            } else if (!isStoppingRef.current) {
               setError(msg.code ? `Live connection closed (code ${msg.code}).` : 'Live connection closed.');
             }
           }
@@ -524,7 +550,9 @@ const LiveVoiceInterface: React.FC<LiveVoiceInterfaceProps> = ({
       ws.onclose = (e) => {
         if (!mountedRef.current) return;
         setIsConnected(false);
-        if (!isStoppingRef.current) {
+        if (isStoppingRef.current || e.code === 1000) {
+          showEndNote({ durationSecs: lastDurationRef.current || durationSeconds });
+        } else if (!isStoppingRef.current) {
           setError(
             e.code ? `Live connection closed (code ${e.code}).` : "Live connection closed."
           );
@@ -605,6 +633,10 @@ const LiveVoiceInterface: React.FC<LiveVoiceInterfaceProps> = ({
     });
   };
 
+  const callEnded = Boolean(callEndedNote);
+  const isIdle = !isConnected && !callEnded;
+  const isActiveSession = isConnected && !callEnded;
+
   return (
     <div className="relative w-full h-full flex flex-col shadow-2xl rounded-[2.5rem] border border-white/40 ring-1 ring-black/5 bg-gradient-to-b from-cyan-50 to-white overflow-hidden min-h-0">
       
@@ -636,7 +668,7 @@ const LiveVoiceInterface: React.FC<LiveVoiceInterfaceProps> = ({
       </header>
 
       {/* Main Avatar Area */}
-      <div className={`shrink-0 flex flex-col items-center justify-center relative w-full min-h-[160px] py-4 ${hints.length > 0 ? 'z-[70]' : 'z-10'}`}>
+      <div className={`${isActiveSession ? 'shrink-0 py-4' : 'flex-1 flex flex-col items-center justify-center'} relative w-full min-h-[160px] ${hints.length > 0 ? 'z-[70]' : 'z-10'}`}>
           
           {hints.length > 0 ? (
              <RescueRing hints={hints} onClose={() => setHints([])} />
@@ -649,25 +681,44 @@ const LiveVoiceInterface: React.FC<LiveVoiceInterfaceProps> = ({
               </div>
 
               <div className="min-h-[2rem] mt-4 flex items-center justify-center relative z-20 px-4">
-                 <StatusPill 
-                    isConnected={isConnected}
-                    isAiSpeaking={isAiSpeaking}
-                    isAiThinking={isAiThinking}
-                    realtimeInput={realtimeInput}
-                    error={error}
-                 />
+                 {callEnded ? (
+                   <div className="px-4 py-2 rounded-full text-xs md:text-sm font-bold bg-white text-slate-700 border border-slate-200 shadow-sm flex items-center gap-2">
+                      <span>{callEndedNote}</span>
+                   </div>
+                 ) : isIdle ? null : (
+                   <StatusPill 
+                      isConnected={isConnected}
+                      isAiSpeaking={isAiSpeaking}
+                      isAiThinking={isAiThinking}
+                      realtimeInput={realtimeInput}
+                      error={error}
+                   />
+                 )}
               </div>
             </>
           )}
       </div>
 
-      <Transcript 
-        history={history}
-        realtimeInput={realtimeInput}
-        realtimeOutput={realtimeOutput}
-        isConnected={isConnected}
-        messagesEndRef={messagesEndRef}
-      />
+      {isActiveSession && (
+        <div className="w-full max-w-5xl mx-auto px-5 md:px-8 pb-6 flex-1 flex flex-col min-h-0">
+          <Transcript 
+            history={history}
+            realtimeInput={realtimeInput}
+            realtimeOutput={realtimeOutput}
+            isConnected={isConnected}
+            messagesEndRef={messagesEndRef}
+          />
+        </div>
+      )}
+
+      {/* Spacer removed to allow Avatar area to take full height in idle state */}
+      
+      {/* Show Tap Start text in both Idle AND Call Ended states */}
+      {(isIdle || callEnded) && (
+        <div className="text-center pb-2 text-slate-400 font-bold animate-pulse text-sm">
+            Tap Start to chat
+        </div>
+      )}
 
       <ControlBar 
         isConnected={isConnected}

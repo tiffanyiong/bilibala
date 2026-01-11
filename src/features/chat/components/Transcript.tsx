@@ -1,6 +1,6 @@
 import React from 'react';
-import { HistoryItem } from '../../../shared/types';
 import { BotIcon } from '../../../shared/components/icons/LiveIcons';
+import { HistoryItem } from '../../../shared/types';
 
 interface TranscriptProps {
   history: HistoryItem[];
@@ -24,16 +24,8 @@ const Transcript: React.FC<TranscriptProps> = ({
             
             <div className="absolute inset-2 overflow-y-auto scrollbar-hide pr-2">
                 {history.length === 0 && !realtimeInput && !realtimeOutput && (
-                    <div className="h-full flex flex-col items-center justify-center text-slate-400 text-center opacity-70">
-                        <div className="w-12 h-12 bg-white/50 rounded-full flex items-center justify-center mb-2">
-                            <BotIcon />
-                        </div>
-                        <p className="text-sm font-bold">
-                            {isConnected 
-                                ? "Go ahead, say hello!" 
-                                : "Tap Start to chat!"
-                            }
-                        </p>
+                    <div className="h-full flex flex-col items-center justify-center text-slate-300 font-bold opacity-60">
+                        <p className="text-xl">Go ahead, say hello!</p>
                     </div>
                 )}
 
