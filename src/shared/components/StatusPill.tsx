@@ -29,21 +29,21 @@ const StatusPill: React.FC<StatusPillProps> = ({
   if (isConnected) {
      if (isAiSpeaking) {
          statusText = "Bilibala is speaking...";
-         statusColor = "bg-cyan-100 text-cyan-600 animate-pulse border-cyan-200";
+         statusColor = "bg-yellow-50 text-yellow-700 animate-pulse border-yellow-200";
      } else if (isAiThinking) {
          statusText = "Listening...";
-         statusColor = "bg-green-100 text-green-600 animate-pulse border-green-200";
+         statusColor = "bg-zinc-50 text-zinc-600 animate-pulse border-zinc-200";
      } else if (realtimeInput) {
          statusText = "Listening...";
-         statusColor = "bg-green-100 text-green-600 animate-pulse border-green-200";
+         statusColor = "bg-zinc-50 text-zinc-600 animate-pulse border-zinc-200";
      } else {
          statusText = "Listening...";
-         statusColor = "bg-white text-cyan-600 border-white";
+         statusColor = "bg-white text-zinc-500 border-zinc-200";
      }
   }
 
   return (
-    <div className={`px-4 py-1.5 rounded-full text-xs font-bold border shadow-sm transition-all duration-300 ${isConnected ? 'opacity-100 scale-100' : 'opacity-0 scale-95'} ${statusColor}`}>
+    <div className={`px-4 py-1.5 rounded-full text-xs font-medium border shadow-sm transition-all duration-300 ${isConnected ? 'opacity-100 scale-100' : 'opacity-0 scale-95'} ${statusColor}`}>
         {statusText}
     </div>
   );

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { TopicPoint, VocabularyItem } from '../../../shared/types';
 import { UI_TRANSLATIONS } from '../../../shared/constants';
+import { TopicPoint, VocabularyItem } from '../../../shared/types';
 
 interface ContentTabsProps {
   summary: string;
@@ -33,7 +33,7 @@ const BilingualText: React.FC<{
             </div>
             
             {showTranslation && hasTranslation && (
-                <div className={`mt-2 text-cyan-700 font-bold bg-cyan-50/50 p-3 rounded-xl text-sm animate-fadeIn border border-cyan-100`}>
+                <div className={`mt-2 text-zinc-600 bg-zinc-50 p-3 rounded-lg text-sm animate-fadeIn border border-zinc-200`}>
                     {translated}
                 </div>
             )}
@@ -84,34 +84,34 @@ const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, t
     );
   }
 
-  const containerClasses = layoutMode === 'fixed' 
-    ? "bg-white/40 backdrop-blur-xl h-full flex flex-col overflow-hidden shadow-2xl shadow-cyan-900/10 rounded-[2.5rem] border border-white/60"
-    : "bg-white/40 backdrop-blur-xl flex flex-col overflow-hidden shadow-2xl shadow-cyan-900/10 rounded-[2.5rem] border border-white/60";
+    const containerClasses = layoutMode === 'fixed' 
+    ? "bg-white h-full flex flex-col overflow-hidden shadow-sm rounded-2xl border border-zinc-200"
+    : "bg-white flex flex-col overflow-hidden shadow-sm rounded-2xl border border-zinc-200";
 
   const contentAreaClasses = layoutMode === 'fixed'
-    ? "flex-1 overflow-y-auto p-6 space-y-6 scrollbar-hide relative"
-    : "p-6 space-y-6 relative";
+    ? "flex-1 overflow-y-auto p-5 space-y-5 scrollbar-hide relative"
+    : "p-5 space-y-5 relative";
 
   return (
     <div className={containerClasses}>
-      {/* Glossy Tabs Header - ensure no stacking of buttons */}
-      <div className="flex p-3 gap-3 bg-white/20 flex-nowrap overflow-x-auto">
+      {/* Tab Header - Minimal */}
+      <div className="flex p-2 gap-2 bg-zinc-50 border-b border-zinc-100 flex-nowrap overflow-x-auto">
         <button
           onClick={() => setActiveTab('content')}
-          className={`flex-1 py-4 px-4 md:px-6 rounded-2xl font-black text-lg flex items-center justify-center gap-2 transition-all duration-300 shadow-sm border whitespace-nowrap min-w-[140px] ${
+          className={`flex-1 py-2.5 px-4 rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-all duration-200 whitespace-nowrap min-w-[120px] ${
             activeTab === 'content' 
-              ? 'bg-gradient-to-br from-yellow-300 to-yellow-400 text-yellow-900 border-yellow-200 shadow-yellow-200/50 scale-100' 
-              : 'bg-white/60 text-slate-500 border-transparent hover:bg-white/80 scale-95'
+              ? 'bg-white text-zinc-900 shadow-sm border border-zinc-200' 
+              : 'text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100'
           }`}
         >
           <ShellIcon /> {uiText.outline}
         </button>
         <button
           onClick={() => setActiveTab('vocab')}
-          className={`flex-1 py-4 px-4 md:px-6 rounded-2xl font-black text-lg flex items-center justify-center gap-2 transition-all duration-300 shadow-sm border whitespace-nowrap min-w-[140px] ${
+          className={`flex-1 py-2.5 px-4 rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-all duration-200 whitespace-nowrap min-w-[120px] ${
             activeTab === 'vocab' 
-              ? 'bg-gradient-to-br from-pink-300 to-pink-400 text-pink-900 border-pink-200 shadow-pink-200/50 scale-100' 
-              : 'bg-white/60 text-slate-500 border-transparent hover:bg-white/80 scale-95'
+              ? 'bg-white text-zinc-900 shadow-sm border border-zinc-200' 
+              : 'text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100'
           }`}
         >
           <StarfishIcon /> {uiText.slang}
@@ -124,42 +124,43 @@ const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, t
         {activeTab === 'content' ? (
           <div className="space-y-6">
             {/* Summary Section */}
-            <div className="p-8 bg-white/70 rounded-[2rem] border border-white shadow-sm backdrop-blur-md">
-                <h4 className="font-bold text-cyan-700 text-2xl font-display mb-4 flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-cyan-100 flex items-center justify-center text-cyan-500">
+            <div className="p-6 bg-white rounded-xl border border-zinc-200 shadow-sm">
+                <h4 className="font-serif text-zinc-800 text-lg mb-3 flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-500">
                         <BubbleIcon />
                     </div>
                     Start Here
                 </h4>
-                <div className="text-slate-600 font-bold text-lg leading-relaxed">
+                <div className="text-zinc-600 font-sans text-[15px] leading-relaxed">
                     <BilingualText 
                         main={summary} 
                         translated={translatedSummary || ""} 
                         label="Translate"
                         isBlock
+                        className="font-normal"
                     />
                 </div>
             </div>
 
             {/* Topics Section */}
             <div>
-                <h4 className="font-bold text-white text-xl font-display mb-4 px-2 drop-shadow-sm">
+                <h4 className="font-serif text-zinc-800 text-lg mb-3 px-1">
                     Journey Steps
                 </h4>
-                <div className="space-y-4">
+                <div className="space-y-3">
                     {topics.map((item, index) => (
                       <div 
                         key={index} 
-                        className="flex gap-5 p-6 bg-white/80 rounded-[2rem] items-start shadow-sm border-2 border-transparent hover:border-cyan-200 hover:shadow-lg transition-all group"
+                        className="flex gap-4 p-5 bg-white rounded-xl items-start border border-zinc-200 hover:border-zinc-300 transition-all group"
                       >
-                        <div className="w-14 h-14 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-full flex items-center justify-center text-white shrink-0 shadow-lg shadow-cyan-200">
-                            <span className="font-black font-display text-xl">{index + 1}</span>
+                        <div className="w-8 h-8 bg-zinc-100 rounded-full flex items-center justify-center text-zinc-600 shrink-0 border border-zinc-200">
+                            <span className="font-serif text-base">{index + 1}</span>
                         </div>
-                        <div className="flex-1 pt-1">
-                            <h5 className="font-bold text-slate-800 text-xl font-display mb-2">
+                        <div className="flex-1 pt-0.5">
+                            <h5 className="font-bold text-zinc-800 text-[15px] font-sans mb-1.5">
                                 <BilingualText main={item.title} translated={item.translatedTitle} />
                             </h5>
-                            <div className="text-slate-600 font-medium leading-relaxed">
+                            <div className="text-zinc-500 text-sm leading-relaxed font-normal">
                                 <BilingualText main={item.description} translated={item.translatedDescription} isBlock />
                             </div>
                         </div>
@@ -169,27 +170,26 @@ const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, t
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4">
+          <div className="grid grid-cols-1 gap-3">
             {vocabulary.map((item, index) => (
-              <div key={index} className="p-6 bg-white/80 rounded-[2rem] shadow-sm border border-white hover:scale-[1.01] transition-all">
+              <div key={index} className="p-5 bg-white rounded-xl border border-zinc-200 hover:border-zinc-300 transition-all">
                 <div className="flex justify-between items-start mb-2">
-                  <span className="font-black text-slate-800 text-2xl font-display">{item.word}</span>
-                  <div className="bg-pink-100 text-pink-500 p-2 rounded-xl">
+                  <span className="font-serif text-zinc-900 text-xl">{item.word}</span>
+                  <div className="bg-zinc-50 text-zinc-400 p-1.5 rounded-lg">
                     <StarfishIcon />
                   </div>
                 </div>
-                <div className="text-slate-600 font-bold text-lg mb-4 bg-white/50 p-3 rounded-xl border border-white">
+                <div className="text-zinc-600 text-[15px] mb-3 bg-zinc-50/50 p-3 rounded-lg border border-zinc-100">
                      <BilingualText main={item.definition} translated={item.translatedDefinition} label="?" />
                 </div>
-                <div className="text-sm text-cyan-800 bg-cyan-50/80 px-4 py-3 rounded-2xl border border-cyan-100">
-                  <span className="font-bold opacity-60 mr-2 uppercase tracking-wider text-xs">Example</span>
+                <div className="text-sm text-zinc-500 bg-zinc-50 px-4 py-3 rounded-lg border border-zinc-100 italic">
                   <BilingualText main={item.context} translated={item.translatedContext} />
                 </div>
               </div>
             ))}
             {vocabulary.length === 0 && (
-                <div className="text-center p-12 bg-white/40 rounded-[2rem] border-2 border-dashed border-white">
-                    <p className="text-white font-bold text-lg">Floating in an empty pool...</p>
+                <div className="text-center p-12 bg-zinc-50 rounded-xl border border-dashed border-zinc-200">
+                    <p className="text-zinc-400 text-sm">No vocabulary words found.</p>
                 </div>
             )}
           </div>
