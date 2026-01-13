@@ -36,7 +36,18 @@ export interface SpeechAnalysisResult {
     conclusion: string;
     arguments: Array<{
       point: string;
-      status: 'strong' | 'weak' | 'missing';
+      status: 'strong' | 'weak' | 'missing' | 'irrelevant';
+      type: 'fact' | 'story' | 'opinion';
+      evidence: string[];
+      critique?: string;
+    }>;
+  };
+  improved_structure?: {
+    conclusion: string;
+    arguments: Array<{
+      headline: string;
+      elaboration: string;
+      type: 'fact' | 'story' | 'opinion';
       evidence: string[];
     }>;
   };
