@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { UI_TRANSLATIONS } from '../../../shared/constants';
 import { TopicPoint, VocabularyItem } from '../../../shared/types';
 
@@ -7,9 +7,12 @@ interface ContentTabsProps {
   translatedSummary?: string;
   topics: TopicPoint[];
   vocabulary: VocabularyItem[];
+  transcript?: { text: string; duration: number; offset: number }[];
+  onTimestampClick?: (offset: number) => void;
   isLoading: boolean;
   targetLang: string;
   layoutMode?: 'fixed' | 'auto';
+  currentTime?: number;
 }
 
 const BilingualText: React.FC<{ 
@@ -24,16 +27,25 @@ const BilingualText: React.FC<{
 
     return (
         <div 
-            onClick={() => hasTranslation && setShowTranslation(!showTranslation)} 
-            className={`${hasTranslation ? 'cursor-pointer group' : ''} relative transition-all ${className}`}
+            onClick={(e) => {
+                if (hasTranslation) {
+                    e.stopPropagation();
+                    setShowTranslation(!showTranslation);
+                }
+            }} 
+            className={`${hasTranslation ? 'cursor-pointer group/trans' : ''} relative transition-all inline-block ${className}`}
         >
-            <div className={isBlock ? "block" : "inline"}>
+            <span className={isBlock ? "block" : "inline"}>
                {main}
-               {hasTranslation && label && <span className="ml-2 text-[10px] text-pink-600 font-bold bg-pink-100 px-2 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">Translate</span>}
-            </div>
+               {hasTranslation && (
+                   <span className="ml-1.5 opacity-0 group-hover/trans:opacity-100 transition-opacity text-[10px] text-gray-400 border border-gray-200 px-1 rounded hover:bg-gray-50">
+                       {label || "文"}
+                   </span>
+               )}
+            </span>
             
             {showTranslation && hasTranslation && (
-                <div className={`mt-2 text-zinc-600 bg-zinc-50 p-3 rounded-lg text-sm animate-fadeIn border border-zinc-200`}>
+                <div className="mt-1.5 p-2 bg-gray-50 border border-gray-100 rounded text-gray-600 text-[12px] animate-in fade-in slide-in-from-top-1 duration-200">
                     {translated}
                 </div>
             )}
@@ -41,158 +53,291 @@ const BilingualText: React.FC<{
     );
 };
 
-const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, topics, vocabulary, isLoading, targetLang, layoutMode = 'fixed' }) => {
-  const [activeTab, setActiveTab] = useState<'content' | 'vocab'>('content');
-  const uiText = UI_TRANSLATIONS[targetLang] || UI_TRANSLATIONS['English'];
-
-  // --- CUSTOM SVG ICONS (NO EMOJIS) ---
-  const ShellIcon = () => (
-    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M12 21C16.9706 21 21 16.9706 21 12C21 7.02944 16.9706 3 12 3C7.02944 3 3 7.02944 3 12C3 16.9706 7.02944 21 12 21Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M12 21V12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M12 21C9 18 8 15 8 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M12 21C15 18 16 15 16 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );
-
-  const StarfishIcon = () => (
-    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-       <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );
-
-  const BubbleIcon = () => (
-    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
-      <path d="M16 8C15 6 13 6 13 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-    </svg>
-  );
-
-  if (isLoading) {
-    return (
-      <div className={`bg-white/40 backdrop-blur-xl rounded-[2rem] p-6 flex flex-col shadow-xl border border-white/50 ${layoutMode === 'fixed' ? 'h-full' : 'min-h-[400px]'}`}>
-        <div className="flex gap-4 mb-6">
-           <div className="h-12 w-32 bg-white/50 rounded-full animate-pulse"></div>
-           <div className="h-12 w-32 bg-white/50 rounded-full animate-pulse"></div>
-        </div>
-        <div className="space-y-4 flex-1">
-            {[1, 2, 3].map(i => (
-                <div key={i} className="h-24 bg-white/40 rounded-3xl animate-pulse"></div>
-            ))}
-        </div>
-      </div>
-    );
+// Helper to parse "MM:SS" to milliseconds
+const parseTimestamp = (ts: string): number => {
+  if (!ts) return 0;
+  const parts = ts.split(':').map(Number);
+  if (parts.length === 2) {
+    return (parts[0] * 60 + parts[1]) * 1000;
   }
+  if (parts.length === 3) {
+    return (parts[0] * 3600 + parts[1] * 60 + parts[2]) * 1000;
+  }
+  return 0;
+};
 
-    const containerClasses = layoutMode === 'fixed' 
-    ? "bg-[#FAF9F6] h-full flex flex-col overflow-hidden shadow-sm rounded-2xl border border-stone-200"
-    : "bg-[#FAF9F6] flex flex-col overflow-hidden shadow-sm rounded-2xl border border-stone-200";
+const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, topics, vocabulary, transcript, onTimestampClick, isLoading, targetLang, layoutMode = 'fixed', currentTime = 0 }) => {
+  const [activeTab, setActiveTab] = useState<'outline' | 'vocab' | 'transcript'>('outline');
+  const uiText = UI_TRANSLATIONS[targetLang] || UI_TRANSLATIONS['English'];
+  
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const activeTranscriptRef = useRef<HTMLDivElement>(null);
+  const [showLocateBtn, setShowLocateBtn] = useState(false);
+  // We use a ref to track if the user has manually scrolled away to avoid jittery auto-scrolling
+  const isUserScrolling = useRef(false);
+
+  // --- CUSTOM SVG ICONS ---
+  const StarfishIcon = () => (
+    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+       <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+
+  const LocateIcon = () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 3V5M12 19V21M21 12H19M5 12H3M17 12C17 14.7614 14.7614 17 12 17C9.23858 17 7 14.7614 7 12C7 9.23858 9.23858 7 12 7C14.7614 7 17 9.23858 17 12ZM12 12H12.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+
+  const activeTranscriptIndex = useMemo(() => {
+    if (!transcript || transcript.length === 0) return -1;
+    const ms = currentTime * 1000;
+    
+    // Find segment that contains current time
+    return transcript.findIndex((seg, i) => {
+        const nextSeg = transcript[i + 1];
+        const end = nextSeg ? nextSeg.offset : Infinity;
+        return ms >= seg.offset && ms < end;
+    });
+  }, [transcript, currentTime]);
+
+  // Auto-scroll logic
+  useEffect(() => {
+    if (activeTab === 'transcript' && activeTranscriptRef.current && !isUserScrolling.current) {
+        activeTranscriptRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [activeTranscriptIndex, activeTab]);
+
+  const handleScroll = () => {
+    if (!scrollContainerRef.current || !activeTranscriptRef.current) return;
+
+    const container = scrollContainerRef.current;
+    const activeEl = activeTranscriptRef.current;
+    
+    const containerRect = container.getBoundingClientRect();
+    const activeRect = activeEl.getBoundingClientRect();
+    
+    // Check if active element is outside the visible area
+    const isOutside = activeRect.bottom < containerRect.top || activeRect.top > containerRect.bottom;
+    
+    if (isOutside) {
+        setShowLocateBtn(true);
+        isUserScrolling.current = true;
+    } else {
+        setShowLocateBtn(false);
+        // We don't automatically set isUserScrolling to false here, 
+        // because we want to wait for user to explicitly click "Locate" 
+        // to resume auto-scrolling if they were just scrolling around.
+        // Or we can reset it if they scroll BACK to the element manually.
+        if (!isOutside) {
+             // If they manually scrolled back, re-enable auto-scroll? 
+             // Let's keep it simple: once detached, stay detached until button click.
+        }
+    }
+  };
+
+  const scrollToCurrent = () => {
+      if (activeTranscriptRef.current) {
+          isUserScrolling.current = false;
+          setShowLocateBtn(false);
+          activeTranscriptRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+  };
+
+  const containerClasses = layoutMode === 'fixed' 
+    ? "bg-[#FCFCFC] h-full flex flex-col overflow-hidden shadow-sm rounded-xl border border-gray-200"
+    : "bg-[#FCFCFC] flex flex-col overflow-hidden shadow-sm rounded-xl border border-gray-200";
 
   const contentAreaClasses = layoutMode === 'fixed'
-    ? "flex-1 overflow-y-auto p-5 space-y-5 scrollbar-hide relative"
-    : "p-5 space-y-5 relative";
+    ? "flex-1 overflow-y-auto p-2 scrollbar-hide relative"
+    : "p-2 relative";
 
   return (
     <div className={containerClasses}>
-      {/* Tab Header - Minimal */}
-      <div className="flex p-2 gap-2 bg-stone-50 border-b border-stone-100 flex-nowrap overflow-x-auto">
+      {/* Tab Header - Notion Style */}
+      <div className="flex px-2 pt-2 gap-1 bg-transparent border-b border-gray-100 flex-nowrap overflow-x-auto shrink-0 mb-1">
         <button
-          onClick={() => setActiveTab('content')}
-          className={`flex-1 py-2.5 px-4 rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-all duration-200 whitespace-nowrap min-w-[120px] ${
-            activeTab === 'content' 
-              ? 'bg-[#FAF9F6] text-stone-900 shadow-sm border border-stone-200' 
-              : 'text-stone-500 hover:text-stone-700 hover:bg-stone-100'
+          onClick={() => setActiveTab('outline')}
+          className={`px-3 py-2 text-[14px] rounded-md transition-all whitespace-nowrap ${
+            activeTab === 'outline' 
+              ? 'text-gray-900 bg-gray-100 font-medium' 
+              : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
           }`}
         >
-          <ShellIcon /> {uiText.outline}
+          Outline
         </button>
         <button
           onClick={() => setActiveTab('vocab')}
-          className={`flex-1 py-2.5 px-4 rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-all duration-200 whitespace-nowrap min-w-[120px] ${
+          className={`px-3 py-2 text-[14px] rounded-md transition-all whitespace-nowrap ${
             activeTab === 'vocab' 
-              ? 'bg-[#FAF9F6] text-stone-900 shadow-sm border border-stone-200' 
-              : 'text-stone-500 hover:text-stone-700 hover:bg-stone-100'
+              ? 'text-gray-900 bg-gray-100 font-medium' 
+              : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
           }`}
         >
-          <StarfishIcon /> {uiText.slang}
+          Vocabulary
+        </button>
+        <button
+          onClick={() => setActiveTab('transcript')}
+          className={`px-3 py-2 text-[14px] rounded-md transition-all whitespace-nowrap ${
+            activeTab === 'transcript' 
+              ? 'text-gray-900 bg-gray-100 font-medium' 
+              : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+          }`}
+        >
+          Transcript
         </button>
       </div>
 
       {/* Content Area */}
-      <div className={contentAreaClasses}>
+      <div 
+        className={contentAreaClasses}
+        ref={scrollContainerRef}
+        onScroll={activeTab === 'transcript' ? handleScroll : undefined}
+      >
         
-        {activeTab === 'content' ? (
-          <div className="space-y-6">
-            {/* Summary Section */}
-            <div className="p-6 bg-white rounded-xl border border-stone-200 shadow-sm">
-                <h4 className="font-serif text-stone-800 text-lg mb-3 flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-stone-100 flex items-center justify-center text-stone-500">
-                        <BubbleIcon />
-                    </div>
-                    Start Here
-                </h4>
-                <div className="text-stone-600 font-sans text-[15px] leading-relaxed">
-                    <BilingualText 
-                        main={summary} 
-                        translated={translatedSummary || ""} 
-                        label="Translate"
-                        isBlock
-                        className="font-normal"
-                    />
-                </div>
-            </div>
-
-            {/* Topics Section */}
-            <div>
-                <h4 className="font-serif text-stone-800 text-lg mb-3 px-1">
-                    Journey Steps
-                </h4>
-                <div className="space-y-3">
-                    {topics.map((item, index) => (
-                      <div 
-                        key={index} 
-                        className="flex gap-4 p-5 bg-white rounded-xl items-start border border-stone-200 hover:border-stone-300 transition-all group"
-                      >
-                        <div className="w-8 h-8 bg-stone-100 rounded-full flex items-center justify-center text-stone-600 shrink-0 border border-stone-200">
-                            <span className="font-serif text-base">{index + 1}</span>
-                        </div>
-                        <div className="flex-1 pt-0.5">
-                            <h5 className="font-bold text-stone-800 text-[15px] font-sans mb-1.5">
-                                <BilingualText main={item.title} translated={item.translatedTitle} />
-                            </h5>
-                            <div className="text-stone-500 text-sm leading-relaxed font-normal">
-                                <BilingualText main={item.description} translated={item.translatedDescription} isBlock />
+        {isLoading ? (
+           // SKELETON LOADING
+           <div className="flex flex-col space-y-4 px-2 py-4">
+               {activeTab === 'outline' && (
+                   <div className="p-3 bg-white rounded-lg border border-gray-100 shadow-sm space-y-2">
+                       <div className="h-3 w-20 bg-gray-100 rounded animate-pulse"></div>
+                       <div className="h-4 w-full bg-gray-100 rounded animate-pulse"></div>
+                       <div className="h-4 w-3/4 bg-gray-100 rounded animate-pulse"></div>
+                   </div>
+               )}
+               {[1, 2, 3, 4].map(i => (
+                   <div key={i} className="flex gap-3 p-2">
+                       <div className="h-4 w-10 bg-gray-100 rounded animate-pulse shrink-0"></div>
+                       <div className="flex-1 space-y-2">
+                           <div className="h-4 w-3/4 bg-gray-100 rounded animate-pulse"></div>
+                           <div className="h-3 w-1/2 bg-gray-100 rounded animate-pulse"></div>
+                       </div>
+                   </div>
+               ))}
+           </div>
+        ) : (
+            <>
+                {activeTab === 'outline' ? (
+                  <div className="flex flex-col space-y-0.5 px-2 py-2">
+                    {/* Summary Section */}
+                    {summary && (
+                        <div className="mb-4 p-3 bg-white rounded-lg border border-gray-100 shadow-sm">
+                            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Summary</h3>
+                            <div className="text-[14px] text-gray-700 leading-relaxed">
+                                <BilingualText main={summary} translated={translatedSummary} />
                             </div>
+                        </div>
+                    )}
+
+                    {topics.length > 0 && topics.map((topic, index) => {
+                        const ms = parseTimestamp(topic.timestamp);
+                        return (
+                            <div 
+                                key={index} 
+                                className="group flex gap-3 p-2 rounded-lg hover:bg-gray-100/80 transition-all cursor-pointer items-start"
+                                onClick={() => onTimestampClick && onTimestampClick(ms)}
+                            >
+                                <div className="shrink-0 pt-0.5">
+                                    <span className="text-[11px] font-mono text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100 group-hover:border-gray-200 transition-colors">
+                                        {topic.timestamp}
+                                    </span>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <h3 className="text-[15px] font-medium text-gray-800 leading-snug mb-1 group-hover:text-black">
+                                        {topic.title}
+                                    </h3>
+                                    <div className="text-[13px] text-gray-500 leading-relaxed font-light">
+                                        <BilingualText main={topic.description} translated={topic.translatedDescription} />
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                    
+                    {topics.length === 0 && (
+                        <div className="text-center py-16 px-4">
+                            <div className="text-gray-300 mb-2">
+                                <svg className="w-8 h-8 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 12h16M4 18h7" />
+                                </svg>
+                            </div>
+                            <p className="text-gray-400 text-sm">Empty outline</p>
+                        </div>
+                    )}
+                  </div>
+                ) : activeTab === 'vocab' ? (
+                  <div className="grid grid-cols-1 gap-2 px-2 py-2">
+                    {vocabulary.map((item, index) => (
+                      <div key={index} className="group p-3 rounded-lg border border-transparent hover:border-gray-200 hover:bg-white hover:shadow-sm transition-all">
+                        <div className="flex justify-between items-baseline mb-1">
+                          <BilingualText 
+                              main={item.word} 
+                              translated={item.translatedWord || ''}
+                              className="font-medium text-gray-800 text-[15px]" 
+                          />
+                          <div className="text-gray-300 group-hover:text-gray-400 transition-colors shrink-0">
+                            <StarfishIcon />
+                          </div>
+                        </div>
+                        <div className="text-gray-600 text-[13px] mb-2 leading-relaxed">
+                             <BilingualText main={item.definition} translated={item.translatedDefinition} />
+                        </div>
+                        <div className="text-[12px] text-gray-400 pl-2 border-l-2 border-gray-100 italic">
+                          <BilingualText main={item.context} translated={item.translatedContext} />
                         </div>
                       </div>
                     ))}
-                </div>
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-3">
-            {vocabulary.map((item, index) => (
-              <div key={index} className="p-5 bg-white rounded-xl border border-stone-200 hover:border-stone-300 transition-all">
-                <div className="flex justify-between items-start mb-2">
-                  <span className="font-serif text-stone-900 text-xl">{item.word}</span>
-                  <div className="bg-stone-50 text-stone-400 p-1.5 rounded-lg">
-                    <StarfishIcon />
+                    {vocabulary.length === 0 && (
+                        <div className="text-center py-16 px-4">
+                            <p className="text-gray-400 text-sm">No vocabulary words</p>
+                        </div>
+                    )}
                   </div>
-                </div>
-                <div className="text-stone-600 text-[15px] mb-3 bg-stone-50/50 p-3 rounded-lg border border-stone-100">
-                     <BilingualText main={item.definition} translated={item.translatedDefinition} label="?" />
-                </div>
-                <div className="text-sm text-stone-500 bg-stone-50 px-4 py-3 rounded-lg border border-stone-100 italic">
-                  <BilingualText main={item.context} translated={item.translatedContext} />
-                </div>
-              </div>
-            ))}
-            {vocabulary.length === 0 && (
-                <div className="text-center p-12 bg-stone-50 rounded-xl border border-dashed border-stone-200">
-                    <p className="text-stone-400 text-sm">No vocabulary words found.</p>
-                </div>
-            )}
-          </div>
+                ) : (
+                    // TRANSCRIPT TAB
+                    <div className="relative flex flex-col space-y-1 px-2 py-2">
+                        {/* Locate Button - Floating */}
+                        {showLocateBtn && (
+                            <button
+                                onClick={scrollToCurrent}
+                                className="sticky top-2 z-10 self-center bg-stone-800 text-white text-[11px] font-medium px-3 py-1.5 rounded-full shadow-lg flex items-center gap-1.5 hover:bg-stone-900 transition-all animate-in fade-in zoom-in duration-200 mb-2"
+                            >
+                                <LocateIcon />
+                                <span>Locate current</span>
+                            </button>
+                        )}
+                        
+                        {transcript && transcript.length > 0 ? transcript.map((seg, i) => {
+                            const isActive = i === activeTranscriptIndex;
+                            return (
+                                <div 
+                                    key={i} 
+                                    ref={isActive ? activeTranscriptRef : null}
+                                    className={`
+                                        group flex gap-3 p-3 rounded-lg transition-all cursor-pointer items-start
+                                        ${isActive 
+                                            ? 'bg-stone-100 border-l-4 border-stone-800 shadow-sm' 
+                                            : 'hover:bg-gray-50 border-l-4 border-transparent'
+                                        }
+                                    `}
+                                    onClick={() => onTimestampClick && onTimestampClick(seg.offset)}
+                                >
+                                    <span className={`text-[11px] font-mono pt-0.5 shrink-0 w-10 ${isActive ? 'text-stone-600 font-bold' : 'text-gray-400'}`}>
+                                        {new Date(seg.offset).toISOString().substr(14, 5)}
+                                    </span>
+                                    <p className={`text-[14px] leading-relaxed ${isActive ? 'text-stone-900 font-medium' : 'text-gray-700'}`}>
+                                        {seg.text}
+                                    </p>
+                                </div>
+                            );
+                        }) : (
+                            <div className="text-center py-16 px-4">
+                                <p className="text-gray-400 text-sm">No transcript available</p>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </>
         )}
       </div>
     </div>

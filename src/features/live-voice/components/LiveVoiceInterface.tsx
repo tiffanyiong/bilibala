@@ -121,7 +121,7 @@ const LiveVoiceInterface: React.FC<LiveVoiceInterfaceProps> = ({
     if (!mountedRef.current) return;
     const dur = opts?.durationSecs ?? lastDurationRef.current ?? durationSeconds;
     const durLabel = dur > 0 ? ` • ${formatDuration(dur)}` : '';
-    const text = `Call ended${durLabel}.`;
+    const text = `Call ended${durLabel}`;
     setError(null);
     setCallEndedNote(text);
   };

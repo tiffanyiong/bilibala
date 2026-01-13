@@ -29,7 +29,7 @@
 │  │ REST API     │  │  WebSocket   │  │   Gemini     │     │
 │  │ Endpoints    │  │   Proxy      │  │  API Client  │     │
 │  │              │  │              │  │              │     │
-│  │ /api/analyze │  │ /live        │  │ - Flash API  │     │
+│  │ /api/analyze │  │ /live        │  │ - Multimodal │     │
 │  │ /api/hints   │  │              │  │ - Live API   │     │
 │  └──────────────┘  └──────────────┘  └──────────────┘     │
 │         │                  │                  │             │
@@ -62,9 +62,9 @@ src/
 │   │   │   └── audioUtils.ts             # Audio processing
 │   │   └── index.ts                      # Public exports
 │   │
-│   ├── chat/                   # 💬 Chat & Transcript
+│   ├── chat/                   # 💬 Chat
 │   │   ├── components/
-│   │   │   ├── ChatInterface.tsx         # Text chat UI
+│   │   │   ├── ChatInterface.tsx         # Text chat UI (if used)
 │   │   │   └── Transcript.tsx            # Conversation history
 │   │   └── index.ts
 │   │
@@ -77,7 +77,7 @@ src/
 │   │
 │   └── content/                # 📚 Content Display
 │       ├── components/
-│       │   ├── ContentTabs.tsx           # Tab navigation
+│       │   ├── ContentTabs.tsx           # Tab navigation (Outline/Vocab)
 │       │   ├── TopicCard.tsx             # Topic display
 │       │   └── VocabularyCard.tsx        # Vocab display
 │       └── index.ts
@@ -103,7 +103,7 @@ src/
 
 ## Data Flow
 
-### 1. Video Analysis Flow
+### 1. Video Analysis Flow (Multimodal)
 ```
 User enters YouTube URL
     │
@@ -117,13 +117,20 @@ youtubeService.fetchVideoMetadata()
 Backend: POST /api/analyze-video-content
     │
     ▼
-Gemini Flash API (Content Analysis)
+Backend attempts to download audio (Innertube)
+    │
+    ├─▶ Success: Use Audio for Multimodal Analysis
+    │
+    └─▶ Failure: Fallback to fetching Transcript Text (YoutubeTranscript)
+         │
+         ▼
+Gemini 2.0 Flash (Multimodal Audio OR Text Context)
     │
     ▼
-Backend returns: { summary, topics, vocabulary }
+Backend returns: { summary, topics (outline), vocabulary }
     │
     ▼
-ContentTabs displays results
+ContentTabs displays results (Outline tab with click-to-seek)
 ```
 
 ### 2. Live Voice Interaction Flow
@@ -193,9 +200,9 @@ App.tsx
   ├─▶ Dashboard View
   │     ├─▶ VideoPlayer (video feature)
   │     ├─▶ ContentTabs (content feature)
-  │     │     ├─▶ TopicCard
-  │     │     └─▶ VocabularyCard
-  │     └─▶ "Jump In!" button
+  │     │     ├─▶ Outline Tab (Topics/Highlights)
+  │     │     └─▶ Vocabulary Tab
+  │     └─▶ "Start Conversation" button
   │
   └─▶ Call Session View
         ├─▶ LiveVoiceInterface (live-voice feature)
@@ -215,7 +222,7 @@ App.tsx
 | Endpoint | Method | Purpose | Request | Response |
 |----------|--------|---------|---------|----------|
 | `/healthz` | GET | Health check | - | `{ ok: true }` |
-| `/api/analyze-video-content` | POST | Analyze video for learning content | `{ videoTitle, nativeLang, targetLang, level }` | `{ summary, topics, vocabulary }` |
+| `/api/analyze-video-content` | POST | Analyze video using multimodal AI | `{ videoTitle, nativeLang, targetLang, level }` | `{ summary, topics, vocabulary }` |
 | `/api/conversation-hints` | POST | Generate conversation hints | `{ history, videoTitle, vocabulary, nativeLang, targetLang }` | `{ hints: string[] }` |
 
 ### WebSocket Endpoint
@@ -228,7 +235,7 @@ App.tsx
 
 ```typescript
 // Start session
-{ type: 'start', prompt: string }
+{ type: 'start', payload: { ...context } }
 
 // Audio chunk (binary frame)
 ArrayBuffer (PCM16, 16kHz)
@@ -244,13 +251,13 @@ ArrayBuffer (PCM16, 16kHz)
 
 ```typescript
 // Status update
-{ type: 'status', status: 'connected' | 'disconnected' }
+{ type: 'status', status: 'connected' | 'closed' | 'connecting', ... }
 
 // Error
 { type: 'error', error: string }
 
-// Gemini Live event
-{ type: 'live', event: GeminiLiveEvent }
+// Live Content (Audio/Text)
+{ type: 'live', serverContent: ... }
 ```
 
 ## Security Considerations
@@ -275,13 +282,14 @@ ArrayBuffer (PCM16, 16kHz)
    - Binary WebSocket frames for efficient audio transfer
    - Audio buffering to handle network latency
 
-2. **Component Loading:**
-   - Feature-based code splitting potential
-   - Lazy loading for heavy components
+2. **Render Optimization:**
+   - Fixed FOUC (Flash of Unstyled Content) by coordinating CSS loading
+   - Placeholder thumbnail for VideoPlayer to prevent layout shift
+   - Proper hook initialization for responsive layout
 
-3. **State Management:**
-   - React hooks for local state
-   - Minimal prop drilling via feature isolation
+3. **Component Loading:**
+   - Feature-based code splitting
+   - Lazy loading for heavy components
 
 ## Development Workflow
 
@@ -305,20 +313,3 @@ ArrayBuffer (PCM16, 16kHz)
    npm run build
    # Output: dist/
    ```
-
-## Deployment Considerations
-
-1. **Environment Variables:**
-   - Set `GEMINI_API_KEY`, `GEMINI_API_VERSION`, `GEMINI_LIVE_MODEL` on server
-   - Set `HOST=0.0.0.0` and `PORT` as needed
-
-2. **CORS:**
-   - Update backend CORS origin to match production domain
-
-3. **WebSocket:**
-   - Ensure WebSocket connections are supported by hosting provider
-   - Consider using `wss://` (secure WebSocket) in production
-
-4. **Static Assets:**
-   - Serve frontend build from CDN or static hosting
-   - Backend serves API and WebSocket only

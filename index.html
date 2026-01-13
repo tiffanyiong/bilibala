@@ -5,6 +5,7 @@
     <meta name="referrer" content="strict-origin-when-cross-origin" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Bilibala - Daily efforts, effortless results</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -18,6 +19,8 @@
         font-family: 'Inter', sans-serif;
         background-color: var(--paper-bg);
         color: var(--ink-black);
+        opacity: 0; /* Hide initially to prevent FOUC */
+        transition: opacity 0.3s ease-in-out;
       }
       h1, h2, h3, h4, h5, h6, .font-serif {
         font-family: 'Instrument Serif', serif;
