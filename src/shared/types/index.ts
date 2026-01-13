@@ -3,15 +3,22 @@ export interface TopicPoint {
   translatedTitle: string;
   description: string;
   translatedDescription: string;
-  // emoji removed
+  timestamp?: string;
 }
 
 export interface VocabularyItem {
   word: string;
+  translatedWord?: string;
   definition: string;
   translatedDefinition: string;
   context: string;
   translatedContext: string;
+}
+
+export interface PracticeTopic {
+  topic: string;
+  question: string;
+  targetWords: string[];
 }
 
 export interface ContentAnalysis {
@@ -19,6 +26,31 @@ export interface ContentAnalysis {
   translatedSummary: string;
   topics: TopicPoint[];
   vocabulary: VocabularyItem[];
+  transcript?: { text: string; duration: number; offset: number }[];
+  discussionTopics?: PracticeTopic[];
+}
+
+export interface SpeechAnalysisResult {
+  transcription: string;
+  structure: {
+    conclusion: string;
+    arguments: Array<{
+      point: string;
+      status: 'strong' | 'weak' | 'missing';
+      evidence: string[];
+    }>;
+  };
+  feedback: {
+    score: number;
+    strengths: string[];
+    weaknesses: string[];
+    suggestions: string[];
+  };
+  improvements: Array<{
+    original: string;
+    improved: string;
+    explanation: string;
+  }>;
 }
 
 export interface Message {
@@ -31,12 +63,14 @@ export interface Message {
 export interface HistoryItem {
   role: 'user' | 'model';
   text: string;
+  timestamp: number;
 }
 
 export interface VideoData {
   id: string;
   url: string;
   title: string;
+  
 }
 
 export enum AppState {
@@ -44,5 +78,6 @@ export enum AppState {
   LOADING,
   DASHBOARD,
   CALL_SESSION,
+  PRACTICE_SESSION,
   ERROR
 }

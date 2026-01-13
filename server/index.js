@@ -1,30 +1,31 @@
+import { GoogleGenAI, Modality, Type } from '@google/genai';
+import { Supadata } from '@supadata/js';
+import cors from 'cors';
 import dotenv from 'dotenv';
+import express from 'express';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import express from 'express';
-import cors from 'cors';
 import { WebSocketServer } from 'ws';
-import { GoogleGenAI, Modality, Type } from '@google/genai';
+import { Innertube, UniversalCache } from 'youtubei.js';
 
-// Load env from server/.env (do not rely on project root .env).
+// Load env from server/.env
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '.env') });
 
-// --- FIX: Use 0.0.0.0 for production ---
-// 127.0.0.1 only works if you are on the SAME machine (localhost).
-// 0.0.0.0 allows connections from the outside world (required for deployment).
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 3001);
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_LIVE_MODEL =
-  process.env.GEMINI_LIVE_MODEL || 'gemini-2.5-flash-native-audio-preview-12-2025';
-const GEMINI_API_VERSION = process.env.GEMINI_API_VERSION; // e.g. v1alpha
+const GEMINI_LIVE_MODEL = process.env.GEMINI_LIVE_MODEL || 'gemini-2.5-flash-native-audio-preview-12-2025';
+const GEMINI_API_VERSION = process.env.GEMINI_API_VERSION;
+const SUPADATA_API_KEY = process.env.SUPADATA_API_KEY;
 
 if (!GEMINI_API_KEY) {
-  // Fail fast so we never run a server that can't fulfill requests.
   console.error('Missing GEMINI_API_KEY in server environment.');
+}
+if (!SUPADATA_API_KEY) {
+  console.error('Missing SUPADATA_API_KEY in server environment.');
 }
 
 function createAi() {
@@ -34,14 +35,7 @@ function createAi() {
   });
 }
 
-function buildSystemInstruction({
-  videoTitle,
-  summary,
-  vocabulary,
-  nativeLang,
-  targetLang,
-  level,
-}) {
+function buildSystemInstruction({ videoTitle, summary, vocabulary, nativeLang, targetLang, level }) {
   const vocabListString = Array.isArray(vocabulary)
     ? vocabulary.map((v) => `- ${v.word}: ${v.definition}`).join('\n')
     : '';
@@ -69,11 +63,9 @@ IMPORTANT: Start the conversation immediately by introducing yourself as Bilibal
 function extractLikelyJson(text) {
   if (!text) return null;
   let t = String(text).trim();
-  // Strip ``` fences
   if (t.startsWith('```')) {
     t = t.replace(/^```[a-zA-Z]*\n?/, '').replace(/```$/, '').trim();
   }
-  // Try to extract the largest JSON object in the string
   const first = t.indexOf('{');
   const last = t.lastIndexOf('}');
   if (first !== -1 && last !== -1 && last > first) {
@@ -89,67 +81,273 @@ function safeJsonParse(text) {
 }
 
 const app = express();
-app.use(express.json({ limit: '2mb' }));
-app.use(
-  cors({
-    origin: true, // Allows any domain to connect (good for initial production test)
-    credentials: true,
-  }),
-);
+app.use(express.json({ limit: '50mb' }));
+app.use(cors({ origin: true, credentials: true }));
 
-app.get('/healthz', (_req, res) => {
-  // Useful log to see when load balancers check your app
-  // console.log('[server] GET /healthz'); 
-  res.json({ ok: true });
-});
+app.get('/healthz', (_req, res) => res.json({ ok: true }));
 
-// REST: analyze video content (no API key in browser)
+function extractVideoId(url) {
+  const match = url.match(/(?:youtu\.be\/|youtube\.com(?:\/embed\/|\/v\/|\/watch\?v=|\/user\/\S+|\/ytscreeningroom\?v=))([\w-]{11})/);
+  return match ? match[1] : null;
+}
+
+// --- HELPER: Fetch Transcript via Innertube (Fallback) ---
+async function fetchTranscriptWithInnertube(videoId) {
+  try {
+      console.log(`[server] Fetching transcript fallback for ${videoId}...`);
+      const yt = await Innertube.create({ cache: new UniversalCache(false) });
+      const info = await yt.getInfo(videoId);
+      
+      const tracks = info.captions?.caption_tracks;
+      if (!tracks || tracks.length === 0) return [];
+
+      let selectedTrack = tracks.find(t => t.language_code === 'en');
+      if (!selectedTrack) selectedTrack = tracks.find(t => t.language_code.startsWith('en'));
+      if (!selectedTrack) selectedTrack = tracks[0];
+
+      console.log(`[server] Fallback track: ${selectedTrack.name.text} (${selectedTrack.language_code})`);
+      const transcriptData = await info.getTranscript(selectedTrack.base_url);
+
+      if (transcriptData?.transcript?.content?.body?.initial_segments) {
+          return transcriptData.transcript.content.body.initial_segments.map(seg => ({
+              text: seg.snippet.text,
+              duration: Number(seg.duration_ms),
+              offset: Number(seg.start_ms)
+          }));
+      }
+      return [];
+  } catch (error) {
+      console.warn(`[server] Innertube fallback failed: ${error.message}`);
+      return [];
+  }
+}
+
+// --- HELPER: Fetch Metadata & Transcript Context (Innertube + Supadata) ---
+async function fetchVideoContext(videoId) {
+  console.log(`[server] Fetching context for ${videoId}...`);
+  try {
+      // 1. Duration (Innertube)
+      const yt = await Innertube.create({ cache: new UniversalCache(false) });
+      const info = await yt.getInfo(videoId);
+      const duration = info.basic_info.duration || 0;
+      
+      // 2. Transcript (Supadata)
+      let transcriptText = '';
+      let transcriptSegments = [];
+      try {
+          console.log('[server] Requesting transcript from Supadata...');
+          const supadata = new Supadata({ apiKey: SUPADATA_API_KEY });
+          const result = await supadata.transcript({
+              url: `https://www.youtube.com/watch?v=${videoId}`,
+              text: false, // Must be false to get segments/timestamps for the UI
+              mode: 'native' // Request existing transcript for immediate response (HTTP 200)
+          });
+
+          let content = null;
+          if (result.jobId) {
+              console.log(`[server] Supadata job started: ${result.jobId}`);
+              let status = 'queued';
+              let attempts = 0;
+              while (status !== 'completed' && status !== 'failed' && attempts < 30) {
+                  await new Promise(r => setTimeout(r, 1000));
+                  const job = await supadata.transcript.getJobStatus(result.jobId);
+                  status = job.status;
+                  if (status === 'completed') {
+                      content = job.content;
+                  } else if (status === 'failed') {
+                      console.error(`[server] Supadata job failed: ${job.error}`);
+                  }
+                  attempts++;
+              }
+          } else {
+              content = (result.content !== undefined) ? result.content : result;
+          }
+
+          if (Array.isArray(content)) {
+              // 1. Normalize Supadata segments (offset is ms, duration is ms)
+              const rawSegments = content.map(s => ({
+                  text: s.text,
+                  offset: (typeof s.offset === 'number') ? s.offset : ((s.start || 0) * 1000),
+                  duration: (typeof s.duration === 'number') ? s.duration : ((s.end - s.start) * 1000)
+              }));
+
+              // 2. Merge into sentence-like chunks
+              const merged = [];
+              let buffer = null;
+
+              for (const seg of rawSegments) {
+                  if (!buffer) {
+                      buffer = { ...seg };
+                      continue;
+                  }
+
+                  const gap = seg.offset - (buffer.offset + buffer.duration);
+                  const text = buffer.text.trim();
+                  const hasPunctuation = /[.!?]$/.test(text);
+                  const isLong = text.length > 60; 
+                  const isTooLong = text.length > 200;
+                  const isBigGap = gap > 1500;
+
+                  if ((hasPunctuation && isLong) || isTooLong || isBigGap) {
+                      merged.push(buffer);
+                      buffer = { ...seg };
+                  } else {
+                      buffer.text += ' ' + seg.text;
+                      buffer.duration = (seg.offset + seg.duration) - buffer.offset;
+                  }
+              }
+              if (buffer) merged.push(buffer);
+
+              transcriptSegments = merged;
+              transcriptText = transcriptSegments.map(s => s.text).join(' ');
+          } else if (typeof content === 'string') {
+              transcriptText = content;
+          }
+          
+          console.log(`[server] Supadata transcript received. Segments: ${transcriptSegments.length}`);
+      } catch (e) {
+          console.warn(`[server] Supadata failed: ${e.message}`);
+      }
+
+      // FALLBACK: If Supadata failed or returned no segments, try Innertube
+      if (transcriptSegments.length === 0) {
+          transcriptSegments = await fetchTranscriptWithInnertube(videoId);
+          if (transcriptSegments.length > 0) {
+              transcriptText = transcriptSegments.map(s => s.text).join(' ');
+              console.log(`[server] Fallback transcript received. Segments: ${transcriptSegments.length}`);
+          }
+      }
+
+      return { duration, transcriptText, transcriptSegments };
+  } catch (e) {
+      console.warn(`[server] Context fetch failed: ${e.message}`);
+      return { duration: 0, transcriptText: '', transcriptSegments: [] };
+  }
+}
+
+// REST: analyze video content
 app.post('/api/analyze-video-content', async (req, res) => {
   try {
     if (!GEMINI_API_KEY) return res.status(500).json({ error: 'Server missing GEMINI_API_KEY' });
-    const { videoTitle, nativeLang, targetLang, level } = req.body || {};
+    const { videoTitle, videoUrl, nativeLang, targetLang, level } = req.body || {};
     const ai = createAi();
 
-    // Delegate to the same prompt/schema logic used previously, but on the server.
+    const videoId = videoUrl ? extractVideoId(videoUrl) : null;
+    console.log(`[server] Analyzing video content for: ${videoTitle} (${videoId}) using Gemini 3`);
+
+    // Fetch context (Duration + Transcript if possible) to fix timestamps
+    let contextData = { duration: 0, transcriptText: '' };
+    if (videoId) {
+        contextData = await fetchVideoContext(videoId);
+    }
+
+    // Dynamic topic count based on duration (approx 1 topic per 3 mins, min 3, max 15)
+    const durationMin = contextData.duration ? contextData.duration / 60 : 10;
+    const targetTopicCount = Math.max(3, Math.min(15, Math.ceil(durationMin / 3)));
+
     const prompt = `
-I have a YouTube video titled: "${videoTitle}".
+    You are an expert Linguistic Content Generator for a language learning app.
+    Your task is to analyze a YouTube video transcript and generate learning materials tailored to a specific proficiency level.
 
-The user is a native speaker of ${nativeLang} and is learning ${targetLang}.
-Their proficiency level is ${level}.
+    # Context
+    - **Video Title:** "${videoTitle}"
+    - **Target Level:** ${level.toUpperCase()}
+    - **User's Native Language:** ${nativeLang}
+    - **Target Language:** ${targetLang}
+    - **Video Duration:** ${contextData.duration ? `${Math.floor(contextData.duration/60)} minutes ${contextData.duration%60} seconds` : 'Unknown'}
 
-IMPORTANT: If ${nativeLang} is the same as ${targetLang}, provide the exact same text for the 'translated' fields as the main fields.
+    # CRITICAL CONSTRAINT: SOURCE OF TRUTH
+    - You must ONLY select vocabulary words that **explicitly appear** in the provided transcript.
+    - **DO NOT** generate related words that are not spoken in the video.
+    - For the "context_sentence", you must extract the **exact sentence** from the transcript where the word is used.
 
-Assume this is a story or lesson.
-Perform three tasks:
-1. Write a comprehensive summary (3-5 sentences) in ${targetLang}, and provide a translation in ${nativeLang}.
-2. Create a detailed chronological outline (10-15 sections) covering the flow in ${targetLang}, providing translations for titles and descriptions in ${nativeLang}.
-3. Identify 10-15 useful words/phrases/idioms. Provide definitions and context sentences in ${targetLang} with ${nativeLang} translations.
+    # Level-Specific Instructions (CRITICAL)
 
-Return ONLY valid JSON (no markdown, no commentary) with keys: summary, translatedSummary, topics, vocabulary.
-`.trim();
+    ### IF LEVEL IS "EASY" (Beginner):
+    - **Vocabulary:** Extract **High-Frequency / Basic words** (CEFR A1/A2) from the video. Focus on concrete nouns and verbs.
+    - **Summary:** Write simple, short sentences focusing on the main plot/idea.
+    - **Practice Topics:** Generate questions about **personal preferences** or **simple descriptions** (e.g., "Do you like...?", "What is...?").
+    - **Outline:** Keep it very brief (3-5 key moments).
+
+    ### IF LEVEL IS "MEDIUM" (Intermediate):
+    - **Vocabulary:** Extract **Collocations, Phrasal Verbs, and Idioms** (CEFR B1/B2) from the video. (e.g., instead of "rain", extract "heavy rain").
+    - **Summary:** Write in a narrative style, focusing on the flow of the story.
+    - **Practice Topics:** Generate questions about **storytelling** or **experiences** (e.g., "Describe a time when...", "Why did the speaker...?").
+    - **Outline:** Moderate detail (5-8 sections).
+
+    ### IF LEVEL IS "HARD" (Advanced):
+    - **Vocabulary:** Extract **Nuanced, Abstract, or Professional words** (CEFR C1/C2) from the video. Focus on specific terminology or emotional nuance.
+    - **Summary:** Write an analytical summary focusing on arguments and underlying themes.
+    - **Practice Topics:** Generate **Debate / Critical Thinking** questions (e.g., "What is your stance on...?", "Critique the speaker's argument.").
+    - **Outline:** Detailed logic flow (8-10 sections).
+
+    # Task Requirements
+
+    1.  **Summary:** Write a summary in ${targetLang} based on the level rules above. Provide a full translation in ${nativeLang}.
+    2.  **Vocabulary:** Identify 8-10 key items based on the level rules. For each, provide:
+        - Definition (in ${targetLang})
+        - Context Sentence (Direct quote or adapted from video)
+        - Translation of the word itself (in ${nativeLang})
+        - Translation of the definition (in ${nativeLang})
+        - Translation of the context sentence (in ${nativeLang})
+    3.  **Practice Topics (Mission Data):** Generate ${targetTopicCount} specific discussion cards. For EACH card, you must provide:
+        - **Topic Name:** A short tag (e.g., "Work-Life Balance")
+        - **Question:** A specific question for the user to answer.
+        - **Target Words:** Select 3 words (from the video or relevant to the topic) that the user MUST try to use in their answer.
+    4.  **Outline:** A chronological breakdown with timestamps. TIMESTAMPS MUST BE ACCURATE and within the video duration (${contextData.duration}s).
+
+    # Output Format
+    Return ONLY valid JSON with this structure:
+    {
+      "summary": {
+        "target_text": "...",
+        "native_text": "..."
+      },
+      "vocabulary": [
+        {
+          "word": "...",
+          "word_translation": "...",
+          "definition": "...",
+          "context_sentence": "...",
+          "definition_translation": "...",
+          "native_context_translation": "..."
+        }
+      ],
+      "practice_topics": [
+        {
+          "topic_name": "...",
+          "question": "...",
+          "suggested_target_words": ["word1", "word2", "word3"]
+        }
+      ],
+      "outline": [
+        {
+          "time": "MM:SS",
+          "title": "...",
+          "description": "..."
+        }
+      ]
+    }
+
+    # Input Transcript
+    ${contextData.transcriptText ? contextData.transcriptText.slice(0, 50000) : ''}
+    `.trim();
 
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: prompt,
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
       config: {
         responseMimeType: 'application/json',
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            summary: { type: Type.STRING },
-            translatedSummary: { type: Type.STRING },
-            topics: {
-              type: Type.ARRAY,
-              items: {
+            summary: {
                 type: Type.OBJECT,
                 properties: {
-                  title: { type: Type.STRING },
-                  translatedTitle: { type: Type.STRING },
-                  description: { type: Type.STRING },
-                  translatedDescription: { type: Type.STRING },
+                    target_text: { type: Type.STRING },
+                    native_text: { type: Type.STRING }
                 },
-                required: ['title', 'translatedTitle', 'description', 'translatedDescription'],
-              },
+                required: ['target_text', 'native_text']
             },
             vocabulary: {
               type: Type.ARRAY,
@@ -157,22 +355,84 @@ Return ONLY valid JSON (no markdown, no commentary) with keys: summary, translat
                 type: Type.OBJECT,
                 properties: {
                   word: { type: Type.STRING },
+                  word_translation: { type: Type.STRING },
                   definition: { type: Type.STRING },
-                  translatedDefinition: { type: Type.STRING },
-                  context: { type: Type.STRING },
-                  translatedContext: { type: Type.STRING },
+                  context_sentence: { type: Type.STRING },
+                  definition_translation: { type: Type.STRING },
+                  native_context_translation: { type: Type.STRING },
                 },
-                required: ['word', 'definition', 'translatedDefinition', 'context', 'translatedContext'],
+                required: ['word', 'word_translation', 'definition', 'context_sentence', 'definition_translation', 'native_context_translation'],
               },
             },
+            practice_topics: {
+              type: Type.ARRAY,
+              items: { 
+                  type: Type.OBJECT,
+                  properties: {
+                      topic_name: { type: Type.STRING },
+                      question: { type: Type.STRING },
+                      suggested_target_words: { type: Type.ARRAY, items: { type: Type.STRING } }
+                  },
+                  required: ['topic_name', 'question', 'suggested_target_words']
+              }
+            },
+            outline: {
+                type: Type.ARRAY,
+                items: {
+                    type: Type.OBJECT,
+                    properties: {
+                        time: { type: Type.STRING },
+                        title: { type: Type.STRING },
+                        description: { type: Type.STRING }
+                    },
+                    required: ['time', 'title', 'description']
+                }
+            }
           },
-          required: ['summary', 'translatedSummary', 'topics', 'vocabulary'],
+          required: ['summary', 'vocabulary', 'practice_topics', 'outline'],
         },
       },
     });
 
-    const data = safeJsonParse(response.text || '');
-    res.json(data);
+    // Robust response handling
+    let candidates = response.candidates;
+    if (!candidates && response.data) candidates = response.data.candidates;
+    
+    if (!candidates || !candidates[0] || !candidates[0].content || !candidates[0].content.parts) {
+        console.error('[server] Gemini response missing candidates:', JSON.stringify(response, null, 2));
+        throw new Error('Gemini response missing candidates');
+    }
+
+    const json = safeJsonParse(candidates[0].content.parts[0].text);
+    
+    // Map new structure to old frontend structure to avoid breaking changes
+    const mappedResponse = {
+        summary: json.summary?.target_text || '',
+        translatedSummary: json.summary?.native_text || '',
+        topics: (json.outline || []).map(o => ({
+            title: o.title,
+            translatedTitle: "", 
+            description: o.description,
+            translatedDescription: "", 
+            timestamp: o.time
+        })),
+        vocabulary: (json.vocabulary || []).map(v => ({
+            word: v.word,
+            translatedWord: v.word_translation,
+            definition: v.definition,
+            translatedDefinition: v.definition_translation,
+            context: v.context_sentence,
+            translatedContext: v.native_context_translation
+        })),
+        discussionTopics: (json.practice_topics || []).map(t => ({
+            topic: t.topic_name,
+            question: t.question,
+            targetWords: t.suggested_target_words || []
+        })),
+        transcript: contextData.transcriptSegments || []
+    };
+
+    res.json(mappedResponse);
   } catch (err) {
     console.error('analyze-video-content failed', err);
     res.status(500).json({ error: 'Failed to analyze video content' });
@@ -215,11 +475,169 @@ Return JSON: { "hints": ["Short answer string", "Longer different answer string"
       },
     });
 
-    const data = safeJsonParse(response.text || '{"hints": []}');
+    // Robust response handling
+    let candidates = response.candidates;
+    if (!candidates && response.data) candidates = response.data.candidates;
+
+    if (!candidates || !candidates[0] || !candidates[0].content || !candidates[0].content.parts) {
+        console.error('[server] Gemini hints response missing candidates:', JSON.stringify(response, null, 2));
+        throw new Error('Gemini hints response missing candidates');
+    }
+
+    const data = safeJsonParse(candidates[0].content.parts[0].text);
     res.json({ hints: data.hints || [] });
   } catch (err) {
     console.error('conversation-hints failed', err);
     res.status(500).json({ hints: [] });
+  }
+});
+
+// REST: analyze speech (Pyramid Principle)
+app.post('/api/analyze-speech', async (req, res) => {
+  try {
+    if (!GEMINI_API_KEY) return res.status(500).json({ error: 'Server missing GEMINI_API_KEY' });
+    const { audioData, topic, question, level } = req.body || {};
+    
+    if (!audioData) return res.status(400).json({ error: 'No audio data provided' });
+
+    const ai = createAi();
+    const prompt = `
+    You are an expert Communication Coach specializing in the **Minto Pyramid Principle**.
+    Your goal is to evaluate the user's speech based on LOGIC, CLARITY, and STRUCTURE.
+    
+    # Context
+    - **Topic:** "${topic}"
+    - **Question:** "${question}"
+    - **User Level:** ${level}
+
+    # Evaluation Criteria
+
+    1. **Pyramid Logic (Structure):**
+       - **Conclusion:** Does it start with a direct answer?
+       - **Arguments:** Are there distinct reasons?
+       - **Evidence:** Are there examples/data?
+       - **MECE:** Are arguments mutually exclusive?
+
+    2. **Language Polish (Word Choice & Phrasing):**
+       - Identify specific sentences that sound awkward, unnatural, or grammatically weak.
+       - Provide a "Better Alternative" for each, using more precise vocabulary or native-like phrasing suitable for the user's level (${level}).
+       - Highlight any pronunciation or clarity issues if you can infer them from the audio context (or if the transcript indicates hesitation/confusion).
+
+    # Level Expectations
+    - **Easy:** Clear Conclusion + 1 Reason. Basic vocabulary.
+    - **Medium:** Conclusion + 2 Reasons. Connector usage. Intermediate vocabulary.
+    - **Hard:** Conclusion + MECE Arguments + Evidence. Professional/Nuanced vocabulary.
+
+    # Output Requirements
+    Generate a JSON response:
+    
+    Format:
+    {
+      "transcription": "The text of what the user said...",
+      "structure": {
+        "conclusion": "The main point extracted from speech",
+        "arguments": [
+          {
+             "point": "Argument 1 summary",
+             "status": "strong" | "weak" | "missing", 
+             "evidence": ["Evidence 1", "Evidence 2"] 
+          }
+        ]
+      },
+      "feedback": {
+        "score": 0-100,
+        "strengths": ["...", "..."],
+        "weaknesses": ["...", "..."],
+        "suggestions": ["Specific tip 1", "Specific tip 2"]
+      },
+      "improvements": [
+        {
+          "original": "The exact sentence user said",
+          "improved": "The polished version",
+          "explanation": "Why this is better (e.g. 'Use strong verb X instead of Y')"
+        }
+      ]
+    }
+    `.trim();
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.0-flash-exp', // Using 2.0 Flash for better multimodal/audio understanding
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            { text: prompt },
+            { inlineData: { mimeType: 'audio/mp3', data: audioData } } // Assuming client sends MP3 or base64 audio
+          ]
+        }
+      ],
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            transcription: { type: Type.STRING },
+            structure: {
+              type: Type.OBJECT,
+              properties: {
+                conclusion: { type: Type.STRING },
+                arguments: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      point: { type: Type.STRING },
+                      status: { type: Type.STRING, enum: ["strong", "weak", "missing"] },
+                      evidence: { type: Type.ARRAY, items: { type: Type.STRING } }
+                    },
+                    required: ['point', 'status', 'evidence']
+                  }
+                }
+              },
+              required: ['conclusion', 'arguments']
+            },
+            feedback: {
+              type: Type.OBJECT,
+              properties: {
+                score: { type: Type.NUMBER },
+                strengths: { type: Type.ARRAY, items: { type: Type.STRING } },
+                weaknesses: { type: Type.ARRAY, items: { type: Type.STRING } },
+                suggestions: { type: Type.ARRAY, items: { type: Type.STRING } }
+              },
+              required: ['score', 'strengths', 'weaknesses', 'suggestions']
+            },
+            improvements: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  original: { type: Type.STRING },
+                  improved: { type: Type.STRING },
+                  explanation: { type: Type.STRING }
+                },
+                required: ['original', 'improved', 'explanation']
+              }
+            }
+          },
+          required: ['transcription', 'structure', 'feedback', 'improvements']
+        }
+      }
+    });
+
+    // Robust response handling
+    let candidates = response.candidates;
+    if (!candidates && response.data) candidates = response.data.candidates;
+    
+    if (!candidates || !candidates[0] || !candidates[0].content || !candidates[0].content.parts) {
+        throw new Error('Gemini response missing candidates');
+    }
+
+    const json = safeJsonParse(candidates[0].content.parts[0].text);
+    res.json(json);
+
+  } catch (err) {
+    console.error('analyze-speech failed', err);
+    res.status(500).json({ error: 'Failed to analyze speech' });
   }
 });
 

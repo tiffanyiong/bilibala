@@ -1,12 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import ContentTabs from './features/content/components/ContentTabs';
+import TopicSelector from './features/content/components/TopicSelector';
 import LiveVoiceInterface from './features/live-voice/components/LiveVoiceInterface';
-import VideoPlayer from './features/video/components/VideoPlayer';
+import PracticeSession from './features/practice/components/PracticeSession';
+import VideoPlayer, { VideoPlayerRef } from './features/video/components/VideoPlayer';
 import { extractVideoId, fetchVideoMetadata } from './features/video/services/youtubeService';
 import Layout from './shared/components/Layout';
 import { LANGUAGES, LEVELS } from './shared/constants';
 import { analyzeVideoContent } from './shared/services/geminiService';
-import { AppState, TopicPoint, VideoData, VocabularyItem } from './shared/types';
+import { AppState, PracticeTopic, TopicPoint, VideoData, VocabularyItem } from './shared/types';
 
 // Custom Chevron for Dropdowns
 const ChevronDownIcon = () => (
@@ -16,10 +18,17 @@ const ChevronDownIcon = () => (
 );
 
 const useIsDesktop = () => {
-  const [isDesktop, setIsDesktop] = useState(true);
+  const [isDesktop, setIsDesktop] = useState(() => 
+    typeof window !== 'undefined' ? window.innerWidth >= 1024 : true
+  );
+
   useEffect(() => {
+    // Reveal body after mount to prevent FOUC with Tailwind CDN
+    requestAnimationFrame(() => {
+      document.body.style.opacity = '1';
+    });
+
     const check = () => setIsDesktop(window.innerWidth >= 1024);
-    check(); // Initial check
     window.addEventListener('resize', check);
     return () => window.removeEventListener('resize', check);
   }, []);
@@ -31,7 +40,7 @@ const App: React.FC = () => {
   const [videoUrl, setVideoUrl] = useState('');
   
   // Language & Level State
-  const [nativeLang, setNativeLang] = useState('Chinese');
+  const [nativeLang, setNativeLang] = useState('Chinese (Mandarin - 中文)');
   const [targetLang, setTargetLang] = useState('English');
   const [level, setLevel] = useState('Easy');
 
@@ -42,10 +51,134 @@ const App: React.FC = () => {
   const [translatedSummary, setTranslatedSummary] = useState('');
   const [topics, setTopics] = useState<TopicPoint[]>([]);
   const [vocabulary, setVocabulary] = useState<VocabularyItem[]>([]);
+  const [transcript, setTranscript] = useState<{ text: string; duration: number; offset: number }[]>([]);
+  const [discussionTopics, setDiscussionTopics] = useState<PracticeTopic[]>([]);
+  const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
+  const [activePracticeTopic, setActivePracticeTopic] = useState<PracticeTopic | null>(null);
+  const [isAnalysisLoading, setIsAnalysisLoading] = useState(false);
+  const [loadingText, setLoadingText] = useState("Preparing your lesson...");
+  const [currentTime, setCurrentTime] = useState(0);
   
   const [errorMsg, setErrorMsg] = useState('');
 
+  // --- History / Navigation Logic ---
+  useEffect(() => {
+    const handlePopState = () => {
+      const hash = window.location.hash;
+      
+      if (hash === '#session') {
+        if (videoData) setAppState(AppState.CALL_SESSION);
+        else {
+            setAppState(AppState.LANDING);
+            window.history.replaceState(null, '', ' ');
+        }
+      } else if (hash === '#dashboard') {
+        if (videoData) setAppState(AppState.DASHBOARD);
+        else {
+            setAppState(AppState.LANDING);
+            window.history.replaceState(null, '', ' ');
+        }
+      } else if (hash === '#practice') {
+        if (videoData && activePracticeTopic) setAppState(AppState.PRACTICE_SESSION);
+        else if (videoData) setAppState(AppState.DASHBOARD);
+        else {
+            setAppState(AppState.LANDING);
+            window.history.replaceState(null, '', ' ');
+        }
+      } else {
+        setAppState(AppState.LANDING);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [videoData, activePracticeTopic]);
+
+  // Sync State -> Hash
+  useEffect(() => {
+    if (appState === AppState.LOADING) return;
+
+    const currentHash = window.location.hash;
+    let targetHash = '';
+
+    if (appState === AppState.DASHBOARD) targetHash = '#dashboard';
+    if (appState === AppState.CALL_SESSION) targetHash = '#session';
+    if (appState === AppState.PRACTICE_SESSION) targetHash = '#practice';
+    if (appState === AppState.LANDING) targetHash = '';
+
+    if (currentHash !== targetHash) {
+        if (targetHash) {
+            window.history.pushState(null, '', targetHash);
+        } else {
+            // Remove hash when going to landing
+            window.history.pushState(null, '', window.location.pathname + window.location.search);
+        }
+    }
+  }, [appState]);
+
+  // --- Persistence Logic ---
+  const STORAGE_KEY = 'bilibala_state_v1';
+
+  useEffect(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        const p = JSON.parse(saved);
+        if (p.videoData) {
+            setVideoUrl(p.videoUrl || '');
+            setNativeLang(p.nativeLang || 'Chinese (Mandarin - 中文)');
+            setTargetLang(p.targetLang || 'English');
+            setLevel(p.level || 'Easy');
+            setVideoData(p.videoData);
+            setSummary(p.summary || '');
+            setTranslatedSummary(p.translatedSummary || '');
+            setTopics(p.topics || []);
+            setVocabulary(p.vocabulary || []);
+            setTranscript(p.transcript || []);
+            setDiscussionTopics(p.discussionTopics || []);
+            setSelectedTopics(p.selectedTopics || []);
+            
+            // Restore to Dashboard (safer than restoring active call session immediately)
+            setAppState(AppState.DASHBOARD);
+        }
+      } catch (e) { 
+          console.error("Failed to hydrate state", e); 
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (videoData) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+            videoUrl, nativeLang, targetLang, level, videoData,
+            summary, translatedSummary, topics, vocabulary, transcript, discussionTopics, selectedTopics
+        }));
+    } else {
+        localStorage.removeItem(STORAGE_KEY);
+    }
+  }, [videoData, videoUrl, nativeLang, targetLang, level, summary, translatedSummary, topics, vocabulary, transcript, discussionTopics, selectedTopics]);
+
   const isDesktop = useIsDesktop();
+  const playerRef = useRef<VideoPlayerRef>(null);
+
+  const handleTimestampClick = (offsetMs: number) => {
+    if (playerRef.current) {
+        playerRef.current.seekTo(offsetMs / 1000);
+    }
+  };
+
+  const handleTopicToggle = (topic: string) => {
+    setSelectedTopics(prev => 
+      prev.includes(topic) 
+        ? prev.filter(t => t !== topic) 
+        : [...prev, topic]
+    );
+  };
+
+  const handleStartPractice = (topic: PracticeTopic) => {
+    setActivePracticeTopic(topic);
+    setAppState(AppState.PRACTICE_SESSION);
+  };
 
   const handleStart = async () => {
     const videoId = extractVideoId(videoUrl);
@@ -55,10 +188,11 @@ const App: React.FC = () => {
     }
 
     setAppState(AppState.LOADING);
+    setLoadingText("Preparing your lesson...");
     setErrorMsg('');
 
     try {
-      // 1. Fetch Video Metadata
+      // 1. Fetch Video Metadata (Fast)
       const metadata = await fetchVideoMetadata(videoUrl);
       
       const vData: VideoData = {
@@ -68,15 +202,59 @@ const App: React.FC = () => {
       };
       setVideoData(vData);
 
-      // 2. AI Processing
-      const analysis = await analyzeVideoContent(metadata.title, nativeLang, targetLang, level);
-      
-      setSummary(analysis.summary);
-      setTranslatedSummary(analysis.translatedSummary);
-      setTopics(analysis.topics);
-      setVocabulary(analysis.vocabulary);
+      // Start loading content
+      setIsAnalysisLoading(true);
 
-      setAppState(AppState.DASHBOARD);
+      // 2. Hybrid Loading Logic:
+      // - If analysis finishes fast (< 20s), go to dashboard immediately when done.
+      // - At 10s, update loading text.
+      // - If analysis is slow (> 20s), go to dashboard at 20s mark and show skeletons.
+      
+      const analysisPromise = analyzeVideoContent(metadata.title, videoUrl, nativeLang, targetLang, level);
+      
+      let isDashboardShown = false;
+      const showDashboard = () => {
+          if (!isDashboardShown) {
+              setAppState(AppState.DASHBOARD);
+              isDashboardShown = true;
+          }
+      };
+
+      // Timer 1: Update message at 10s
+      const messageTimerId = setTimeout(() => {
+          setLoadingText("Longer videos require more time to analyze...");
+      }, 10000);
+
+      // Timer 2: Max wait time for loading screen: 20 seconds
+      const maxWaitTimerId = setTimeout(() => {
+          showDashboard();
+      }, 25000);
+
+      analysisPromise
+        .then(analysis => {
+            setSummary(analysis.summary);
+            setTranslatedSummary(analysis.translatedSummary);
+            setTopics(analysis.topics);
+            setVocabulary(analysis.vocabulary);
+            setTranscript(analysis.transcript || []);
+            setDiscussionTopics(analysis.discussionTopics || []);
+            setSelectedTopics([]);
+            
+            // Done: Cancel timers and show dashboard now
+            clearTimeout(messageTimerId);
+            clearTimeout(maxWaitTimerId);
+            showDashboard();
+        })
+        .catch(err => {
+            console.error("Analysis background error:", err);
+            clearTimeout(messageTimerId);
+            clearTimeout(maxWaitTimerId);
+            showDashboard(); // Proceed to dashboard even on partial error
+        })
+        .finally(() => {
+            setIsAnalysisLoading(false);
+        });
+
     } catch (err: any) {
       console.error(err);
       const message = err.message || "Failed to load video data. Please try again.";
@@ -100,6 +278,9 @@ const App: React.FC = () => {
     setTranslatedSummary('');
     setTopics([]);
     setVocabulary([]);
+    setTranscript([]);
+    setDiscussionTopics([]);
+    setSelectedTopics([]);
     setErrorMsg('');
   };
 
@@ -122,12 +303,8 @@ const App: React.FC = () => {
     </button>
   );
 
-  const shouldShowHeader = appState === AppState.DASHBOARD || appState === AppState.CALL_SESSION;
-  const isDashboard = appState === AppState.DASHBOARD;
-  
-  // Allow scrolling for both Dashboard and Call Session
-  // This ensures that on smaller desktop screens, the user can scroll to see the full phone UI
-  const isScrollable = appState === AppState.DASHBOARD || appState === AppState.CALL_SESSION;
+  const shouldShowHeader = appState === AppState.DASHBOARD || appState === AppState.CALL_SESSION || appState === AppState.PRACTICE_SESSION;
+  const isScrollable = appState === AppState.DASHBOARD || appState === AppState.CALL_SESSION || appState === AppState.PRACTICE_SESSION;
 
   return (
     <Layout 
@@ -231,26 +408,41 @@ const App: React.FC = () => {
             <div className="relative">
                 <div className="w-16 h-16 border-2 border-stone-200 border-t-stone-800 rounded-full animate-spin"></div>
             </div>
-            <p className="text-stone-500 text-sm font-medium animate-pulse">Preparing your lesson...</p>
+            <p className="text-stone-500 text-sm font-medium animate-pulse">{loadingText}</p>
          </div>
       )}
 
       {/* 3. DASHBOARD VIEW */}
       {appState === AppState.DASHBOARD && videoData && (
-        <div className="flex flex-col p-4 md:p-6 pt-24 max-w-5xl mx-auto gap-6 md:gap-8 relative min-h-screen">
-           <div className="w-full aspect-video shrink-0 rounded-xl overflow-hidden shadow-sm border border-stone-200 bg-stone-100">
-               <VideoPlayer url={videoData.url} onError={handleVideoError} />
+        <div className="flex flex-col lg:grid lg:grid-cols-12 gap-6 p-4 md:p-6 pt-24 max-w-[1600px] mx-auto min-h-screen">
+           {/* Left Column: Video & Highlights */}
+           <div className="lg:col-span-7 flex flex-col gap-6">
+               <div className="w-full aspect-video shrink-0 rounded-xl overflow-hidden shadow-sm border border-stone-200 bg-black">
+                   <VideoPlayer ref={playerRef} url={videoData.url} onError={handleVideoError} onTimeUpdate={setCurrentTime} />
+               </div>
+               
+               <TopicSelector 
+                  topics={discussionTopics}
+                  selectedTopics={selectedTopics}
+                  onTopicToggle={handleTopicToggle}
+                  isLoading={isAnalysisLoading}
+                  onStartPractice={handleStartPractice}
+               />
            </div>
 
-           <div className="w-full pb-24"> 
+           {/* Right Column: Transcript & Vocabulary */}
+           <div className="lg:col-span-5 h-[500px] lg:h-[calc(100vh-140px)]"> 
                <ContentTabs 
                   summary={summary}
                   translatedSummary={translatedSummary}
                   topics={topics} 
                   vocabulary={vocabulary} 
-                  isLoading={false} 
+                  transcript={transcript}
+                  onTimestampClick={handleTimestampClick}
+                  isLoading={isAnalysisLoading} 
                   targetLang={targetLang}
-                  layoutMode="auto" 
+                  layoutMode="fixed" 
+                  currentTime={currentTime}
                 />
            </div>
 
@@ -275,22 +467,31 @@ const App: React.FC = () => {
                />
            </div>
 
-           {/* Right: Content Reference 
-               - Mobile: Auto height to fit content naturally below.
-               - Desktop: Match height of left column.
-           */}
+           {/* Right: Content Reference */}
            <div className="lg:col-span-7 h-auto lg:h-[calc(100vh-140px)] min-h-[400px] shrink-0">
                <ContentTabs 
                   summary={summary}
                   translatedSummary={translatedSummary}
                   topics={topics} 
                   vocabulary={vocabulary} 
+                  transcript={transcript}
                   isLoading={false} 
                   targetLang={targetLang}
                   layoutMode={isDesktop ? 'fixed' : 'auto'}
                 />
            </div>
         </div>
+      )}
+
+      {/* 5. PRACTICE SESSION VIEW (NEW) */}
+      {appState === AppState.PRACTICE_SESSION && videoData && activePracticeTopic && (
+          <PracticeSession
+            topic={activePracticeTopic}
+            level={level}
+            nativeLang={nativeLang}
+            targetLang={targetLang}
+            onExit={() => setAppState(AppState.DASHBOARD)}
+          />
       )}
     </Layout>
   );
