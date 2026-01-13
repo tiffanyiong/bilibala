@@ -492,6 +492,7 @@ Return JSON: { "hints": ["Short answer string", "Longer different answer string"
   }
 });
 
+
 // REST: analyze speech (Pyramid Principle)
 app.post('/api/analyze-speech', async (req, res) => {
   try {
@@ -502,72 +503,100 @@ app.post('/api/analyze-speech', async (req, res) => {
 
     const ai = createAi();
     const prompt = `
-    You are an expert Communication Coach specializing in the **Minto Pyramid Principle**.
-    Your goal is to evaluate the user's speech based on LOGIC, CLARITY, and STRUCTURE.
-    
-    # Context
-    - **Topic:** "${topic}"
-    - **Question:** "${question}"
-    - **User Level:** ${level}
+      You are an expert Communication Coach specializing in the **Minto Pyramid Principle**.
+      Your goal is to evaluate the user's speech based on LOGIC, CLARITY, and STRUCTURE.
+      
+      # Context
+      - **Topic:** "${topic}"
+      - **Question:** "${question}"
+      - **User Level:** ${level}
 
-    # Evaluation Criteria
+      # COACHING PERSONA (Strategy C)
+      - **Role:** You are a supportive "Coach", NOT a strict "Judge".
+      - **Tone:** Be encouraging. When finding faults, focus on *how to bridge the gap* rather than just pointing out the error.
+      - **Philosophy:** Valid communication isn't just about data; it's about connection. A personal story is just as powerful as a statistic if used correctly.
 
-    1. **Pyramid Logic (Structure):**
-       - **Conclusion:** Does it start with a direct answer?
-       - **Arguments:** Are there distinct reasons?
-       - **Evidence:** Are there examples/data?
-       - **MECE:** Are arguments mutually exclusive?
+      # Evaluation Criteria
 
-    2. **Language Polish (Word Choice & Phrasing):**
-       - Identify specific sentences that sound awkward, unnatural, or grammatically weak.
-       - Provide a "Better Alternative" for each, using more precise vocabulary or native-like phrasing suitable for the user's level (${level}).
-       - Highlight any pronunciation or clarity issues if you can infer them from the audio context (or if the transcript indicates hesitation/confusion).
+      1. **Pyramid Logic (Structure):**
+        - **Conclusion:** Does it start with a direct answer?
+        - **Arguments:** Are there distinct reasons?
+        - **Evidence:** Are there examples/data?
+        - **MECE:** Are arguments mutually exclusive?
+        - **Relevance:** Is every point directly supporting the conclusion?
 
-    # Level Expectations
-    - **Easy:** Clear Conclusion + 1 Reason. Basic vocabulary.
-    - **Medium:** Conclusion + 2 Reasons. Connector usage. Intermediate vocabulary.
-    - **Hard:** Conclusion + MECE Arguments + Evidence. Professional/Nuanced vocabulary.
+      2. **Handling Subjective Logic (Strategy A):**
+        - **CRITICAL RULE:** Do NOT automatically mark an argument as "weak" just because it lacks objective data.
+        - **Personal Stories:** If the user uses a personal experience to support their conclusion, mark it as **"strong"** IF they explain *how* that experience led to their view.
+        - **Subjective Opinions:** Mark as "strong" if the logic flow is consistent (even if subjective).
+        - **When to mark WEAK:** Only mark subjective points as "weak" if they are completely irrelevant or if the user fails to connect the story back to the main conclusion (Missing the "Bridge").
 
-    # Output Requirements
-    Generate a JSON response:
-    
-    Format:
-    {
-      "transcription": "The text of what the user said...",
-      "structure": {
-        "conclusion": "The main point extracted from speech",
-        "arguments": [
+      3. **Language Polish (Word Choice & Phrasing):**
+        - Identify specific sentences that sound awkward, unnatural, or grammatically weak.
+        - Provide a "Better Alternative" for each, using more precise vocabulary or native-like phrasing suitable for the user's level (${level}).
+
+      4. **AI Improved Structure (The Model Answer):**
+        - Create a comprehensive, IDEAL version of the speech using the Minto Pyramid Principle.
+        - **EXPAND & DEEPEN**: Take the user's original points and make them more sophisticated.
+        - **HEADLINE vs ELABORATION**: For each argument, provide a short, punchy "Headline" (max 8 words) for the graph node, and a detailed "Elaboration" for the expanded view.
+        - **ADD NEW ARGUMENTS**: If the user's logic was thin, introduce 1-2 new, strong arguments.
+        - **MAXIMIZE EVIDENCE**: Provide concrete evidence (data, scenarios, or stories).
+
+      # Output Requirements
+      Generate a JSON response:
+      - **NO EMPTY STRINGS**: Ensure all fields (headline, elaboration, evidence) contain actual text.
+      - **NO EMPTY ARRAYS**: Ensure every argument has at least one piece of evidence.
+      
+      Format:
+      {
+        "transcription": "The text of what the user said...",
+        "structure": {
+          "conclusion": "The main point extracted from speech",
+          "arguments": [
+            {
+              "point": "Argument 1 summary",
+              "status": "strong" | "weak" | "missing" | "irrelevant", 
+              "type": "fact" | "story" | "opinion", 
+              "evidence": ["Evidence 1", "Evidence 2"],
+              "critique": "Constructive feedback. If weak/missing, explain HOW to fix it (e.g., 'Add a connecting sentence to link your story to the conclusion')."
+            }
+          ]
+        },
+        "improved_structure": {
+          "conclusion": "The ideal conclusion",
+          "arguments": [
+            {
+              "headline": "Short & punchy title (max 8 words)",
+              "elaboration": "Detailed explanation of the argument...",
+              "type": "fact" | "story" | "opinion",
+              "evidence": ["Ideal evidence 1", "Ideal evidence 2"]
+            }
+          ]
+        },
+        "feedback": {
+          "score": 0-100,
+          "strengths": ["...", "..."],
+          "weaknesses": ["...", "..."],
+          "suggestions": ["Specific tip 1", "Specific tip 2"]
+        },
+        "improvements": [
           {
-             "point": "Argument 1 summary",
-             "status": "strong" | "weak" | "missing", 
-             "evidence": ["Evidence 1", "Evidence 2"] 
+            "original": "The exact sentence user said",
+            "improved": "The polished version",
+            "explanation": "Why this is better (e.g. 'Use strong verb X instead of Y')"
           }
         ]
-      },
-      "feedback": {
-        "score": 0-100,
-        "strengths": ["...", "..."],
-        "weaknesses": ["...", "..."],
-        "suggestions": ["Specific tip 1", "Specific tip 2"]
-      },
-      "improvements": [
-        {
-          "original": "The exact sentence user said",
-          "improved": "The polished version",
-          "explanation": "Why this is better (e.g. 'Use strong verb X instead of Y')"
-        }
-      ]
-    }
+      }
     `.trim();
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash-exp', // Using 2.0 Flash for better multimodal/audio understanding
+      model: 'gemini-2.0-flash-exp',
       contents: [
         {
           role: 'user',
           parts: [
             { text: prompt },
-            { inlineData: { mimeType: 'audio/mp3', data: audioData } } // Assuming client sends MP3 or base64 audio
+            { inlineData: { mimeType: 'audio/mp3', data: audioData } }
           ]
         }
       ],
@@ -587,10 +616,32 @@ app.post('/api/analyze-speech', async (req, res) => {
                     type: Type.OBJECT,
                     properties: {
                       point: { type: Type.STRING },
-                      status: { type: Type.STRING, enum: ["strong", "weak", "missing"] },
+                      status: { type: Type.STRING, enum: ["strong", "weak", "missing", "irrelevant"] },
+                      type: { type: Type.STRING, enum: ["fact", "story", "opinion"] }, // Added Type for Badges
+                      evidence: { type: Type.ARRAY, items: { type: Type.STRING } },
+                      critique: { type: Type.STRING }
+                    },
+                    required: ['point', 'status', 'type', 'evidence']
+                  }
+                }
+              },
+              required: ['conclusion', 'arguments']
+            },
+            improved_structure: {
+              type: Type.OBJECT,
+              properties: {
+                conclusion: { type: Type.STRING },
+                arguments: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      headline: { type: Type.STRING }, // Replaced point with headline
+                      elaboration: { type: Type.STRING }, // Added elaboration
+                      type: { type: Type.STRING, enum: ["fact", "story", "opinion"] }, // Added Type
                       evidence: { type: Type.ARRAY, items: { type: Type.STRING } }
                     },
-                    required: ['point', 'status', 'evidence']
+                    required: ['headline', 'elaboration', 'type', 'evidence']
                   }
                 }
               },
@@ -619,12 +670,11 @@ app.post('/api/analyze-speech', async (req, res) => {
               }
             }
           },
-          required: ['transcription', 'structure', 'feedback', 'improvements']
+          required: ['transcription', 'structure', 'improved_structure', 'feedback', 'improvements']
         }
       }
     });
 
-    // Robust response handling
     let candidates = response.candidates;
     if (!candidates && response.data) candidates = response.data.candidates;
     
@@ -640,6 +690,10 @@ app.post('/api/analyze-speech', async (req, res) => {
     res.status(500).json({ error: 'Failed to analyze speech' });
   }
 });
+
+// <!-- end of analyze-speech -->
+
+
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: '/live' });
