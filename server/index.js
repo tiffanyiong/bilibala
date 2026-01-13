@@ -492,8 +492,7 @@ Return JSON: { "hints": ["Short answer string", "Longer different answer string"
   }
 });
 
-
-// REST: analyze speech (Pyramid Principle)
+// REST: analyze speech (Multi-Framework + Recursive Depth + Mirror Logic)
 app.post('/api/analyze-speech', async (req, res) => {
   try {
     if (!GEMINI_API_KEY) return res.status(500).json({ error: 'Server missing GEMINI_API_KEY' });
@@ -502,95 +501,156 @@ app.post('/api/analyze-speech', async (req, res) => {
     if (!audioData) return res.status(400).json({ error: 'No audio data provided' });
 
     const ai = createAi();
+    
+    // NOTE: Using single quotes for 'sub_points' inside the prompt to avoid JS template literal errors.
     const prompt = `
-      You are an expert Communication Coach specializing in the **Minto Pyramid Principle**.
-      Your goal is to evaluate the user's speech based on LOGIC, CLARITY, and STRUCTURE.
-      
+      You are an expert Communication Coach.
+      Your goal is to compare the User's ACTUAL speech (The Mirror) vs. an OPTIMAL version (The Architect).
+
       # Context
       - **Topic:** "${topic}"
       - **Question:** "${question}"
       - **User Level:** ${level}
 
-      # COACHING PERSONA (Strategy C)
-      - **Role:** You are a supportive "Coach", NOT a strict "Judge".
-      - **Tone:** Be encouraging. When finding faults, focus on *how to bridge the gap* rather than just pointing out the error.
-      - **Philosophy:** Valid communication isn't just about data; it's about connection. A personal story is just as powerful as a statistic if used correctly.
+      # FRAMEWORK DEFINITIONS
+      1. **MINTO (Logical):** Conclusion -> Arguments -> Evidence. (Best for: Debates, Analysis)
+      2. **STAR (Behavioral):** Situation -> Task -> Action -> Result. (Best for: "Tell me a time when...", Stories)
+      3. **PREP (Impromptu):** Point -> Reason -> Example -> Point. (Best for: Short answers, Simple opinions)
+      4. **GOLDEN CIRCLE (Vision):** Why (Values) -> How (Process) -> What (Result). (Best for: Self-Intro, "Why do you want this job?")
+      5. **W-S-N (Reflection):** What? (Facts) -> So What? (Insights) -> Now What? (Actions). (Best for: "What did you learn?", Summaries)
 
-      # Evaluation Criteria
+      # TASK 1: THE MIRROR (Analyze User's "My Logic")
+      **GOAL:** Reflect the user's speech EXACTLY as they spoke it.
+      
+      **CRITICAL RULES FOR "MY LOGIC":**
+      1. **STRICT FIRST-PERSON ("I"):** You MUST use "I" / "My" to represent the user. NEVER use "She", "He", or "The speaker".
+      2. **CHRONOLOGICAL MAPPING:** Map the nodes in the **exact order** the user mentioned them.
+      3. **DETECT FRAMEWORK:** Analyze the user's attempt. Did they try to tell a story (STAR)? Did they try to make a point (PREP)?
+      4. **NARRATIVE DEPTH (Vertical Nesting):** - If the user describes a sequence where A led to B led to C, **DO NOT** list them as sibling arguments.
+         - **NEST THEM** using 'sub_points'.
+         - Example: "I felt stressed" (Parent) -> "So I called a friend" (Sub-point) -> "She helped me" (Sub-point).
 
-      1. **Pyramid Logic (Structure):**
-        - **Conclusion:** Does it start with a direct answer?
-        - **Arguments:** Are there distinct reasons?
-        - **Evidence:** Are there examples/data?
-        - **MECE:** Are arguments mutually exclusive?
-        - **Relevance:** Is every point directly supporting the conclusion?
+      # TASK 2: THE ARCHITECT (Generate "AI Improved")
+      **GOAL:** Reorganize the user's raw thoughts into the **BEST SUITED** framework for this specific Question.
+      
+      **ACTIONS BY FRAMEWORK:**
 
-      2. **Handling Subjective Logic (Strategy A):**
-        - **CRITICAL RULE:** Do NOT automatically mark an argument as "weak" just because it lacks objective data.
-        - **Personal Stories:** If the user uses a personal experience to support their conclusion, mark it as **"strong"** IF they explain *how* that experience led to their view.
-        - **Subjective Opinions:** Mark as "strong" if the logic flow is consistent (even if subjective).
-        - **When to mark WEAK:** Only mark subjective points as "weak" if they are completely irrelevant or if the user fails to connect the story back to the main conclusion (Missing the "Bridge").
+      ### A. FOR NARRATIVES (STAR):
+      - **Structure:** Vertical Chain (Tree Trunk).
+      - **Rules:**
+        - Create **ONE** main "Situation" node.
+        - Nest "Task" inside Situation.
+        - Nest "Action" inside Task.
+        - Nest "Result" inside Action.
+      - **Goal:** clearly show the sequence of events.
 
-      3. **Language Polish (Word Choice & Phrasing):**
-        - Identify specific sentences that sound awkward, unnatural, or grammatically weak.
-        - Provide a "Better Alternative" for each, using more precise vocabulary or native-like phrasing suitable for the user's level (${level}).
+      ### B. FOR LOGIC & DEBATE (MINTO / PREP):
+      - **Structure:** Horizontal Hierarchy (Pyramid).
+      - **Rules:**
+        - Create distinct Top-Level Arguments (MECE).
+        - **Do NOT** nest distinct reasons inside each other. They are siblings.
+        - Nest 'Evidence' or 'Examples' inside their respective Argument.
+      
+      ### C. FOR VISION & INTRO (GOLDEN CIRCLE):
+      - **Structure:** Vertical Concentric.
+      - **Rules:**
+        - Main Node: "Why" (Purpose/Belief).
+        - Sub_point: "How" (Process/Strengths).
+        - Sub_point: "What" (Role/Outcome).
 
-      4. **AI Improved Structure (The Model Answer):**
-        - Create a comprehensive, IDEAL version of the speech using the Minto Pyramid Principle.
-        - **EXPAND & DEEPEN**: Take the user's original points and make them more sophisticated.
-        - **HEADLINE vs ELABORATION**: For each argument, provide a short, punchy "Headline" (max 8 words) for the graph node, and a detailed "Elaboration" for the expanded view.
-        - **ADD NEW ARGUMENTS**: If the user's logic was thin, introduce 1-2 new, strong arguments.
-        - **MAXIMIZE EVIDENCE**: Provide concrete evidence (data, scenarios, or stories).
+      ### D. FOR REFLECTION (W-S-N):
+      - **Structure:** Vertical Chain.
+      - **Rules:**
+        - Main Node: "What?" (Observation).
+        - Sub_point: "So What?" (Insight).
+        - Sub_point: "Now What?" (Action).
+
+      # TASK 3: COACHING FEEDBACK
+      - **Gap Analysis:** "You used Minto, but for a story, STAR is better."
+      - **Specific Critique:** "You started with 'Action' but forgot the 'Result'. Add the outcome."
 
       # Output Requirements
       Generate a JSON response:
-      - **NO EMPTY STRINGS**: Ensure all fields (headline, elaboration, evidence) contain actual text.
-      - **NO EMPTY ARRAYS**: Ensure every argument has at least one piece of evidence.
+      - **NO EMPTY STRINGS**: Ensure all fields contain actual text.
       
       Format:
       {
-        "transcription": "The text of what the user said...",
+        "transcription": "...",
+        "detected_framework": "...",
         "structure": {
-          "conclusion": "The main point extracted from speech",
+          "conclusion": "...",
           "arguments": [
             {
-              "point": "Argument 1 summary",
-              "status": "strong" | "weak" | "missing" | "irrelevant", 
-              "type": "fact" | "story" | "opinion", 
-              "evidence": ["Evidence 1", "Evidence 2"],
-              "critique": "Constructive feedback. If weak/missing, explain HOW to fix it (e.g., 'Add a connecting sentence to link your story to the conclusion')."
+              "point": "...",
+              "status": "strong",
+              "type": "story",
+              "sub_points": [ ...nested arguments... ],
+              "evidence": ["..."],
+              "critique": "..."
             }
           ]
         },
         "improved_structure": {
-          "conclusion": "The ideal conclusion",
+          "recommended_framework": "...",
+          "conclusion": "...",
           "arguments": [
             {
-              "headline": "Short & punchy title (max 8 words)",
-              "elaboration": "Detailed explanation of the argument...",
-              "type": "fact" | "story" | "opinion",
-              "evidence": ["Ideal evidence 1", "Ideal evidence 2"]
+              "headline": "...",
+              "elaboration": "...",
+              "sub_points": [ ...nested arguments... ],
+              "type": "story",
+              "evidence": ["..."]
             }
           ]
         },
-        "feedback": {
-          "score": 0-100,
-          "strengths": ["...", "..."],
-          "weaknesses": ["...", "..."],
-          "suggestions": ["Specific tip 1", "Specific tip 2"]
-        },
-        "improvements": [
-          {
-            "original": "The exact sentence user said",
-            "improved": "The polished version",
-            "explanation": "Why this is better (e.g. 'Use strong verb X instead of Y')"
-          }
-        ]
+        // ... feedback ...
       }
     `.trim();
 
+    // Reusable Schema Definition for Recursive Nodes
+    const argumentSchemaProperties = {
+        point: { type: Type.STRING },
+        status: { type: Type.STRING, enum: ["strong", "weak", "irrelevant", "missing"] },
+        type: { type: Type.STRING, enum: ["fact", "story", "opinion"] },
+        evidence: { type: Type.ARRAY, items: { type: Type.STRING } },
+        critique: { type: Type.STRING },
+        // RECURSION: Add sub_points here
+        sub_points: { 
+            type: Type.ARRAY, 
+            items: { 
+                type: Type.OBJECT,
+                properties: {
+                    point: { type: Type.STRING },
+                    status: { type: Type.STRING },
+                    type: { type: Type.STRING },
+                    evidence: { type: Type.ARRAY, items: { type: Type.STRING } }
+                } 
+            } 
+        }
+    };
+
+    const improvedArgumentSchemaProperties = {
+        headline: { type: Type.STRING },
+        elaboration: { type: Type.STRING },
+        type: { type: Type.STRING, enum: ["fact", "story", "opinion"] },
+        evidence: { type: Type.ARRAY, items: { type: Type.STRING } },
+        // RECURSION: Add sub_points here
+        sub_points: { 
+            type: Type.ARRAY, 
+            items: { 
+                 type: Type.OBJECT,
+                 properties: {
+                    headline: { type: Type.STRING },
+                    elaboration: { type: Type.STRING },
+                    type: { type: Type.STRING },
+                    evidence: { type: Type.ARRAY, items: { type: Type.STRING } }
+                 }
+            } 
+        }
+    };
+
     const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash-exp',
+      model: 'gemini-3-flash-preview', // UPDATED to Gemini 3
       contents: [
         {
           role: 'user',
@@ -606,6 +666,7 @@ app.post('/api/analyze-speech', async (req, res) => {
           type: Type.OBJECT,
           properties: {
             transcription: { type: Type.STRING },
+            detected_framework: { type: Type.STRING, enum: ["MINTO", "STAR", "PREP", "GOLDEN_CIRCLE", "WSN"] },
             structure: {
               type: Type.OBJECT,
               properties: {
@@ -614,13 +675,7 @@ app.post('/api/analyze-speech', async (req, res) => {
                   type: Type.ARRAY,
                   items: {
                     type: Type.OBJECT,
-                    properties: {
-                      point: { type: Type.STRING },
-                      status: { type: Type.STRING, enum: ["strong", "weak", "missing", "irrelevant"] },
-                      type: { type: Type.STRING, enum: ["fact", "story", "opinion"] }, // Added Type for Badges
-                      evidence: { type: Type.ARRAY, items: { type: Type.STRING } },
-                      critique: { type: Type.STRING }
-                    },
+                    properties: argumentSchemaProperties,
                     required: ['point', 'status', 'type', 'evidence']
                   }
                 }
@@ -630,22 +685,18 @@ app.post('/api/analyze-speech', async (req, res) => {
             improved_structure: {
               type: Type.OBJECT,
               properties: {
+                recommended_framework: { type: Type.STRING, enum: ["MINTO", "STAR", "PREP", "GOLDEN_CIRCLE", "WSN"] },
                 conclusion: { type: Type.STRING },
                 arguments: {
                   type: Type.ARRAY,
                   items: {
                     type: Type.OBJECT,
-                    properties: {
-                      headline: { type: Type.STRING }, // Replaced point with headline
-                      elaboration: { type: Type.STRING }, // Added elaboration
-                      type: { type: Type.STRING, enum: ["fact", "story", "opinion"] }, // Added Type
-                      evidence: { type: Type.ARRAY, items: { type: Type.STRING } }
-                    },
+                    properties: improvedArgumentSchemaProperties,
                     required: ['headline', 'elaboration', 'type', 'evidence']
                   }
                 }
               },
-              required: ['conclusion', 'arguments']
+              required: ['recommended_framework', 'conclusion', 'arguments']
             },
             feedback: {
               type: Type.OBJECT,
@@ -670,7 +721,7 @@ app.post('/api/analyze-speech', async (req, res) => {
               }
             }
           },
-          required: ['transcription', 'structure', 'improved_structure', 'feedback', 'improvements']
+          required: ['transcription', 'detected_framework', 'structure', 'improved_structure', 'feedback', 'improvements']
         }
       }
     });
@@ -690,9 +741,7 @@ app.post('/api/analyze-speech', async (req, res) => {
     res.status(500).json({ error: 'Failed to analyze speech' });
   }
 });
-
-// <!-- end of analyze-speech -->
-
+// ------- end of anlyze-speech
 
 
 const server = http.createServer(app);
