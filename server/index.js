@@ -503,6 +503,7 @@ app.post('/api/analyze-speech', async (req, res) => {
     const ai = createAi();
     
     // NOTE: Using single quotes for 'sub_points' inside the prompt to avoid JS template literal errors.
+
     const prompt = `
       You are an expert Communication Coach.
       Your goal is to compare the User's ACTUAL speech (The Mirror) vs. an OPTIMAL version (The Architect).
@@ -513,65 +514,45 @@ app.post('/api/analyze-speech', async (req, res) => {
       - **User Level:** ${level}
 
       # FRAMEWORK DEFINITIONS
-      1. **MINTO (Logical):** Conclusion -> Arguments -> Evidence. (Best for: Debates, Analysis)
-      2. **STAR (Behavioral):** Situation -> Task -> Action -> Result. (Best for: "Tell me a time when...", Stories)
-      3. **PREP (Impromptu):** Point -> Reason -> Example -> Point. (Best for: Short answers, Simple opinions)
-      4. **GOLDEN CIRCLE (Vision):** Why (Values) -> How (Process) -> What (Result). (Best for: Self-Intro, "Why do you want this job?")
-      5. **W-S-N (Reflection):** What? (Facts) -> So What? (Insights) -> Now What? (Actions). (Best for: "What did you learn?", Summaries)
+      1. **MINTO (Logical):** Conclusion -> Arguments -> Evidence.
+      2. **STAR (Behavioral):** Situation -> Task -> Action -> Result.
+      3. **PREP (Impromptu):** Point -> Reason -> Example -> Point.
+      4. **GOLDEN CIRCLE (Vision):** Why -> How -> What.
+      5. **W-S-N (Reflection):** What? -> So What? -> Now What?
 
       # TASK 1: THE MIRROR (Analyze User's "My Logic")
       **GOAL:** Reflect the user's speech EXACTLY as they spoke it.
       
       **CRITICAL RULES FOR "MY LOGIC":**
-      1. **STRICT FIRST-PERSON ("I"):** You MUST use "I" / "My" to represent the user. NEVER use "She", "He", or "The speaker".
-      2. **CHRONOLOGICAL MAPPING:** Map the nodes in the **exact order** the user mentioned them.
-      3. **DETECT FRAMEWORK:** Analyze the user's attempt. Did they try to tell a story (STAR)? Did they try to make a point (PREP)?
-      4. **NARRATIVE DEPTH (Vertical Nesting):** - If the user describes a sequence where A led to B led to C, **DO NOT** list them as sibling arguments.
-         - **NEST THEM** using 'sub_points'.
-         - Example: "I felt stressed" (Parent) -> "So I called a friend" (Sub-point) -> "She helped me" (Sub-point).
+      1. **STRICT FIRST-PERSON ("I"):** Use "I" to represent the user.
+      2. **CHRONOLOGICAL MAPPING:** Map nodes in the exact order spoken.
+      3. **TYPE DEFINITIONS:**
+         - **FACT:** Only for objective truths (e.g. "The sun is hot").
+         - **OPINION:** Personal preferences, habits, or feelings (e.g. "I like sleep", "I feel happy").
+         - **STORY:** Narrative events.
+      4. **NARRATIVE DEPTH:** Nest sequential events (A->B->C) using 'sub_points'.
 
       # TASK 2: THE ARCHITECT (Generate "AI Improved")
-      **GOAL:** Reorganize the user's raw thoughts into the **BEST SUITED** framework for this specific Question.
+      **GOAL:** Reorganize the thoughts into the BEST SUITED framework.
       
+      **CRITICAL INSTRUCTION FOR LEARNERS:**
+      - The "AI Improved" graph is a **LEARNING TOOL**.
+      - **Headline:** A short summary of the step (e.g., "The Situation").
+      - **Elaboration:** The **EXACT MODEL SENTENCE** the user *should have used*.
+        - *Bad Elaboration:* "Explain the context of the podcast."
+        - *Good Elaboration:* "Start by setting the scene: 'Back in college, I was invited to a podcast...'"
+      - **Integration:** If the user had good points (like "sleep" and "music"), INTEGRATE them into the main flow or keeping them as a strong "Strategy" branch before the story.
+
       **ACTIONS BY FRAMEWORK:**
-
-      ### A. FOR NARRATIVES (STAR):
-      - **Structure:** Vertical Chain (Tree Trunk).
-      - **Rules:**
-        - Create **ONE** main "Situation" node.
-        - Nest "Task" inside Situation.
-        - Nest "Action" inside Task.
-        - Nest "Result" inside Action.
-      - **Goal:** clearly show the sequence of events.
-
-      ### B. FOR LOGIC & DEBATE (MINTO / PREP):
-      - **Structure:** Horizontal Hierarchy (Pyramid).
-      - **Rules:**
-        - Create distinct Top-Level Arguments (MECE).
-        - **Do NOT** nest distinct reasons inside each other. They are siblings.
-        - Nest 'Evidence' or 'Examples' inside their respective Argument.
-      
-      ### C. FOR VISION & INTRO (GOLDEN CIRCLE):
-      - **Structure:** Vertical Concentric.
-      - **Rules:**
-        - Main Node: "Why" (Purpose/Belief).
-        - Sub_point: "How" (Process/Strengths).
-        - Sub_point: "What" (Role/Outcome).
-
-      ### D. FOR REFLECTION (W-S-N):
-      - **Structure:** Vertical Chain.
-      - **Rules:**
-        - Main Node: "What?" (Observation).
-        - Sub_point: "So What?" (Insight).
-        - Sub_point: "Now What?" (Action).
+      - **STAR:** Situation -> Task -> Action -> Result.
+      - **PREP:** Point -> Reason -> Example (The Story) -> Point.
 
       # TASK 3: COACHING FEEDBACK
-      - **Gap Analysis:** "You used Minto, but for a story, STAR is better."
-      - **Specific Critique:** "You started with 'Action' but forgot the 'Result'. Add the outcome."
+      - **Gap Analysis:** Explain why the new structure is better.
 
       # Output Requirements
       Generate a JSON response:
-      - **NO EMPTY STRINGS**: Ensure all fields contain actual text.
+      - **NO EMPTY STRINGS**.
       
       Format:
       {
@@ -583,8 +564,8 @@ app.post('/api/analyze-speech', async (req, res) => {
             {
               "point": "...",
               "status": "strong",
-              "type": "story",
-              "sub_points": [ ...nested arguments... ],
+              "type": "fact" | "story" | "opinion", 
+              "sub_points": [ ... ],
               "evidence": ["..."],
               "critique": "..."
             }
@@ -592,18 +573,19 @@ app.post('/api/analyze-speech', async (req, res) => {
         },
         "improved_structure": {
           "recommended_framework": "...",
-          "conclusion": "...",
+          "conclusion": "The Ideal Conclusion",
           "arguments": [
             {
-              "headline": "...",
-              "elaboration": "...",
-              "sub_points": [ ...nested arguments... ],
+              "headline": "Step 1: The Situation", 
+              "elaboration": "Use this phrase: 'During my college years, I faced a significant challenge...'", 
+              "sub_points": [ ... ],
               "type": "story",
               "evidence": ["..."]
             }
           ]
         },
-        // ... feedback ...
+        "feedback": { ... },
+        "improvements": [ ... ]
       }
     `.trim();
 
@@ -613,7 +595,7 @@ app.post('/api/analyze-speech', async (req, res) => {
         status: { type: Type.STRING, enum: ["strong", "weak", "irrelevant", "missing"] },
         type: { type: Type.STRING, enum: ["fact", "story", "opinion"] },
         evidence: { type: Type.ARRAY, items: { type: Type.STRING } },
-        critique: { type: Type.STRING },
+        critique: { type: Type.STRING }, // Critique for Top Level
         // RECURSION: Add sub_points here
         sub_points: { 
             type: Type.ARRAY, 
@@ -623,7 +605,8 @@ app.post('/api/analyze-speech', async (req, res) => {
                     point: { type: Type.STRING },
                     status: { type: Type.STRING },
                     type: { type: Type.STRING },
-                    evidence: { type: Type.ARRAY, items: { type: Type.STRING } }
+                    evidence: { type: Type.ARRAY, items: { type: Type.STRING } },
+                    critique: { type: Type.STRING }
                 } 
             } 
         }
@@ -656,7 +639,7 @@ app.post('/api/analyze-speech', async (req, res) => {
           role: 'user',
           parts: [
             { text: prompt },
-            { inlineData: { mimeType: 'audio/mp3', data: audioData } }
+            { inlineData: { mimeType: 'audio/webm', data: audioData } }
           ]
         }
       ],

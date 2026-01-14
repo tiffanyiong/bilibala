@@ -263,8 +263,8 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({ topic, level, nativeL
                             </button>
                             
                             <div className="text-center mb-8 pointer-events-none"> {/* Text non-interactive to prevent interference, but user can click buttons below */}
-                                <h3 className="text-xl font-serif text-stone-800">Record Answer Again</h3>
-                                <p className="text-stone-500 text-sm mt-1">Try to incorporate the feedback into your new answer.</p>
+                                <h3 className="text-xl font-serif text-stone-800">Record Answer Again page one</h3>
+                               <p className="text-stone-500 text-sm mt-1">Try to incorporate the feedback into your new answer.</p>
                             </div>
 
                             <div className="flex justify-center cursor-auto" onMouseDown={(e) => e.stopPropagation()}> 
