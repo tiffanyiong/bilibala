@@ -501,7 +501,7 @@ const LiveVoiceInterface: React.FC<LiveVoiceInterfaceProps> = ({
                  
             if ((hasModelAudio || hasModelText) && currentInputRef.current.trim()) {
                  const userText = currentInputRef.current.trim();
-                 setHistory(prev => [...prev, { role: 'user', text: userText }]);
+                 setHistory(prev => [...prev, { role: 'user', text: userText, timestamp: Date.now() }]);
                  currentInputRef.current = '';
                  setRealtimeInput('');
             }

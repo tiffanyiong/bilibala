@@ -5,8 +5,8 @@ interface AudioRecorderProps {
   onCancel: () => void;
   isMinimized?: boolean;            
   onToggleMinimize?: () => void;
-  // This prop allows the parent (PyramidFeedback) to hook into the header for dragging
-  dragHeaderProps?: any; 
+  dragHeaderProps?: any;
+  defaultTitle?: string;
 }
 
 enum RecorderState {
@@ -21,7 +21,8 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     onCancel,
     isMinimized = false, 
     onToggleMinimize,
-    dragHeaderProps
+    dragHeaderProps,
+    defaultTitle = "Record Answer"
 }) => {
   const [recorderState, setRecorderState] = useState<RecorderState>(RecorderState.IDLE);
   const [duration, setDuration] = useState(0);
@@ -29,51 +30,48 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   
-  const [isDark, setIsDark] = useState(false);
-  
   // Audio Refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
-  const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const base64Ref = useRef<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-
-  // Visualizer Refs
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animationFrameRef = useRef<number | null>(null);
-
-  // Timer Accuracy Refs
+  
+  // Stream Refs
+  const streamRef = useRef<MediaStream | null>(null);
+  const visualizerStreamRef = useRef<MediaStream | null>(null);
+  
+  // Data Refs
+  const base64Ref = useRef<string | null>(null);
   const startTimeRef = useRef<number>(0);
   const pausedDurationRef = useRef<number>(0);
   const pauseStartTimeRef = useRef<number>(0);
 
+  // --- NEW: State Ref to fix animation freezing ---
+  const isRecordingRef = useRef(false);
   const isMountedRef = useRef(true);
 
-  // 1. Initialize
+  // Initialize
   useEffect(() => {
     isMountedRef.current = true;
     startRecording();
-    const interval = setInterval(() => setIsDark(d => !d), 2000);
-    
     return () => {
       isMountedRef.current = false;
       stopRecordingCleanup();
-      clearInterval(interval);
       if (audioUrl) URL.revokeObjectURL(audioUrl);
     };
   }, []);
 
-  // 2. Redraw visualizer when minimizing/expanding to fix canvas size
+  // Visualizer redraw on resize
   useEffect(() => {
       if (recorderState === RecorderState.RECORDING) {
           setTimeout(() => drawVisualizer(), 100);
       }
   }, [isMinimized]);
 
-  // 3. Timer
+  // Timer
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (recorderState === RecorderState.RECORDING) {
@@ -96,21 +94,12 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     try {
       await stopRecordingCleanup();
 
-      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-      const audioContext = new AudioContextClass();
-      audioContextRef.current = audioContext;
-
-      // CRITICAL: Force Resume to prevent silence
-      if (audioContext.state === 'suspended') {
-          await audioContext.resume();
-      }
-
+      // 1. Get Microphone Stream
       const rawStream = await navigator.mediaDevices.getUserMedia({ 
-        audio: {
-            channelCount: 1, 
-            echoCancellation: true,
+        audio: { 
+            echoCancellation: true, 
             noiseSuppression: true,
-            autoGainControl: true
+            autoGainControl: true // Added back for better levels
         } 
       });
 
@@ -118,31 +107,19 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
           rawStream.getTracks().forEach(track => track.stop());
           return;
       }
+      
       streamRef.current = rawStream;
       setPermissionError(false);
 
-      const source = audioContext.createMediaStreamSource(rawStream);
-      sourceNodeRef.current = source;
-      
-      const analyser = audioContext.createAnalyser();
-      analyser.fftSize = 64; 
-      analyser.smoothingTimeConstant = 0.6;
-      analyserRef.current = analyser;
-      
-      const destination = audioContext.createMediaStreamDestination();
-      // mediaStreamDestinationRef.current = destination;
-
-      source.connect(analyser);
-      source.connect(destination);
-
-      const processedStream = destination.stream;
-      
-      let mimeType = 'audio/webm';
-      if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
-          mimeType = 'audio/webm;codecs=opus';
+      // 2. Setup Recording
+      let mimeType = '';
+      if (MediaRecorder.isTypeSupported('audio/webm')) {
+          mimeType = 'audio/webm'; 
+      } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+          mimeType = 'audio/mp4'; 
       }
 
-      const mediaRecorder = new MediaRecorder(processedStream, { mimeType });
+      const mediaRecorder = new MediaRecorder(rawStream, mimeType ? { mimeType } : undefined);
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
 
@@ -150,109 +127,130 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
 
-      mediaRecorder.start(100);
-      
+      mediaRecorder.start();
+
+      // 3. Update States
       startTimeRef.current = Date.now();
       pausedDurationRef.current = 0;
-      pauseStartTimeRef.current = 0;
       
+      // --- CRITICAL FIX: Update Ref Synchronously ---
+      isRecordingRef.current = true;
       setRecorderState(RecorderState.RECORDING);
       setDuration(0);
-      
-      drawVisualizer();
+
+      // 4. Setup Visualizer (Clone stream)
+      setupVisualizer(rawStream.clone());
+
     } catch (err) {
       if (isMountedRef.current) {
-          console.error("Microphone permission denied:", err);
+          console.error("Microphone error:", err);
           setPermissionError(true);
       }
     }
   };
 
-  const togglePause = async () => {
-    if (audioContextRef.current) {
-        if (recorderState === RecorderState.RECORDING) {
-            await audioContextRef.current.suspend();
-            if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-                mediaRecorderRef.current.pause();
-            }
-            setRecorderState(RecorderState.PAUSED);
-            pauseStartTimeRef.current = Date.now();
-            if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
-            
-        } else if (recorderState === RecorderState.PAUSED) {
-            await audioContextRef.current.resume();
-            if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'paused') {
-                mediaRecorderRef.current.resume();
-            }
-            setRecorderState(RecorderState.RECORDING);
-            const timeSpentPaused = Date.now() - pauseStartTimeRef.current;
-            pausedDurationRef.current += timeSpentPaused;
-            drawVisualizer();
-        }
+  const setupVisualizer = async (visStream: MediaStream) => {
+      try {
+        visualizerStreamRef.current = visStream;
+
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        const audioContext = new AudioContextClass();
+        audioContextRef.current = audioContext;
+
+        if (audioContext.state === 'suspended') await audioContext.resume();
+
+        const source = audioContext.createMediaStreamSource(visStream);
+        const analyser = audioContext.createAnalyser();
+        analyser.fftSize = 64; 
+        analyser.smoothingTimeConstant = 0.4; // Slightly more responsive
+        analyserRef.current = analyser;
+        
+        source.connect(analyser); 
+        
+        drawVisualizer();
+      } catch (e) {
+          console.error("Visualizer setup failed", e);
+      }
+  };
+
+  const togglePause = () => {
+    if (recorderState === RecorderState.RECORDING) {
+        if (mediaRecorderRef.current?.state === 'recording') mediaRecorderRef.current.pause();
+        if (audioContextRef.current?.state === 'running') audioContextRef.current.suspend();
+        
+        isRecordingRef.current = false; // Stop animation
+        setRecorderState(RecorderState.PAUSED);
+        pauseStartTimeRef.current = Date.now();
+        if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    } else if (recorderState === RecorderState.PAUSED) {
+        if (mediaRecorderRef.current?.state === 'paused') mediaRecorderRef.current.resume();
+        if (audioContextRef.current?.state === 'suspended') audioContextRef.current.resume();
+        
+        isRecordingRef.current = true; // Resume animation
+        setRecorderState(RecorderState.RECORDING);
+        pausedDurationRef.current += (Date.now() - pauseStartTimeRef.current);
+        drawVisualizer();
     }
   };
 
   const stopRecording = () => {
     if (mediaRecorderRef.current && (recorderState === RecorderState.RECORDING || recorderState === RecorderState.PAUSED)) {
       mediaRecorderRef.current.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' }); 
+        const type = mediaRecorderRef.current?.mimeType || 'audio/webm';
+        const blob = new Blob(chunksRef.current, { type }); 
         const url = URL.createObjectURL(blob);
         setAudioUrl(url);
 
         const reader = new FileReader();
         reader.readAsDataURL(blob);
         reader.onloadend = () => {
-          const base64data = reader.result as string;
-          base64Ref.current = base64data.split(',')[1];
+          const result = reader.result as string;
+          base64Ref.current = result.split(',')[1];
         };
 
         setRecorderState(RecorderState.REVIEW);
         setDuration(0);
+        isRecordingRef.current = false; // Stop animation
         
-        // Auto-expand on finish
         if (isMinimized && onToggleMinimize) onToggleMinimize(); 
+
+        stopMicOnly(); 
       };
+      
       mediaRecorderRef.current.stop();
-      stopMicOnly();
     }
   };
 
   const stopMicOnly = () => {
       if (streamRef.current) {
-          streamRef.current.getTracks().forEach(track => track.stop());
+          streamRef.current.getTracks().forEach(track => {
+              track.stop();
+              track.enabled = false;
+          });
+          streamRef.current = null;
       }
-      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+      if (visualizerStreamRef.current) {
+          visualizerStreamRef.current.getTracks().forEach(track => {
+              track.stop();
+              track.enabled = false;
+          });
+          visualizerStreamRef.current = null;
+      }
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+          audioContextRef.current.close().catch(console.error);
+          audioContextRef.current = null;
+      }
   };
 
   const stopRecordingCleanup = async () => {
-    if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = null;
-    }
+    isRecordingRef.current = false;
+    if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current.currentTime = 0;
         audioRef.current.src = "";
     }
-    if (sourceNodeRef.current) {
-        sourceNodeRef.current.disconnect();
-        sourceNodeRef.current = null;
-    }
-    if (audioContextRef.current) {
-        try {
-            if (audioContextRef.current.state !== 'closed') {
-                await audioContextRef.current.close();
-            }
-        } catch (e) { console.error("Error closing context", e); }
-        audioContextRef.current = null;
-    }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => {
-          track.stop();
-          track.enabled = false;
-      });
-      streamRef.current = null;
-    }
+    stopMicOnly();
   };
 
   const handleSubmit = () => {
@@ -262,7 +260,6 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
   const handleRetake = async () => {
       if (audioUrl) URL.revokeObjectURL(audioUrl);
       setAudioUrl(null);
-      base64Ref.current = null;
       setDuration(0);
       setIsPlaying(false);
       await stopRecordingCleanup();
@@ -270,11 +267,13 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
   };
 
   const togglePlayback = () => {
-      if (audioRef.current) {
+      if (audioRef.current && audioUrl) {
           if (isPlaying) {
               audioRef.current.pause();
           } else {
-              audioRef.current.play();
+              audioRef.current.volume = 1.0;
+              audioRef.current.muted = false;
+              audioRef.current.play().catch(e => console.error("Playback failed:", e));
           }
           setIsPlaying(!isPlaying);
       }
@@ -286,173 +285,130 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       if (audioRef.current) audioRef.current.currentTime = 0;
   };
 
+// --- SOFT & CLEAN VISUALIZER --- audio wave
   const drawVisualizer = () => {
     if (!canvasRef.current || !analyserRef.current) return;
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // High-DPI canvas scaling
-    if (canvas.width !== canvas.clientWidth * 2) {
-        canvas.width = canvas.clientWidth * 2;
-        canvas.height = canvas.clientHeight * 2;
-        ctx.scale(2, 2);
-    }
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    
+    // Ensure accurate sizing
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    ctx.scale(dpr, dpr);
 
     const bufferLength = analyserRef.current.frequencyBinCount;
     const dataArray = new Uint8Array(bufferLength);
 
+    
     const draw = () => {
+      // Check ref to ensure we stop drawing when needed
+      if (!isRecordingRef.current) return;
       if (!analyserRef.current || !canvasRef.current) return;
-      
-      if (recorderState === RecorderState.RECORDING || (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording')) {
-          animationFrameRef.current = requestAnimationFrame(draw);
-      }
+
+      animationFrameRef.current = requestAnimationFrame(draw);
       
       analyserRef.current.getByteFrequencyData(dataArray);
-      
-      const width = canvas.clientWidth;
-      const height = canvas.clientHeight;
-      
-      ctx.clearRect(0, 0, width, height);
+      ctx.clearRect(0, 0, rect.width, rect.height);
 
-      const barWidth = 4; 
-      const gap = 3;      
-      const totalBarWidth = barWidth + gap;
+      // --- CONFIGURATION ---
+      const barWidth = 4;   // Keep standard width
+      const gap = 5;        // More air between bars (cleaner look)
+      const maxBars = Math.floor(rect.width / (barWidth + gap));
+      const barsToDraw = Math.min(maxBars, 20); // Limit bars for minimal look
       
-      const numBarsToDraw = Math.floor(width / totalBarWidth);
-      const dataStep = Math.floor(bufferLength / numBarsToDraw) || 1;
-      
-      let x = (width - (numBarsToDraw * totalBarWidth)) / 2; 
+      const totalWaveWidth = (barsToDraw * barWidth) + ((barsToDraw - 1) * gap);
+      let x = (rect.width - totalWaveWidth) / 2;
 
-      for (let i = 0; i < numBarsToDraw; i++) {
-        const val = dataArray[i * dataStep];
-        const activeColor = isMinimized ? '#a8a29e' : '#1c1917'; 
-        
-        let barHeight = Math.max(4, (val / 255) * height * 0.8);
-        
-        ctx.fillStyle = isMinimized ? '#57534e' : '#d6d3d1'; 
-        if (val > 100) ctx.fillStyle = activeColor;
+      const step = Math.floor(bufferLength / barsToDraw) || 1;
 
-        const y = (height - barHeight) / 2;
+      for (let i = 0; i < barsToDraw; i++) {
+        let val = dataArray[i * step];
         
-        if (ctx.roundRect) {
-            ctx.beginPath();
-            ctx.roundRect(x, y, barWidth, barHeight, 50); 
-            ctx.fill();
+        // --- 1. GENTLER SENSITIVITY ---
+        // Previous was 2.2 (Too intense). 
+        // We use 1.2 to give it life without looking "angry".
+        val = Math.min(255, val * 1.2); 
+
+        // --- 2. CONTROLLED HEIGHT ---
+        const percent = val / 255;
+        // Max height is now 70% of container (0.7), so it never hits the edges.
+        // Min height is 5px so it never disappears completely.
+        const h = Math.max(5, (percent * rect.height * 0.7)); 
+        
+        // --- 3. COLORS ---
+        if (isMinimized) {
+            ctx.fillStyle = '#a8a29e';
         } else {
-            ctx.fillRect(x, y, barWidth, barHeight);
+             // Dark only when distinct sound is detected
+            ctx.fillStyle = val > 80 ? '#1c1917' : '#d6d3d1'; 
         }
 
-        x += totalBarWidth;
+        const y = (rect.height - h) / 2;
+        
+        ctx.beginPath();
+        if (ctx.roundRect) {
+            ctx.roundRect(x, y, barWidth, h, 50); // Full rounded pill
+        } else {
+            ctx.fillRect(x, y, barWidth, h);
+        }
+        ctx.fill();
+
+        x += barWidth + gap;
       }
     };
     draw();
   };
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
+  const formatTime = (s: number) => `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, '0')}`;
 
-  // --- MINIMIZED VIEW ---
   if (isMinimized) {
     return (
         <div className="w-full h-full flex items-center justify-between px-5 text-white">
-             <audio 
-                ref={audioRef} 
-                src={audioUrl || undefined} 
-                onEnded={handleAudioEnded}
-                className="hidden"
-            />
+             <audio ref={audioRef} src={audioUrl || undefined} onEnded={handleAudioEnded} className="hidden" />
             <div className="flex items-center gap-3">
-                <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.6)]"></div>
+                <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse shadow-red-500/60 shadow-lg"></div>
                 <span className="font-mono text-lg font-medium tracking-wide">{formatTime(duration)}</span>
             </div>
-
-            <div className="flex-1 max-w-[120px] h-8 mx-4 opacity-80">
-                <canvas ref={canvasRef} className="w-full h-full" />
-            </div>
-
+            <div className="flex-1 max-w-[120px] h-8 mx-4 opacity-80"><canvas ref={canvasRef} className="w-full h-full" /></div>
             <div className="flex items-center gap-3">
-                <button 
-                    onClick={stopRecording}
-                    className="w-8 h-8 bg-white text-stone-900 rounded-full flex items-center justify-center hover:scale-105 transition-transform"
-                >
+                <button onClick={stopRecording} className="w-8 h-8 bg-white text-stone-900 rounded-full flex items-center justify-center hover:scale-105 transition-transform">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2" /></svg>
                 </button>
-                {onToggleMinimize && (
-                    <button onClick={onToggleMinimize} className="p-1.5 text-stone-400 hover:text-white transition-colors">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
-                    </button>
-                )}
             </div>
         </div>
     );
   }
 
-  // --- EXPANDED VIEW ---
   return (
     <div className="w-full flex flex-col items-center gap-6 relative">
-        <audio 
-            ref={audioRef} 
-            src={audioUrl || undefined} 
-            onEnded={handleAudioEnded}
-            className="hidden"
-        />
+        <audio ref={audioRef} src={audioUrl || undefined} onEnded={handleAudioEnded} className="hidden" />
         
-        {/* HEADER: Title + Drag Handle + Minimize Button */}
-        <div 
-            {...dragHeaderProps} // Make this header draggable on desktop
-            className={`w-full flex justify-between items-start relative ${dragHeaderProps ? 'cursor-move' : ''}`}
-        >
-             {/* <div className="text-center w-full">
-                {recorderState === RecorderState.REVIEW ? (
-                    <h3 className="text-xl font-serif text-stone-800 font-bold">Review Answer</h3>
-                ) : (
-                    <h3 className="text-xl font-serif text-stone-800 font-bold">Record Answer Again page two</h3>
-                )}
+        <div {...dragHeaderProps} className={`w-full flex flex-col items-center justify-center relative ${dragHeaderProps ? 'cursor-move' : ''}`}>
+             <div className="text-center w-full">
+                <h3 className="text-xl font-serif text-stone-800 font-bold">
+                    {recorderState === RecorderState.REVIEW ? "Review Answer" : defaultTitle}
+                </h3>
                 <p className="text-stone-500 text-sm mt-1">
-                    {recorderState === RecorderState.REVIEW ? "Tap analyze when ready." : "Try to incorporate the feedback."}
+                    {recorderState === RecorderState.REVIEW ? "Tap analyze when ready." : (defaultTitle === "Record Answer" ? "Take your time." : "Try to incorporate the feedback.")}
                 </p>
-             </div> */}
-             
-             {/* Minimize Icon - CORRECTED POSITION (Inside the header) */}
-             {onToggleMinimize && (
-                <button 
-                    // Stop propagation so clicking button doesn't trigger drag
-                    onMouseDown={(e) => e.stopPropagation()}
-                    onClick={onToggleMinimize}
-                    className="absolute right-0 top-0 p-1 text-stone-400 hover:text-stone-600 transition-colors"
-                    title="Minimize"
-                >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M4 14h6v6"/><path d="M20 10h-6V4"/><path d="M14 10l7-7"/><path d="M3 21l7-7"/>
-                    </svg>
-                </button>
-             )}
+             </div>
         </div>
 
         <div className="relative w-full flex flex-col items-center gap-2 py-4">
             <div className="flex items-center gap-6">
                 <div className={`w-3 h-3 rounded-full ${recorderState === RecorderState.RECORDING ? 'bg-red-500 animate-pulse' : recorderState === RecorderState.REVIEW ? 'bg-green-500' : 'bg-amber-400'}`}></div>
                 <div className="h-12 w-48 flex items-center justify-center">
-                    {permissionError ? (
-                        <span className="text-red-500 text-xs">Microphone Error</span>
-                    ) : recorderState === RecorderState.REVIEW ? (
+                    {permissionError ? <span className="text-red-500 text-xs">Microphone Error</span> : recorderState === RecorderState.REVIEW ? (
                         <div className="flex items-center justify-center gap-1 h-full w-full">
-                        {[...Array(24)].map((_, i) => (
-                            <div key={i} className="w-1 bg-stone-300 rounded-full" style={{ height: Math.max(4, Math.random() * 24) + 'px' }}></div>
-                        ))}
+                        {[...Array(24)].map((_, i) => <div key={i} className="w-1 bg-stone-300 rounded-full" style={{ height: Math.max(6, Math.random() * 24) + 'px' }}></div>)}
                         </div>
-                    ) : (
-                        <canvas ref={canvasRef} className="w-full h-full" />
-                    )}
+                    ) : <canvas ref={canvasRef} className="w-full h-full" />}
                 </div>
-                <div className="font-mono text-xl font-medium text-stone-800 tabular-nums">
-                    {formatTime(duration)}
-                </div>
+                <div className="font-mono text-xl font-medium text-stone-800 tabular-nums">{formatTime(duration)}</div>
             </div>
         </div>
 
