@@ -3,10 +3,10 @@ import React, { useEffect, useRef, useState } from 'react';
 interface AudioRecorderProps {
   onRecordingComplete: (audioData: string) => void;
   onCancel: () => void;
-  isMinimized?: boolean;            
+  isMinimized?: boolean;
   onToggleMinimize?: () => void;
-  dragHeaderProps?: any;
   defaultTitle?: string;
+  autoStart?: boolean;
 }
 
 enum RecorderState {
@@ -16,13 +16,13 @@ enum RecorderState {
     REVIEW
 }
 
-const AudioRecorder: React.FC<AudioRecorderProps> = ({ 
-    onRecordingComplete, 
+const AudioRecorder: React.FC<AudioRecorderProps> = ({
+    onRecordingComplete,
     onCancel,
-    isMinimized = false, 
+    isMinimized = false,
     onToggleMinimize,
-    dragHeaderProps,
-    defaultTitle = "Record Answer"
+    defaultTitle = "Record Answer",
+    autoStart = true
 }) => {
   const [recorderState, setRecorderState] = useState<RecorderState>(RecorderState.IDLE);
   const [duration, setDuration] = useState(0);
@@ -49,14 +49,15 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
   const pausedDurationRef = useRef<number>(0);
   const pauseStartTimeRef = useRef<number>(0);
 
-  // --- NEW: State Ref to fix animation freezing ---
   const isRecordingRef = useRef(false);
   const isMountedRef = useRef(true);
 
   // Initialize
   useEffect(() => {
     isMountedRef.current = true;
-    startRecording();
+    if (autoStart) {
+      startRecording();
+    }
     return () => {
       isMountedRef.current = false;
       stopRecordingCleanup();
@@ -64,12 +65,15 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     };
   }, []);
 
-  // Visualizer redraw on resize
+  // Visualizer redraw on resize/view change
   useEffect(() => {
       if (recorderState === RecorderState.RECORDING) {
-          setTimeout(() => drawVisualizer(), 100);
+          const timer = setTimeout(() => {
+              drawVisualizer();
+          }, 50);
+          return () => clearTimeout(timer);
       }
-  }, [isMinimized]);
+  }, [isMinimized, recorderState]);
 
   // Timer
   useEffect(() => {
@@ -93,14 +97,8 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
   const startRecording = async () => {
     try {
       await stopRecordingCleanup();
-
-      // 1. Get Microphone Stream
       const rawStream = await navigator.mediaDevices.getUserMedia({ 
-        audio: { 
-            echoCancellation: true, 
-            noiseSuppression: true,
-            autoGainControl: true // Added back for better levels
-        } 
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } 
       });
 
       if (!isMountedRef.current) {
@@ -111,13 +109,9 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       streamRef.current = rawStream;
       setPermissionError(false);
 
-      // 2. Setup Recording
       let mimeType = '';
-      if (MediaRecorder.isTypeSupported('audio/webm')) {
-          mimeType = 'audio/webm'; 
-      } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
-          mimeType = 'audio/mp4'; 
-      }
+      if (MediaRecorder.isTypeSupported('audio/webm')) mimeType = 'audio/webm'; 
+      else if (MediaRecorder.isTypeSupported('audio/mp4')) mimeType = 'audio/mp4'; 
 
       const mediaRecorder = new MediaRecorder(rawStream, mimeType ? { mimeType } : undefined);
       mediaRecorderRef.current = mediaRecorder;
@@ -128,19 +122,13 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       };
 
       mediaRecorder.start();
-
-      // 3. Update States
       startTimeRef.current = Date.now();
       pausedDurationRef.current = 0;
-      
-      // --- CRITICAL FIX: Update Ref Synchronously ---
       isRecordingRef.current = true;
       setRecorderState(RecorderState.RECORDING);
       setDuration(0);
 
-      // 4. Setup Visualizer (Clone stream)
       setupVisualizer(rawStream.clone());
-
     } catch (err) {
       if (isMountedRef.current) {
           console.error("Microphone error:", err);
@@ -152,21 +140,16 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
   const setupVisualizer = async (visStream: MediaStream) => {
       try {
         visualizerStreamRef.current = visStream;
-
         const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
         const audioContext = new AudioContextClass();
         audioContextRef.current = audioContext;
-
         if (audioContext.state === 'suspended') await audioContext.resume();
-
         const source = audioContext.createMediaStreamSource(visStream);
         const analyser = audioContext.createAnalyser();
         analyser.fftSize = 64; 
-        analyser.smoothingTimeConstant = 0.4; // Slightly more responsive
+        analyser.smoothingTimeConstant = 0.4;
         analyserRef.current = analyser;
-        
         source.connect(analyser); 
-        
         drawVisualizer();
       } catch (e) {
           console.error("Visualizer setup failed", e);
@@ -177,16 +160,14 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     if (recorderState === RecorderState.RECORDING) {
         if (mediaRecorderRef.current?.state === 'recording') mediaRecorderRef.current.pause();
         if (audioContextRef.current?.state === 'running') audioContextRef.current.suspend();
-        
-        isRecordingRef.current = false; // Stop animation
+        isRecordingRef.current = false; 
         setRecorderState(RecorderState.PAUSED);
         pauseStartTimeRef.current = Date.now();
         if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     } else if (recorderState === RecorderState.PAUSED) {
         if (mediaRecorderRef.current?.state === 'paused') mediaRecorderRef.current.resume();
         if (audioContextRef.current?.state === 'suspended') audioContextRef.current.resume();
-        
-        isRecordingRef.current = true; // Resume animation
+        isRecordingRef.current = true;
         setRecorderState(RecorderState.RECORDING);
         pausedDurationRef.current += (Date.now() - pauseStartTimeRef.current);
         drawVisualizer();
@@ -197,7 +178,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     if (mediaRecorderRef.current && (recorderState === RecorderState.RECORDING || recorderState === RecorderState.PAUSED)) {
       mediaRecorderRef.current.onstop = () => {
         const type = mediaRecorderRef.current?.mimeType || 'audio/webm';
-        const blob = new Blob(chunksRef.current, { type }); 
+        const blob = new Blob(chunksRef.current, { type });
         const url = URL.createObjectURL(blob);
         setAudioUrl(url);
 
@@ -210,30 +191,20 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
 
         setRecorderState(RecorderState.REVIEW);
         setDuration(0);
-        isRecordingRef.current = false; // Stop animation
-        
-        if (isMinimized && onToggleMinimize) onToggleMinimize(); 
-
-        stopMicOnly(); 
+        isRecordingRef.current = false; 
+        stopMicOnly();
       };
-      
       mediaRecorderRef.current.stop();
     }
   };
 
   const stopMicOnly = () => {
       if (streamRef.current) {
-          streamRef.current.getTracks().forEach(track => {
-              track.stop();
-              track.enabled = false;
-          });
+          streamRef.current.getTracks().forEach(track => { track.stop(); track.enabled = false; });
           streamRef.current = null;
       }
       if (visualizerStreamRef.current) {
-          visualizerStreamRef.current.getTracks().forEach(track => {
-              track.stop();
-              track.enabled = false;
-          });
+          visualizerStreamRef.current.getTracks().forEach(track => { track.stop(); track.enabled = false; });
           visualizerStreamRef.current = null;
       }
       if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
@@ -254,7 +225,23 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
   };
 
   const handleSubmit = () => {
-      if (base64Ref.current) onRecordingComplete(base64Ref.current);
+      if (base64Ref.current) {
+          onRecordingComplete(base64Ref.current);
+          return;
+      }
+      if (chunksRef.current.length > 0) {
+          const type = mediaRecorderRef.current?.mimeType || 'audio/webm';
+          const blob = new Blob(chunksRef.current, { type });
+          const reader = new FileReader();
+          reader.readAsDataURL(blob);
+          reader.onloadend = () => {
+              if (typeof reader.result === 'string') {
+                  const base64 = reader.result.split(',')[1];
+                  base64Ref.current = base64;
+                  onRecordingComplete(base64);
+              }
+          };
+      }
   };
 
   const handleRetake = async () => {
@@ -285,7 +272,6 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       if (audioRef.current) audioRef.current.currentTime = 0;
   };
 
-// --- SOFT & CLEAN VISUALIZER --- audio wave
   const drawVisualizer = () => {
     if (!canvasRef.current || !analyserRef.current) return;
     const canvas = canvasRef.current;
@@ -294,8 +280,6 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
 
     const dpr = window.devicePixelRatio || 1;
     const rect = canvas.getBoundingClientRect();
-    
-    // Ensure accurate sizing
     canvas.width = rect.width * dpr;
     canvas.height = rect.height * dpr;
     ctx.scale(dpr, dpr);
@@ -303,60 +287,35 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     const bufferLength = analyserRef.current.frequencyBinCount;
     const dataArray = new Uint8Array(bufferLength);
 
-    
     const draw = () => {
-      // Check ref to ensure we stop drawing when needed
       if (!isRecordingRef.current) return;
       if (!analyserRef.current || !canvasRef.current) return;
 
       animationFrameRef.current = requestAnimationFrame(draw);
-      
       analyserRef.current.getByteFrequencyData(dataArray);
       ctx.clearRect(0, 0, rect.width, rect.height);
 
-      // --- CONFIGURATION ---
-      const barWidth = 4;   // Keep standard width
-      const gap = 5;        // More air between bars (cleaner look)
+      const barWidth = 4;
+      const gap = 5; 
       const maxBars = Math.floor(rect.width / (barWidth + gap));
-      const barsToDraw = Math.min(maxBars, 20); // Limit bars for minimal look
-      
+      const barsToDraw = Math.min(maxBars, 20); 
       const totalWaveWidth = (barsToDraw * barWidth) + ((barsToDraw - 1) * gap);
       let x = (rect.width - totalWaveWidth) / 2;
-
       const step = Math.floor(bufferLength / barsToDraw) || 1;
 
       for (let i = 0; i < barsToDraw; i++) {
         let val = dataArray[i * step];
-        
-        // --- 1. GENTLER SENSITIVITY ---
-        // Previous was 2.2 (Too intense). 
-        // We use 1.2 to give it life without looking "angry".
         val = Math.min(255, val * 1.2); 
-
-        // --- 2. CONTROLLED HEIGHT ---
         const percent = val / 255;
-        // Max height is now 70% of container (0.7), so it never hits the edges.
-        // Min height is 5px so it never disappears completely.
         const h = Math.max(5, (percent * rect.height * 0.7)); 
         
-        // --- 3. COLORS ---
-        if (isMinimized) {
-            ctx.fillStyle = '#a8a29e';
-        } else {
-             // Dark only when distinct sound is detected
-            ctx.fillStyle = val > 80 ? '#1c1917' : '#d6d3d1'; 
-        }
-
+        ctx.fillStyle = isMinimized ? '#a8a29e' : (val > 80 ? '#1c1917' : '#d6d3d1');
         const y = (rect.height - h) / 2;
         
         ctx.beginPath();
-        if (ctx.roundRect) {
-            ctx.roundRect(x, y, barWidth, h, 50); // Full rounded pill
-        } else {
-            ctx.fillRect(x, y, barWidth, h);
-        }
+        if (ctx.roundRect) ctx.roundRect(x, y, barWidth, h, 50);
+        else ctx.fillRect(x, y, barWidth, h);
         ctx.fill();
-
         x += barWidth + gap;
       }
     };
@@ -365,38 +324,76 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
 
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, '0')}`;
 
-  if (isMinimized) {
-    return (
-        <div className="w-full h-full flex items-center justify-between px-5 text-white">
-             <audio ref={audioRef} src={audioUrl || undefined} onEnded={handleAudioEnded} className="hidden" />
+  // --- RENDER FUNCTIONS ---
+
+  const renderMinimized = () => (
+    <div className="w-full h-full flex items-center justify-between px-5 text-white">
+        {/* LEFT: IDLE (Mic) OR Status Indicator */}
+        {recorderState === RecorderState.IDLE ? (
+            <button onClick={startRecording} className="w-8 h-8 bg-white text-stone-900 rounded-full flex items-center justify-center hover:scale-105 transition-transform" title="Start Recording">
+                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+            </button>
+        ) : (
             <div className="flex items-center gap-3">
-                <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse shadow-red-500/60 shadow-lg"></div>
+                <div className={`w-2.5 h-2.5 rounded-full shadow-lg ${
+                    recorderState === RecorderState.RECORDING ? 'bg-red-500 animate-pulse' :
+                    recorderState === RecorderState.PAUSED ? 'bg-amber-400' :
+                    'bg-green-500'
+                }`}></div>
                 <span className="font-mono text-lg font-medium tracking-wide">{formatTime(duration)}</span>
             </div>
-            <div className="flex-1 max-w-[120px] h-8 mx-4 opacity-80"><canvas ref={canvasRef} className="w-full h-full" /></div>
-            <div className="flex items-center gap-3">
-                <button onClick={stopRecording} className="w-8 h-8 bg-white text-stone-900 rounded-full flex items-center justify-center hover:scale-105 transition-transform">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2" /></svg>
-                </button>
-            </div>
-        </div>
-    );
-  }
+        )}
 
-  return (
-    <div className="w-full flex flex-col items-center gap-6 relative">
-        <audio ref={audioRef} src={audioUrl || undefined} onEnded={handleAudioEnded} className="hidden" />
+        {/* MIDDLE: Visualizer (Recording Only) */}
+        {recorderState === RecorderState.RECORDING && (
+            <div className="flex-1 max-w-[120px] h-8 mx-4 opacity-80"><canvas ref={canvasRef} className="w-full h-full" /></div>
+        )}
         
-        <div {...dragHeaderProps} className={`w-full flex flex-col items-center justify-center relative ${dragHeaderProps ? 'cursor-move' : ''}`}>
-             <div className="text-center w-full">
-                <h3 className="text-xl font-serif text-stone-800 font-bold">
-                    {recorderState === RecorderState.REVIEW ? "Review Answer" : defaultTitle}
-                </h3>
-                <p className="text-stone-500 text-sm mt-1">
-                    {recorderState === RecorderState.REVIEW ? "Tap analyze when ready." : (defaultTitle === "Record Answer" ? "Take your time." : "Try to incorporate the feedback.")}
-                </p>
-             </div>
+        {recorderState !== RecorderState.RECORDING && <div className="flex-1" />}
+
+        {/* RIGHT: Action Buttons */}
+        <div className="flex items-center gap-2">
+            {(recorderState === RecorderState.RECORDING || recorderState === RecorderState.PAUSED) && (
+                <>
+                    <button onClick={togglePause} className={`p-1.5 transition-colors ${recorderState === RecorderState.PAUSED ? 'text-amber-400 hover:text-amber-200' : 'text-stone-400 hover:text-white'}`}>
+                         {recorderState === RecorderState.PAUSED ? <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg> : <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg>}
+                    </button>
+                    <button onClick={stopRecording} className="w-8 h-8 bg-white text-stone-900 rounded-full flex items-center justify-center hover:scale-105 transition-transform">
+                         <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2" /></svg>
+                    </button>
+                </>
+            )}
+
+            {recorderState === RecorderState.REVIEW && (
+                <>
+                    <button onClick={handleRetake} className="p-1.5 text-stone-400 hover:text-white transition-colors" title="Retake">
+                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></svg>
+                    </button>
+                    <button onClick={togglePlayback} className="w-8 h-8 bg-white text-stone-900 rounded-full flex items-center justify-center hover:scale-105 transition-transform">
+                        {isPlaying ? <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="6" height="16" rx="1" /><rect x="14" y="4" width="6" height="16" rx="1" /></svg> : <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="ml-0.5"><path d="M8 5v14l11-7z" /></svg>}
+                    </button>
+                </>
+            )}
+
+            {onToggleMinimize && recorderState !== RecorderState.IDLE && (
+                <button onClick={onToggleMinimize} className="p-1.5 text-stone-400 hover:text-white transition-colors ml-1">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
+                </button>
+            )}
         </div>
+    </div>
+  );
+
+  const renderExpanded = () => (
+    <div className="w-full flex flex-col items-center gap-6 relative">
+         <div className="text-center w-full">
+            <h3 className="text-xl font-serif text-stone-800 font-bold">
+                {recorderState === RecorderState.REVIEW ? "Review Answer" : defaultTitle}
+            </h3>
+            <p className="text-stone-500 text-sm mt-1">
+                {recorderState === RecorderState.REVIEW ? "Tap analyze when ready." : (defaultTitle === "Record Answer" ? "Take your time." : "Try to incorporate the feedback.")}
+            </p>
+         </div>
 
         <div className="relative w-full flex flex-col items-center gap-2 py-4">
             <div className="flex items-center gap-6">
@@ -414,14 +411,22 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
 
         <div className="grid grid-cols-3 items-center w-full max-w-sm gap-4">
             <div className="justify-self-end">
-                <button onClick={recorderState === RecorderState.REVIEW ? handleRetake : onCancel} className="text-stone-400 hover:text-stone-600 transition-colors p-2">
-                    {recorderState === RecorderState.REVIEW ? <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></svg> : <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>}
-                </button>
+                {recorderState !== RecorderState.IDLE && (
+                    <button onClick={recorderState === RecorderState.REVIEW ? handleRetake : onCancel} className="text-stone-400 hover:text-stone-600 transition-colors p-2" title={recorderState === RecorderState.REVIEW ? "Retake" : "Cancel"}>
+                        {recorderState === RecorderState.REVIEW ? <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></svg> : <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>}
+                    </button>
+                )}
             </div>
             <div className="justify-self-center">
-                <button onClick={recorderState === RecorderState.REVIEW ? togglePlayback : stopRecording} className="w-20 h-20 bg-stone-900 rounded-full flex items-center justify-center text-white shadow-xl hover:scale-105 active:scale-95 transition-all ring-4 ring-stone-100">
-                    {recorderState === RecorderState.REVIEW ? (isPlaying ? <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg> : <svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor" className="ml-1"><path d="M8 5v14l11-7z" /></svg>) : <div className="w-8 h-8 bg-white rounded-md"></div>}
-                </button>
+                {recorderState === RecorderState.IDLE ? (
+                    <button onClick={startRecording} className="w-20 h-20 bg-stone-900 rounded-full flex items-center justify-center text-white shadow-xl hover:scale-105 active:scale-95 transition-all ring-4 ring-stone-100">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                    </button>
+                ) : (
+                    <button onClick={recorderState === RecorderState.REVIEW ? togglePlayback : stopRecording} className="w-20 h-20 bg-stone-900 rounded-full flex items-center justify-center text-white shadow-xl hover:scale-105 active:scale-95 transition-all ring-4 ring-stone-100">
+                        {recorderState === RecorderState.REVIEW ? (isPlaying ? <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg> : <svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor" className="ml-1"><path d="M8 5v14l11-7z" /></svg>) : <div className="w-8 h-8 bg-white rounded-md"></div>}
+                    </button>
+                )}
             </div>
             <div className="justify-self-start">
                 {recorderState === RecorderState.REVIEW ? (
@@ -429,13 +434,20 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
                         <span>Analyze</span>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
                     </button>
-                ) : (
+                ) : recorderState !== RecorderState.IDLE && (
                     <button onClick={togglePause} className={`text-stone-400 hover:text-stone-600 transition-colors p-2 ${recorderState === RecorderState.PAUSED ? 'text-amber-500' : ''}`}>
                         {recorderState === RecorderState.PAUSED ? <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg> : <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg>}
                     </button>
                 )}
             </div>
         </div>
+    </div>
+  );
+
+  return (
+    <div className="audio-recorder-container">
+        <audio ref={audioRef} src={audioUrl || undefined} onEnded={handleAudioEnded} className="hidden" />
+        {isMinimized ? renderMinimized() : renderExpanded()}
     </div>
   );
 };

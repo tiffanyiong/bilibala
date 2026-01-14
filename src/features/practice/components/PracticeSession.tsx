@@ -97,6 +97,11 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({ topic, level, nativeL
       setIsReRecording(true);
   };
 
+  const startRetake = (audioData: string) => {
+      // Process the retake audio data
+      handleRecordingComplete(audioData);
+  };
+
   // Dragging Logic
   const handleMouseDown = (e: React.MouseEvent) => {
       // Prevent drag if clicking buttons or inputs
@@ -233,10 +238,11 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({ topic, level, nativeL
             {/* 4. RESULTS STATE */}
             {state === SessionState.RESULTS && analysisResult && (
                 <div className="space-y-8 animate-in fade-in slide-in-from-bottom-8 duration-500 pb-20">
-                    <PyramidFeedback 
-                        analysis={analysisResult} 
-                        onRetry={handleRetryClick} 
+                    <PyramidFeedback
+                        analysis={analysisResult}
+                        onRetry={handleRetryClick}
                         audioUrl={currentAudioUrl}
+                        startRetake={startRetake}
                     />
 
                     {/* RE-RECORDING MODAL - Floating & Draggable */}
