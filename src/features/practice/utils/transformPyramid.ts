@@ -1,7 +1,10 @@
 import dagre from 'dagre';
 import { Edge, Node, Position } from 'reactflow';
 
-export const generateFlowData = (data: any, isAIImproved: boolean = false, isMobile: boolean = false, labels: any = {}) => {
+// Frameworks that use sequential flow (node1 → node2 → node3 → ...)
+const SEQUENTIAL_FRAMEWORKS = ['STAR', 'PREP', 'GOLDEN_CIRCLE', 'WSN'];
+
+export const generateFlowData = (data: any, isAIImproved: boolean = false, isMobile: boolean = false, labels: any = {}, framework: string = '') => {
   if (!data) return { nodes: [], edges: [] };
 
   // --- RESPONSIVE CONFIGURATION ---
@@ -73,8 +76,70 @@ export const generateFlowData = (data: any, isAIImproved: boolean = false, isMob
     }
   };
 
+  // Determine if this framework uses sequential flow
+  const isSequentialFramework = SEQUENTIAL_FRAMEWORKS.includes(framework.toUpperCase());
+
   if (data.arguments) {
-    data.arguments.forEach((arg: any, index: number) => processNode(arg, rootId, index));
+    if (isSequentialFramework && data.arguments.length > 0) {
+      // Sequential flow: root → arg[0] → arg[1] → arg[2] → ...
+      // First, create all nodes (without edges in processNode)
+      const nodeIds: string[] = [];
+
+      data.arguments.forEach((arg: any, index: number) => {
+        const nodeId = `${rootId}-${index}`;
+        nodeIds.push(nodeId);
+
+        let statusColor = 'border-stone-200 bg-white';
+        if (arg.status === 'strong') statusColor = 'border-green-400 bg-green-50';
+        if (arg.status === 'weak') statusColor = 'border-amber-400 bg-amber-50';
+        if (arg.status === 'missing') statusColor = 'border-stone-300 border-dashed bg-stone-50';
+
+        nodes.push({
+          id: nodeId,
+          type: 'pyramidNode',
+          data: {
+            label: arg.point,
+            headline: arg.headline || arg.point,
+            elaboration: arg.elaboration,
+            critique: arg.critique,
+            type: arg.type,
+            status: arg.status,
+            isImproved: isAIImproved,
+            statusStyle: statusColor,
+            isMobile: isMobile,
+            labels: labels
+          },
+          position: { x: 0, y: 0 },
+        });
+
+        // Process sub_points recursively (they still use tree structure)
+        if (arg.sub_points) {
+          arg.sub_points.forEach((child: any, idx: number) => processNode(child, nodeId, idx));
+        }
+      });
+
+      // Create sequential edges: root → first, then each node → next node
+      edges.push({
+        id: `e-${rootId}-${nodeIds[0]}`,
+        source: rootId,
+        target: nodeIds[0],
+        animated: data.arguments[0].status === 'weak' || data.arguments[0].status === 'missing',
+        style: { strokeWidth: isMobile ? 1 : 2 },
+      });
+
+      for (let i = 0; i < nodeIds.length - 1; i++) {
+        edges.push({
+          id: `e-${nodeIds[i]}-${nodeIds[i + 1]}`,
+          source: nodeIds[i],
+          target: nodeIds[i + 1],
+          animated: data.arguments[i + 1].status === 'weak' || data.arguments[i + 1].status === 'missing',
+          style: { strokeWidth: isMobile ? 1 : 2 },
+        });
+      }
+    } else {
+      // Tree structure (MINTO or fallback): root → all children directly
+      data.arguments.forEach((arg: any, index: number) => processNode(arg, rootId, index));
+    }
   }
 
   // Layout Logic
