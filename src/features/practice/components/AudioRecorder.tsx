@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { audioConfig } from '../config/audioConfig';
 
 interface AudioRecorderProps {
   onRecordingComplete: (audioData: string) => void;
@@ -31,7 +32,12 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
   const [permissionError, setPermissionError] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isNearLimit, setIsNearLimit] = useState(false);
   const t = (key: string, fallback: string) => labels[key] || fallback;
+
+  // Config values
+  const maxDuration = audioConfig.recording.maxDurationSeconds;
+  const warningThreshold = audioConfig.recording.warningThresholdSeconds;
   
   // Audio Refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -78,30 +84,44 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       }
   }, [isMinimized, recorderState]);
 
-  // Timer
+  // Timer with time limit check
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (recorderState === RecorderState.RECORDING) {
       interval = setInterval(() => {
         const now = Date.now();
         const elapsed = now - startTimeRef.current - pausedDurationRef.current;
-        setDuration(Math.max(0, Math.floor(elapsed / 1000)));
-      }, 100);
+        const currentDuration = Math.max(0, Math.floor(elapsed / 1000));
+        setDuration(currentDuration);
+
+        // Check if approaching limit (warning)
+        const timeRemaining = maxDuration - currentDuration;
+        setIsNearLimit(timeRemaining <= warningThreshold && timeRemaining > 0);
+
+        // Auto-stop when max duration reached
+        if (audioConfig.recording.autoStopOnMaxDuration && currentDuration >= maxDuration) {
+          stopRecording();
+        }
+      }, audioConfig.ui.timerIntervalMs);
     } else if (recorderState === RecorderState.REVIEW && isPlaying) {
         interval = setInterval(() => {
             if (audioRef.current) {
                 setDuration(audioRef.current.currentTime);
             }
-        }, 100);
+        }, audioConfig.ui.timerIntervalMs);
     }
     return () => { if (interval) clearInterval(interval); };
-  }, [recorderState, isPlaying]);
+  }, [recorderState, isPlaying, maxDuration, warningThreshold]);
 
   const startRecording = async () => {
     try {
       await stopRecordingCleanup();
-      const rawStream = await navigator.mediaDevices.getUserMedia({ 
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } 
+      const rawStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: audioConfig.quality.echoCancellation,
+          noiseSuppression: audioConfig.quality.noiseSuppression,
+          autoGainControl: audioConfig.quality.autoGainControl
+        }
       });
 
       if (!isMountedRef.current) {
@@ -149,8 +169,8 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
         if (audioContext.state === 'suspended') await audioContext.resume();
         const source = audioContext.createMediaStreamSource(visStream);
         const analyser = audioContext.createAnalyser();
-        analyser.fftSize = 64; 
-        analyser.smoothingTimeConstant = 0.4;
+        analyser.fftSize = audioConfig.visualizer.fftSize;
+        analyser.smoothingTimeConstant = audioConfig.visualizer.smoothingTimeConstant;
         analyserRef.current = analyser;
         source.connect(analyser); 
         drawVisualizer();
@@ -299,9 +319,9 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       ctx.clearRect(0, 0, rect.width, rect.height);
 
       const barWidth = 4;
-      const gap = 5; 
+      const gap = 5;
       const maxBars = Math.floor(rect.width / (barWidth + gap));
-      const barsToDraw = Math.min(maxBars, 20); 
+      const barsToDraw = Math.min(maxBars, audioConfig.visualizer.maxBars); 
       const totalWaveWidth = (barsToDraw * barWidth) + ((barsToDraw - 1) * gap);
       let x = (rect.width - totalWaveWidth) / 2;
       const step = Math.floor(bufferLength / barsToDraw) || 1;
@@ -339,11 +359,12 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
         ) : (
             <div className="flex items-center gap-3">
                 <div className={`w-2.5 h-2.5 rounded-full shadow-lg ${
-                    recorderState === RecorderState.RECORDING ? 'bg-red-500 animate-pulse' :
+                    recorderState === RecorderState.RECORDING ? (isNearLimit ? 'bg-amber-500 animate-pulse' : 'bg-red-500 animate-pulse') :
                     recorderState === RecorderState.PAUSED ? 'bg-amber-400' :
                     'bg-green-500'
                 }`}></div>
-                <span className="font-mono text-lg font-medium tracking-wide">{formatTime(duration)}</span>
+                <span className={`font-mono text-lg font-medium tracking-wide ${isNearLimit ? 'text-amber-400' : ''}`}>{formatTime(duration)}</span>
+                {isNearLimit && <span className="text-amber-400 text-xs">({formatTime(maxDuration - duration)} left)</span>}
             </div>
         )}
 
@@ -400,7 +421,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
 
         <div className="relative w-full flex flex-col items-center gap-2 py-4">
             <div className="flex items-center gap-6">
-                <div className={`w-3 h-3 rounded-full ${recorderState === RecorderState.RECORDING ? 'bg-red-500 animate-pulse' : recorderState === RecorderState.REVIEW ? 'bg-green-500' : 'bg-amber-400'}`}></div>
+                <div className={`w-3 h-3 rounded-full ${recorderState === RecorderState.RECORDING ? (isNearLimit ? 'bg-amber-500 animate-pulse' : 'bg-red-500 animate-pulse') : recorderState === RecorderState.REVIEW ? 'bg-green-500' : 'bg-amber-400'}`}></div>
                 <div className="h-12 w-48 flex items-center justify-center">
                     {permissionError ? <span className="text-red-500 text-xs">{t('microphoneError', 'Microphone Error')}</span> : recorderState === RecorderState.REVIEW ? (
                         <div className="flex items-center justify-center gap-1 h-full w-full">
@@ -408,8 +429,13 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
                         </div>
                     ) : <canvas ref={canvasRef} className="w-full h-full" />}
                 </div>
-                <div className="font-mono text-xl font-medium text-stone-800 tabular-nums">{formatTime(duration)}</div>
+                <div className={`font-mono text-xl font-medium tabular-nums ${isNearLimit ? 'text-amber-600' : 'text-stone-800'}`}>{formatTime(duration)}</div>
             </div>
+            {isNearLimit && (
+                <div className="text-amber-600 text-sm font-medium animate-pulse">
+                    {formatTime(maxDuration - duration)} remaining
+                </div>
+            )}
         </div>
 
         <div className="grid grid-cols-3 items-center w-full max-w-sm gap-4">
