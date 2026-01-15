@@ -57,16 +57,22 @@ router.post('/analyze-speech', async (req, res) => {
       5. **W-S-N (Reflection):** What? -> So What? -> Now What?
 
       # TASK 1: THE MIRROR (Analyze User's "My Logic")
-      **GOAL:** Reflect the user's speech EXACTLY as they spoke it.
+      **GOAL:** Extract and display the user's EXACT words from their speech - DO NOT polish or rewrite.
 
       **CRITICAL RULES FOR "MY LOGIC":**
-      1. **STRICT FIRST-PERSON ("I"):** Use "I" to represent the user.
-      2. **CHRONOLOGICAL MAPPING:** Map nodes in the exact order spoken.
-      3. **TYPE DEFINITIONS:**
+      1. **EXTRACT EXACT QUOTES:** Each node's "point" field MUST be a direct quote or close extraction from the user's transcription. Preserve their exact wording, grammar (even if imperfect), and vocabulary. This reflects their real language level.
+      2. **NO POLISHING:** Do NOT summarize, rephrase, or improve the user's words. If they said "I go to school yesterday", keep it as is - don't correct to "I went to school yesterday".
+      3. **FRAMEWORK FLOW ORDER:** Arrange the extracted quotes to match the detected framework's flow:
+         - PREP: Point (opening statement) → Reason (why) → Example (story/evidence) → Point (conclusion)
+         - STAR: Situation → Task → Action → Result
+         - GOLDEN_CIRCLE: Why → How → What
+         - WSN: What → So What → Now What
+         - MINTO: Conclusion → Arguments → Evidence
+      4. **TYPE DEFINITIONS:**
          - **FACT:** Only for objective truths (e.g. "The sun is hot").
          - **OPINION:** Personal preferences, habits, or feelings (e.g. "I like sleep", "I feel happy").
          - **STORY:** Narrative events.
-      4. **NARRATIVE DEPTH:** Nest sequential events (A->B->C) using 'sub_points'.
+      5. **NARRATIVE DEPTH:** Nest sequential events (A->B->C) using 'sub_points'.
 
       # TASK 2: THE ARCHITECT (Generate "AI Improved")
       **GOAL:** Reorganize the thoughts into the BEST SUITED framework.
