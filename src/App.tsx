@@ -1,25 +1,34 @@
-import React, { useState, useEffect } from 'react';
-import Layout from './shared/components/Layout';
+import React, { useEffect, useRef, useState } from 'react';
 import ContentTabs from './features/content/components/ContentTabs';
+import TopicSelector from './features/content/components/TopicSelector';
 import LiveVoiceInterface from './features/live-voice/components/LiveVoiceInterface';
-import VideoPlayer from './features/video/components/VideoPlayer';
-import { AppState, VideoData, TopicPoint, VocabularyItem } from './shared/types';
+import PracticeSession from './features/practice/components/PracticeSession';
+import VideoPlayer, { VideoPlayerRef } from './features/video/components/VideoPlayer';
 import { extractVideoId, fetchVideoMetadata } from './features/video/services/youtubeService';
-import { analyzeVideoContent } from './shared/services/geminiService';
+import Layout from './shared/components/Layout';
 import { LANGUAGES, LEVELS } from './shared/constants';
+import { analyzeVideoContent } from './shared/services/geminiService';
+import { AppState, PracticeTopic, TopicPoint, VideoData, VocabularyItem } from './shared/types';
 
 // Custom Chevron for Dropdowns
 const ChevronDownIcon = () => (
-  <svg className="w-5 h-5 text-cyan-800 pointer-events-none absolute right-5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M19 9l-7 7-7-7" />
+  <svg className="w-4 h-4 text-zinc-500 pointer-events-none absolute right-4 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
   </svg>
 );
 
 const useIsDesktop = () => {
-  const [isDesktop, setIsDesktop] = useState(true);
+  const [isDesktop, setIsDesktop] = useState(() => 
+    typeof window !== 'undefined' ? window.innerWidth >= 1024 : true
+  );
+
   useEffect(() => {
+    // Reveal body after mount to prevent FOUC with Tailwind CDN
+    requestAnimationFrame(() => {
+      document.body.style.opacity = '1';
+    });
+
     const check = () => setIsDesktop(window.innerWidth >= 1024);
-    check(); // Initial check
     window.addEventListener('resize', check);
     return () => window.removeEventListener('resize', check);
   }, []);
@@ -31,7 +40,7 @@ const App: React.FC = () => {
   const [videoUrl, setVideoUrl] = useState('');
   
   // Language & Level State
-  const [nativeLang, setNativeLang] = useState('Chinese');
+  const [nativeLang, setNativeLang] = useState('Chinese (Mandarin - 中文)');
   const [targetLang, setTargetLang] = useState('English');
   const [level, setLevel] = useState('Easy');
 
@@ -42,10 +51,134 @@ const App: React.FC = () => {
   const [translatedSummary, setTranslatedSummary] = useState('');
   const [topics, setTopics] = useState<TopicPoint[]>([]);
   const [vocabulary, setVocabulary] = useState<VocabularyItem[]>([]);
+  const [transcript, setTranscript] = useState<{ text: string; duration: number; offset: number }[]>([]);
+  const [discussionTopics, setDiscussionTopics] = useState<PracticeTopic[]>([]);
+  const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
+  const [activePracticeTopic, setActivePracticeTopic] = useState<PracticeTopic | null>(null);
+  const [isAnalysisLoading, setIsAnalysisLoading] = useState(false);
+  const [loadingText, setLoadingText] = useState("Preparing your lesson...");
+  const [currentTime, setCurrentTime] = useState(0);
   
   const [errorMsg, setErrorMsg] = useState('');
 
+  // --- History / Navigation Logic ---
+  useEffect(() => {
+    const handlePopState = () => {
+      const hash = window.location.hash;
+      
+      if (hash === '#session') {
+        if (videoData) setAppState(AppState.CALL_SESSION);
+        else {
+            setAppState(AppState.LANDING);
+            window.history.replaceState(null, '', ' ');
+        }
+      } else if (hash === '#dashboard') {
+        if (videoData) setAppState(AppState.DASHBOARD);
+        else {
+            setAppState(AppState.LANDING);
+            window.history.replaceState(null, '', ' ');
+        }
+      } else if (hash === '#practice') {
+        if (videoData && activePracticeTopic) setAppState(AppState.PRACTICE_SESSION);
+        else if (videoData) setAppState(AppState.DASHBOARD);
+        else {
+            setAppState(AppState.LANDING);
+            window.history.replaceState(null, '', ' ');
+        }
+      } else {
+        setAppState(AppState.LANDING);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [videoData, activePracticeTopic]);
+
+  // Sync State -> Hash
+  useEffect(() => {
+    if (appState === AppState.LOADING) return;
+
+    const currentHash = window.location.hash;
+    let targetHash = '';
+
+    if (appState === AppState.DASHBOARD) targetHash = '#dashboard';
+    if (appState === AppState.CALL_SESSION) targetHash = '#session';
+    if (appState === AppState.PRACTICE_SESSION) targetHash = '#practice';
+    if (appState === AppState.LANDING) targetHash = '';
+
+    if (currentHash !== targetHash) {
+        if (targetHash) {
+            window.history.pushState(null, '', targetHash);
+        } else {
+            // Remove hash when going to landing
+            window.history.pushState(null, '', window.location.pathname + window.location.search);
+        }
+    }
+  }, [appState]);
+
+  // --- Persistence Logic ---
+  const STORAGE_KEY = 'bilibala_state_v1';
+
+  useEffect(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        const p = JSON.parse(saved);
+        if (p.videoData) {
+            setVideoUrl(p.videoUrl || '');
+            setNativeLang(p.nativeLang || 'Chinese (Mandarin - 中文)');
+            setTargetLang(p.targetLang || 'English');
+            setLevel(p.level || 'Easy');
+            setVideoData(p.videoData);
+            setSummary(p.summary || '');
+            setTranslatedSummary(p.translatedSummary || '');
+            setTopics(p.topics || []);
+            setVocabulary(p.vocabulary || []);
+            setTranscript(p.transcript || []);
+            setDiscussionTopics(p.discussionTopics || []);
+            setSelectedTopics(p.selectedTopics || []);
+            
+            // Restore to Dashboard (safer than restoring active call session immediately)
+            setAppState(AppState.DASHBOARD);
+        }
+      } catch (e) { 
+          console.error("Failed to hydrate state", e); 
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (videoData) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+            videoUrl, nativeLang, targetLang, level, videoData,
+            summary, translatedSummary, topics, vocabulary, transcript, discussionTopics, selectedTopics
+        }));
+    } else {
+        localStorage.removeItem(STORAGE_KEY);
+    }
+  }, [videoData, videoUrl, nativeLang, targetLang, level, summary, translatedSummary, topics, vocabulary, transcript, discussionTopics, selectedTopics]);
+
   const isDesktop = useIsDesktop();
+  const playerRef = useRef<VideoPlayerRef>(null);
+
+  const handleTimestampClick = (offsetMs: number) => {
+    if (playerRef.current) {
+        playerRef.current.seekTo(offsetMs / 1000);
+    }
+  };
+
+  const handleTopicToggle = (topic: string) => {
+    setSelectedTopics(prev => 
+      prev.includes(topic) 
+        ? prev.filter(t => t !== topic) 
+        : [...prev, topic]
+    );
+  };
+
+  const handleStartPractice = (topic: PracticeTopic) => {
+    setActivePracticeTopic(topic);
+    setAppState(AppState.PRACTICE_SESSION);
+  };
 
   const handleStart = async () => {
     const videoId = extractVideoId(videoUrl);
@@ -55,10 +188,11 @@ const App: React.FC = () => {
     }
 
     setAppState(AppState.LOADING);
+    setLoadingText("Preparing your lesson...");
     setErrorMsg('');
 
     try {
-      // 1. Fetch Video Metadata
+      // 1. Fetch Video Metadata (Fast)
       const metadata = await fetchVideoMetadata(videoUrl);
       
       const vData: VideoData = {
@@ -68,15 +202,59 @@ const App: React.FC = () => {
       };
       setVideoData(vData);
 
-      // 2. AI Processing
-      const analysis = await analyzeVideoContent(metadata.title, nativeLang, targetLang, level);
-      
-      setSummary(analysis.summary);
-      setTranslatedSummary(analysis.translatedSummary);
-      setTopics(analysis.topics);
-      setVocabulary(analysis.vocabulary);
+      // Start loading content
+      setIsAnalysisLoading(true);
 
-      setAppState(AppState.DASHBOARD);
+      // 2. Hybrid Loading Logic:
+      // - If analysis finishes fast (< 20s), go to dashboard immediately when done.
+      // - At 10s, update loading text.
+      // - If analysis is slow (> 20s), go to dashboard at 20s mark and show skeletons.
+      
+      const analysisPromise = analyzeVideoContent(metadata.title, videoUrl, nativeLang, targetLang, level);
+      
+      let isDashboardShown = false;
+      const showDashboard = () => {
+          if (!isDashboardShown) {
+              setAppState(AppState.DASHBOARD);
+              isDashboardShown = true;
+          }
+      };
+
+      // Timer 1: Update message at 10s
+      const messageTimerId = setTimeout(() => {
+          setLoadingText("Longer videos require more time to analyze...");
+      }, 10000);
+
+      // Timer 2: Max wait time for loading screen: 20 seconds
+      const maxWaitTimerId = setTimeout(() => {
+          showDashboard();
+      }, 25000);
+
+      analysisPromise
+        .then(analysis => {
+            setSummary(analysis.summary);
+            setTranslatedSummary(analysis.translatedSummary);
+            setTopics(analysis.topics);
+            setVocabulary(analysis.vocabulary);
+            setTranscript(analysis.transcript || []);
+            setDiscussionTopics(analysis.discussionTopics || []);
+            setSelectedTopics([]);
+            
+            // Done: Cancel timers and show dashboard now
+            clearTimeout(messageTimerId);
+            clearTimeout(maxWaitTimerId);
+            showDashboard();
+        })
+        .catch(err => {
+            console.error("Analysis background error:", err);
+            clearTimeout(messageTimerId);
+            clearTimeout(maxWaitTimerId);
+            showDashboard(); // Proceed to dashboard even on partial error
+        })
+        .finally(() => {
+            setIsAnalysisLoading(false);
+        });
+
     } catch (err: any) {
       console.error(err);
       const message = err.message || "Failed to load video data. Please try again.";
@@ -100,34 +278,33 @@ const App: React.FC = () => {
     setTranslatedSummary('');
     setTopics([]);
     setVocabulary([]);
+    setTranscript([]);
+    setDiscussionTopics([]);
+    setSelectedTopics([]);
     setErrorMsg('');
   };
 
   const StartCallButton = () => (
     <button
       onClick={() => setAppState(AppState.CALL_SESSION)}
-      className="fixed bottom-8 right-8 z-50 group flex items-center gap-2 bg-yellow-400 text-yellow-900 border-4 border-white p-4 rounded-full shadow-xl shadow-yellow-600/20 hover:-translate-y-2 transition-all duration-300 overflow-hidden max-w-[80px] hover:max-w-[240px]"
+      className="fixed bottom-8 right-8 z-50 group flex items-center gap-2 bg-zinc-900 text-white border border-zinc-700 p-4 rounded-full shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden max-w-[60px] hover:max-w-[200px]"
       aria-label="Start Chatting"
     >
-      <div className="w-8 h-8 flex items-center justify-center shrink-0 text-yellow-900">
-         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M21 15C21 15.5304 20.7893 16.0391 20.4142 16.4142C20.0391 16.7893 19.5304 17 19 17H7L3 21V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H19C19.5304 3 20.0391 3.21071 20.4142 3.58579C20.7893 3.96086 21 4.46957 21 5V15Z" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M8 9h8" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
-            <path d="M8 13h5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
+      <div className="w-6 h-6 flex items-center justify-center shrink-0">
+         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M21 15C21 15.5304 20.7893 16.0391 20.4142 16.4142C20.0391 16.7893 19.5304 17 19 17H7L3 21V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H19C19.5304 3 20.0391 3.21071 20.4142 3.58579C20.7893 3.96086 21 4.46957 21 5V15Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M8 9h8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+            <path d="M8 13h5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
          </svg>
       </div>
-      <span className="font-black uppercase font-display text-lg tracking-wider whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300 delay-75">
-        Jump In!
+      <span className="font-medium text-sm whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300 delay-75">
+        Start Conversation
       </span>
     </button>
   );
 
-  const shouldShowHeader = appState === AppState.DASHBOARD || appState === AppState.CALL_SESSION;
-  const isDashboard = appState === AppState.DASHBOARD;
-  
-  // Allow scrolling for both Dashboard and Call Session
-  // This ensures that on smaller desktop screens, the user can scroll to see the full phone UI
-  const isScrollable = appState === AppState.DASHBOARD || appState === AppState.CALL_SESSION;
+  const shouldShowHeader = appState === AppState.DASHBOARD || appState === AppState.CALL_SESSION || appState === AppState.PRACTICE_SESSION;
+  const isScrollable = appState === AppState.DASHBOARD || appState === AppState.CALL_SESSION || appState === AppState.PRACTICE_SESSION;
 
   return (
     <Layout 
@@ -139,27 +316,26 @@ const App: React.FC = () => {
       {/* 1. LANDING PAGE */}
       {appState === AppState.LANDING && (
         <div className="h-full flex flex-col items-center justify-center p-4 overflow-y-auto">
-           <div className="w-full max-w-2xl text-center space-y-4 md:space-y-5">
-              <div className="space-y-1 md:space-y-2">
-                  <h2 className="text-4xl md:text-6xl font-black text-white tracking-tight font-display drop-shadow-lg" style={{ textShadow: '4px 4px 0px rgba(8, 145, 178, 0.4)' }}>
-                    Dive Into<br/>
-                    <span className="text-yellow-300">Language Fluency</span>
+           <div className="w-full max-w-xl text-center space-y-8">
+              <div className="space-y-3">
+                  <h2 className="text-4xl md:text-5xl font-serif text-stone-800 tracking-tight">
+                    Daily efforts
                   </h2>
-                  <p className="text-lg md:text-xl text-cyan-50 font-bold w-full mx-auto leading-relaxed drop-shadow-md">
-                    Turn any YouTube video into a refreshing language pool party.
+                  <p className="text-base text-stone-500 max-w-md mx-auto leading-relaxed">
+                    Turn any YouTube video into a structured language lesson.
                   </p>
               </div>
 
-              <div className="bg-white/20 backdrop-blur-xl p-4 md:p-6 shadow-2xl shadow-cyan-900/20 rounded-[2rem] md:rounded-[3rem] space-y-3 relative border border-white/40">
+              <div className="bg-[#FAF9F6] p-6 md:p-8 border border-stone-200 shadow-sm rounded-2xl space-y-5 text-left">
                  
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div className="space-y-1 text-left">
-                        <label className="text-xs font-bold uppercase tracking-wider text-cyan-100 ml-4 mb-1 block">I Speak</label>
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                        <label className="text-[11px] font-semibold uppercase tracking-wider text-stone-400 ml-1">I Speak</label>
                         <div className="relative group">
                             <select 
                                 value={nativeLang}
                                 onChange={(e) => setNativeLang(e.target.value)}
-                                className="w-full appearance-none bg-white/40 backdrop-blur-md border-2 border-white/60 text-cyan-900 font-bold rounded-2xl py-2 px-5 pr-12 outline-none focus:bg-white/60 focus:border-white focus:ring-4 focus:ring-cyan-300/30 transition-all cursor-pointer hover:bg-white/50 text-base shadow-sm"
+                                className="w-full appearance-none bg-white border border-stone-200 text-stone-700 text-sm rounded-lg py-2.5 px-3 pr-8 outline-none focus:border-stone-400 focus:ring-1 focus:ring-stone-200 transition-all cursor-pointer hover:bg-stone-50"
                             >
                                 {LANGUAGES.map(l => <option key={l.code} value={l.name}>{l.name}</option>)}
                             </select>
@@ -167,13 +343,13 @@ const App: React.FC = () => {
                         </div>
                     </div>
 
-                    <div className="space-y-1 text-left">
-                        <label className="text-xs font-bold uppercase tracking-wider text-cyan-100 ml-4 mb-1 block">I'm Learning</label>
+                    <div className="space-y-1.5">
+                        <label className="text-[11px] font-semibold uppercase tracking-wider text-stone-400 ml-1">I'm Learning</label>
                         <div className="relative group">
                             <select 
                                 value={targetLang}
                                 onChange={(e) => setTargetLang(e.target.value)}
-                                className="w-full appearance-none bg-white/40 backdrop-blur-md border-2 border-white/60 text-cyan-900 font-bold rounded-2xl py-2 px-5 pr-12 outline-none focus:bg-white/60 focus:border-white focus:ring-4 focus:ring-cyan-300/30 transition-all cursor-pointer hover:bg-white/50 text-base shadow-sm"
+                                className="w-full appearance-none bg-white border border-stone-200 text-stone-700 text-sm rounded-lg py-2.5 px-3 pr-8 outline-none focus:border-stone-400 focus:ring-1 focus:ring-stone-200 transition-all cursor-pointer hover:bg-stone-50"
                             >
                                 {LANGUAGES.map(l => <option key={l.code} value={l.name}>{l.name}</option>)}
                             </select>
@@ -181,17 +357,17 @@ const App: React.FC = () => {
                         </div>
                     </div>
 
-                    <div className="col-span-1 md:col-span-2 space-y-1 text-left">
-                        <label className="text-xs font-bold uppercase tracking-wider text-cyan-100 ml-4 mb-1 block">Depth Level</label>
-                        <div className="flex flex-wrap md:flex-nowrap bg-white/30 p-1.5 rounded-2xl border border-white/40 shadow-inner gap-2">
+                    <div className="col-span-1 md:col-span-2 space-y-1.5">
+                        <label className="text-[11px] font-semibold uppercase tracking-wider text-stone-400 ml-1">Depth Level</label>
+                        <div className="flex flex-wrap md:flex-nowrap bg-white p-1 rounded-lg border border-stone-200 gap-1">
                             {LEVELS.map(l => (
                                 <button
                                     key={l.id}
                                     onClick={() => setLevel(l.id)}
-                                    className={`flex-1 min-w-[30%] py-1.5 md:py-2 rounded-xl font-black transition-all text-sm md:text-base ${
+                                    className={`flex-1 py-2 rounded-md text-xs font-medium transition-all ${
                                         level === l.id 
-                                        ? 'bg-white text-cyan-600 shadow-md transform scale-[1.02] ring-2 ring-white/50' 
-                                        : 'text-cyan-800 hover:bg-white/20'
+                                        ? 'bg-[#FAF9F6] text-stone-800 shadow-sm border border-stone-200' 
+                                        : 'text-stone-500 hover:text-stone-700 hover:bg-stone-50'
                                     }`}
                                 >
                                     {l.label}
@@ -201,24 +377,25 @@ const App: React.FC = () => {
                     </div>
                  </div>
 
-                 <div className="relative mt-1">
+                 <div className="space-y-1.5 pt-2">
+                    <label className="text-[11px] font-semibold uppercase tracking-wider text-stone-400 ml-1">Source Material</label>
                     <input
                       type="text"
-                      className="w-full bg-white/60 border-2 border-white/60 px-5 py-2.5 pr-12 text-base md:text-lg font-bold placeholder:text-cyan-800/40 text-cyan-900 focus:outline-none focus:bg-white/80 focus:ring-4 focus:ring-cyan-300/30 transition-all rounded-2xl shadow-inner"
+                      className="w-full bg-white border border-stone-300 px-4 py-3 text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none focus:border-stone-500 focus:ring-1 focus:ring-stone-200 transition-all rounded-lg shadow-sm"
                       placeholder="Paste YouTube Link..."
                       value={videoUrl}
                       onChange={(e) => setVideoUrl(e.target.value)}
                     />
                  </div>
 
-                 {errorMsg && <div className="bg-red-400 text-white font-bold p-3 rounded-2xl text-sm shadow-lg border border-red-300">{errorMsg}</div>}
+                 {errorMsg && <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg text-xs font-medium border border-red-100">{errorMsg}</div>}
 
                  <button
                     onClick={handleStart}
                     disabled={!videoUrl}
-                    className="w-full bg-gradient-to-r from-yellow-400 to-orange-400 text-white font-black py-2.5 md:py-3 text-lg md:text-xl rounded-2xl shadow-xl shadow-orange-500/30 hover:shadow-2xl hover:-translate-y-1 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 border-t border-white/30"
+                    className="w-full bg-stone-800 text-white font-medium py-3 text-sm rounded-lg shadow-md hover:bg-stone-900 hover:shadow-lg hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
                  >
-                    Splash In!
+                    Start
                  </button>
               </div>
            </div>
@@ -227,35 +404,45 @@ const App: React.FC = () => {
 
       {/* 2. LOADING STATE */}
       {appState === AppState.LOADING && (
-         <div className="h-full flex flex-col items-center justify-center space-y-8">
+         <div className="h-full flex flex-col items-center justify-center space-y-6">
             <div className="relative">
-                <div className="w-32 h-32 border-8 border-white/30 border-t-white rounded-full animate-spin"></div>
-                <div className="absolute inset-0 flex items-center justify-center text-4xl animate-bounce">
-                    <svg width="40" height="40" viewBox="0 0 24 24" fill="white">
-                        <circle cx="12" cy="12" r="10" fillOpacity="0.8"/>
-                    </svg>
-                </div>
+                <div className="w-16 h-16 border-2 border-stone-200 border-t-stone-800 rounded-full animate-spin"></div>
             </div>
-            <p className="text-white font-bold text-3xl font-display animate-pulse drop-shadow-md">Inflating Ducks...</p>
+            <p className="text-stone-500 text-sm font-medium animate-pulse">{loadingText}</p>
          </div>
       )}
 
       {/* 3. DASHBOARD VIEW */}
       {appState === AppState.DASHBOARD && videoData && (
-        <div className="flex flex-col p-4 md:p-6 pt-20 md:pt-24 max-w-5xl mx-auto gap-6 md:gap-8 relative">
-           <div className="w-full aspect-video shrink-0 rounded-[2rem] overflow-hidden shadow-2xl shadow-cyan-900/40 z-0 ring-4 ring-white/30">
-               <VideoPlayer url={videoData.url} onError={handleVideoError} />
+        <div className="flex flex-col lg:grid lg:grid-cols-12 gap-6 p-4 md:p-6 pt-24 max-w-[1600px] mx-auto min-h-screen">
+           {/* Left Column: Video & Highlights */}
+           <div className="lg:col-span-7 flex flex-col gap-6">
+               <div className="w-full aspect-video shrink-0 rounded-xl overflow-hidden shadow-sm border border-stone-200 bg-black">
+                   <VideoPlayer ref={playerRef} url={videoData.url} onError={handleVideoError} onTimeUpdate={setCurrentTime} />
+               </div>
+               
+               <TopicSelector 
+                  topics={discussionTopics}
+                  selectedTopics={selectedTopics}
+                  onTopicToggle={handleTopicToggle}
+                  isLoading={isAnalysisLoading}
+                  onStartPractice={handleStartPractice}
+               />
            </div>
 
-           <div className="w-full rounded-[2rem] pb-24"> 
+           {/* Right Column: Transcript & Vocabulary */}
+           <div className="lg:col-span-5 h-[500px] lg:h-[calc(100vh-140px)]"> 
                <ContentTabs 
                   summary={summary}
                   translatedSummary={translatedSummary}
                   topics={topics} 
                   vocabulary={vocabulary} 
-                  isLoading={false} 
+                  transcript={transcript}
+                  onTimestampClick={handleTimestampClick}
+                  isLoading={isAnalysisLoading} 
                   targetLang={targetLang}
-                  layoutMode="auto" 
+                  layoutMode="fixed" 
+                  currentTime={currentTime}
                 />
            </div>
 
@@ -265,11 +452,8 @@ const App: React.FC = () => {
 
       {/* 4. CALL SESSION VIEW */}
       {appState === AppState.CALL_SESSION && videoData && (
-        <div className="flex flex-col lg:grid lg:grid-cols-12 gap-6 p-4 md:p-6 pt-20 md:pt-24 max-w-[1600px] mx-auto">
-           {/* Left: Phone Interface 
-               - Mobile: 85vh to cover most screen, but allow scroll to see content below.
-               - Desktop: Fixed height calc.
-           */}
+        <div className="flex flex-col lg:grid lg:grid-cols-12 gap-6 p-4 md:p-6 pt-24 max-w-[1600px] mx-auto min-h-screen">
+           {/* Left: Phone Interface */}
            <div className="lg:col-span-5 h-[85vh] lg:h-[calc(100vh-140px)] min-h-[550px] shrink-0">
                <LiveVoiceInterface 
                   videoTitle={videoData.title} 
@@ -283,22 +467,31 @@ const App: React.FC = () => {
                />
            </div>
 
-           {/* Right: Content Reference 
-               - Mobile: Auto height to fit content naturally below.
-               - Desktop: Match height of left column.
-           */}
+           {/* Right: Content Reference */}
            <div className="lg:col-span-7 h-auto lg:h-[calc(100vh-140px)] min-h-[400px] shrink-0">
                <ContentTabs 
                   summary={summary}
                   translatedSummary={translatedSummary}
                   topics={topics} 
                   vocabulary={vocabulary} 
+                  transcript={transcript}
                   isLoading={false} 
                   targetLang={targetLang}
                   layoutMode={isDesktop ? 'fixed' : 'auto'}
                 />
            </div>
         </div>
+      )}
+
+      {/* 5. PRACTICE SESSION VIEW (NEW) */}
+      {appState === AppState.PRACTICE_SESSION && videoData && activePracticeTopic && (
+          <PracticeSession
+            topic={activePracticeTopic}
+            level={level}
+            nativeLang={nativeLang}
+            targetLang={targetLang}
+            onExit={() => setAppState(AppState.DASHBOARD)}
+          />
       )}
     </Layout>
   );

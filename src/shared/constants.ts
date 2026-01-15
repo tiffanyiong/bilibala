@@ -21,8 +21,8 @@ export const LANGUAGES = [
 
 export const LEVELS = [
   { id: 'Easy', label: 'Beginner' },
-  { id: 'Moderate', label: 'Intermediate' },
-  { id: 'Intermediate', label: 'Advanced' }
+  { id: 'Medium', label: 'Intermediate' },
+  { id: 'Hard', label: 'Advanced' }
 ];
 
 export const UI_TRANSLATIONS: Record<string, { outline: string; slang: string; ready: string; start: string }> = {

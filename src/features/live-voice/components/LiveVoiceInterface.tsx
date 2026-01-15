@@ -121,7 +121,7 @@ const LiveVoiceInterface: React.FC<LiveVoiceInterfaceProps> = ({
     if (!mountedRef.current) return;
     const dur = opts?.durationSecs ?? lastDurationRef.current ?? durationSeconds;
     const durLabel = dur > 0 ? ` • ${formatDuration(dur)}` : '';
-    const text = `Call ended${durLabel}.`;
+    const text = `Call ended${durLabel}`;
     setError(null);
     setCallEndedNote(text);
   };
@@ -501,7 +501,7 @@ const LiveVoiceInterface: React.FC<LiveVoiceInterfaceProps> = ({
                  
             if ((hasModelAudio || hasModelText) && currentInputRef.current.trim()) {
                  const userText = currentInputRef.current.trim();
-                 setHistory(prev => [...prev, { role: 'user', text: userText }]);
+                 setHistory(prev => [...prev, { role: 'user', text: userText, timestamp: Date.now() }]);
                  currentInputRef.current = '';
                  setRealtimeInput('');
             }
@@ -638,31 +638,29 @@ const LiveVoiceInterface: React.FC<LiveVoiceInterfaceProps> = ({
   const isActiveSession = isConnected && !callEnded;
 
   return (
-    <div className="relative w-full h-full flex flex-col shadow-2xl rounded-[2.5rem] border border-white/40 ring-1 ring-black/5 bg-gradient-to-b from-cyan-50 to-white overflow-hidden min-h-0">
+    <div className="relative w-full h-full flex flex-col shadow-sm rounded-2xl border border-stone-200 bg-[#FAF9F6] overflow-hidden min-h-0">
       
-      <div className="absolute inset-0 z-0 opacity-50 pointer-events-none overflow-hidden rounded-[2.5rem]">
-         <div className="absolute top-[-10%] left-[-10%] w-[400px] h-[400px] bg-cyan-200/40 rounded-full blur-[60px] animate-pulse-slow"></div>
-         <div className="absolute bottom-[-10%] right-[-10%] w-[350px] h-[350px] bg-blue-200/40 rounded-full blur-[60px] animate-pulse-slow" style={{ animationDelay: '2s' }}></div>
-      </div>
+      {/* Background - Minimal Paper Texture */}
+      <div className="absolute inset-0 z-0 opacity-[0.02] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/cream-paper.png')]"></div>
 
       <div className="absolute top-6 left-6 z-[60]">
           <button 
              onClick={handleBack}
-             className="p-4 bg-white/80 hover:bg-white text-slate-600 rounded-full backdrop-blur-md shadow-md border border-white transition-all active:scale-95 group cursor-pointer"
+             className="p-3 bg-[#FAF9F6] hover:bg-stone-100 text-stone-600 rounded-full shadow-sm border border-stone-200 transition-all active:scale-95 group cursor-pointer"
              aria-label="Back to Dashboard"
           >
               <BackIcon />
           </button>
       </div>
 
-      <header className="h-16 md:h-24 pt-4 md:pt-8 pb-2 px-6 flex flex-col items-center justify-center z-50 w-full shrink-0 transition-all">
-         <div className="text-xs font-black uppercase tracking-widest text-cyan-600 mb-2 bg-white/60 backdrop-blur-md px-4 py-1.5 rounded-full shadow-sm border border-white/50">
-             Bilibala AI
+      <header className="h-16 md:h-20 pt-6 pb-2 px-6 flex flex-col items-center justify-center z-50 w-full shrink-0 transition-all border-b border-transparent">
+         <div className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-1">
+             AI Tutor
          </div>
-         <div className="flex items-center gap-2 mt-1">
-             <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-400 animate-pulse' : 'bg-slate-300'}`}></span>
-             <span className="text-sm font-bold text-slate-400">
-                {isConnected ? formatDuration(durationSeconds) : "--:--"}
+         <div className="flex items-center gap-2">
+             <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-stone-300'}`}></span>
+             <span className="text-xs font-medium text-stone-400 tabular-nums">
+                {isConnected ? formatDuration(durationSeconds) : "00:00"}
              </span>
          </div>
       </header>
@@ -682,7 +680,7 @@ const LiveVoiceInterface: React.FC<LiveVoiceInterfaceProps> = ({
 
               <div className="min-h-[2rem] mt-4 flex items-center justify-center relative z-20 px-4">
                  {callEnded ? (
-                   <div className="px-4 py-2 rounded-full text-xs md:text-sm font-bold bg-white text-slate-700 border border-slate-200 shadow-sm flex items-center gap-2">
+                   <div className="px-4 py-2 rounded-full text-xs md:text-[13px] font-medium bg-zinc-50 text-zinc-600 border border-zinc-200 shadow-sm flex items-center gap-2">
                       <span>{callEndedNote}</span>
                    </div>
                  ) : isIdle ? null : (
@@ -715,7 +713,7 @@ const LiveVoiceInterface: React.FC<LiveVoiceInterfaceProps> = ({
       
       {/* Show Tap Start text in both Idle AND Call Ended states */}
       {(isIdle || callEnded) && (
-        <div className="text-center pb-2 text-slate-400 font-bold animate-pulse text-sm">
+        <div className="text-center pb-2 text-zinc-400 font-medium animate-pulse text-[13px]">
             Tap Start to chat
         </div>
       )}
