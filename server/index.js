@@ -496,7 +496,7 @@ Return JSON: { "hints": ["Short answer string", "Longer different answer string"
 app.post('/api/analyze-speech', async (req, res) => {
   try {
     if (!GEMINI_API_KEY) return res.status(500).json({ error: 'Server missing GEMINI_API_KEY' });
-    const { audioData, topic, question, level } = req.body || {};
+    const { audioData, topic, question, level, targetLang, nativeLang } = req.body || {};
     
     if (!audioData) return res.status(400).json({ error: 'No audio data provided' });
 
@@ -512,6 +512,25 @@ app.post('/api/analyze-speech', async (req, res) => {
       - **Topic:** "${topic}"
       - **Question:** "${question}"
       - **User Level:** ${level}
+      - **Target Language:** ${targetLang || 'English'}
+      - **Native Language:** ${nativeLang || 'Chinese (Mandarin - 中文)'}
+
+      # CRITICAL LANGUAGE REQUIREMENT
+      ${level === 'Easy' ? `
+      FOR BEGINNER (EASY) LEVEL:
+      - Graph content (conclusion, argument points, headlines, elaborations, critiques, evidence) MUST be in ${targetLang || 'English'}
+      - Coach's Feedback (strengths, weaknesses, suggestions) MUST be in ${nativeLang || 'English)'} to help beginners understand better
+      - Word improvements (original, improved, explanation) MUST be in ${targetLang || 'English'}
+      - The transcription field must remain as-is (user's actual speech in ${targetLang || 'English'})
+      ` : `
+      FOR INTERMEDIATE/ADVANCED LEVEL:
+      ALL text content in your response MUST be in ${targetLang || 'English'}. This includes:
+      - conclusion (both in structure and improved_structure)
+      - All argument points, headlines, elaborations, critiques, and evidence
+      - All feedback (strengths, weaknesses, suggestions)
+      - All improvement suggestions (original, improved, explanation)
+      - The transcription field must remain as-is (user's actual speech)
+      `}
 
       # FRAMEWORK DEFINITIONS
       1. **MINTO (Logical):** Conclusion -> Arguments -> Evidence.
@@ -726,6 +745,85 @@ app.post('/api/analyze-speech', async (req, res) => {
 });
 // ------- end of anlyze-speech
 
+// Translate UI labels based on user level
+app.post('/api/translate-ui-labels', async (req, res) => {
+  try {
+    if (!GEMINI_API_KEY) return res.status(500).json({ error: 'Server missing GEMINI_API_KEY' });
+    
+    // FIX 1: Extract 'sourceLabels' from request so frontend and backend stay synced
+    const { language, isEasyLevel, sourceLabels } = req.body || {};
+
+    if (!language) {
+      return res.status(400).json({ error: 'Language is required' });
+    }
+
+    const ai = createAi();
+
+    // FIX 2: Use the sourceLabels provided by frontend, or fallback to a default list if missing
+    const labelsToTranslate = sourceLabels || {
+      "communicationLogic": "Communication Logic",
+      "detected": "Detected",
+      "myLogic": "My Logic",
+      "aiImproved": "AI Improved",
+      "legend": "Legend",
+      "strong": "Strong",
+      "weak": "Weak",
+      "elaboration": "Elaboration",
+      "critique": "Critique",
+      "languagePolish": "Language Polish & Alternatives",
+      "original": "Original",
+      "betterAlternative": "Better Alternative",
+      "coachFeedback": "Coach's Feedback",
+      "strengths": "Strengths",
+      "areasForImprovement": "Areas for Improvement",
+      "actionableTips": "Actionable Tips",
+      "transcription": "Transcription",
+      "yourRecording": "Your Recording",
+      "recordAnswer": "Record Answer",
+      "reviewAnswer": "Review Answer",
+      "takeYourTime": "Take your time",
+      "tapAnalyze": "Tap analyze when ready",
+      "tryIncorporateFeedback": "Try to incorporate the feedback",
+      "microphoneError": "Microphone Error",
+      "retake": "Retake",
+      "story": "Story",
+      "fact": "Fact",
+      "opinion": "Opinion"
+    };
+
+    // FIX 3: Changed "${nativeLang}" to "${language}" at the end. 
+    // nativeLang was undefined in this scope, causing the crash.
+    const prompt = `Translate the following UI labels into ${language}. Return ONLY a JSON object with the translations, no additional text.
+
+Labels to translate:
+${JSON.stringify(labelsToTranslate, null, 2)}
+
+Return the same JSON structure with values translated to ${language}.`;
+
+const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview', // Ensure consistent model usage
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      config: {
+        responseMimeType: 'application/json',
+      }
+    });
+
+    let candidates = response.candidates;
+    if (!candidates && response.data) candidates = response.data.candidates;
+
+    if (!candidates || !candidates[0] || !candidates[0].content || !candidates[0].content.parts) {
+      throw new Error('No valid response from AI');
+    }
+
+   // Use safeJsonParse helper you already defined
+    const labels = safeJsonParse(candidates[0].content.parts[0].text);
+
+    res.json({ labels });
+  } catch (err) {
+    console.error('translate-ui-labels failed', err);
+    res.status(500).json({ error: 'Failed to translate labels' });
+  }
+});
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: '/live' });

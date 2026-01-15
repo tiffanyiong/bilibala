@@ -7,6 +7,7 @@ interface AudioRecorderProps {
   onToggleMinimize?: () => void;
   defaultTitle?: string;
   autoStart?: boolean;
+  labels?: any;
 }
 
 enum RecorderState {
@@ -22,13 +23,15 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     isMinimized = false,
     onToggleMinimize,
     defaultTitle = "Record Answer",
-    autoStart = true
+    autoStart = true,
+    labels = {} //  Default to empty object to prevent crashes
 }) => {
   const [recorderState, setRecorderState] = useState<RecorderState>(RecorderState.IDLE);
   const [duration, setDuration] = useState(0);
   const [permissionError, setPermissionError] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const t = (key: string, fallback: string) => labels[key] || fallback;
   
   // Audio Refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -388,10 +391,10 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
     <div className="w-full flex flex-col items-center gap-6 relative">
          <div className="text-center w-full">
             <h3 className="text-xl font-serif text-stone-800 font-bold">
-                {recorderState === RecorderState.REVIEW ? "Review Answer" : defaultTitle}
+                {recorderState === RecorderState.REVIEW ? t('reviewAnswer', 'Review Answer') : defaultTitle}
             </h3>
             <p className="text-stone-500 text-sm mt-1">
-                {recorderState === RecorderState.REVIEW ? "Tap analyze when ready." : (defaultTitle === "Record Answer" ? "Take your time." : "Try to incorporate the feedback.")}
+                {recorderState === RecorderState.REVIEW ? t('tapAnalyze', 'Tap analyze when ready.') : (defaultTitle === t('recordAnswer', 'Record Answer') ? t('takeYourTime', 'Take your time.') : t('tryIncorporateFeedback', 'Try to incorporate the feedback.'))}
             </p>
          </div>
 
@@ -399,7 +402,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
             <div className="flex items-center gap-6">
                 <div className={`w-3 h-3 rounded-full ${recorderState === RecorderState.RECORDING ? 'bg-red-500 animate-pulse' : recorderState === RecorderState.REVIEW ? 'bg-green-500' : 'bg-amber-400'}`}></div>
                 <div className="h-12 w-48 flex items-center justify-center">
-                    {permissionError ? <span className="text-red-500 text-xs">Microphone Error</span> : recorderState === RecorderState.REVIEW ? (
+                    {permissionError ? <span className="text-red-500 text-xs">{t('microphoneError', 'Microphone Error')}</span> : recorderState === RecorderState.REVIEW ? (
                         <div className="flex items-center justify-center gap-1 h-full w-full">
                         {[...Array(24)].map((_, i) => <div key={i} className="w-1 bg-stone-300 rounded-full" style={{ height: Math.max(6, Math.random() * 24) + 'px' }}></div>)}
                         </div>
@@ -430,9 +433,10 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
             </div>
             <div className="justify-self-start">
                 {recorderState === RecorderState.REVIEW ? (
-                    <button onClick={handleSubmit} className="flex items-center gap-2 px-4 py-2 text-white rounded-full font-medium text-sm transition-colors duration-[2000ms] shadow-md border border-transparent bg-stone-900">
-                        <span>Analyze</span>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                    <button onClick={handleSubmit} className="p-2 hover:scale-110 transition-all">
+                        <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" className="analyze-icon-pulse">
+                            <path d="M4,23a1,1,0,0,1-1-1V19a1,1,0,0,1,2,0v3A1,1,0,0,1,4,23Zm9-1V15a1,1,0,0,0-2,0v7a1,1,0,0,0,2,0Zm7-11a1,1,0,0,0-1,1V22a1,1,0,0,0,2,0V12A1,1,0,0,0,20,11Zm.382-9.923A.991.991,0,0,0,20,1H16a1,1,0,0,0,0,2h1.586L12,8.586,8.707,5.293a1,1,0,0,0-1.414,0l-4,4a1,1,0,0,0,1.414,1.414L8,7.414l3.293,3.293a1,1,0,0,0,1.414,0L19,4.414V6a1,1,0,0,0,2,0V2a1,1,0,0,0-.618-.923Z"/>
+                        </svg>
                     </button>
                 ) : recorderState !== RecorderState.IDLE && (
                     <button onClick={togglePause} className={`text-stone-400 hover:text-stone-600 transition-colors p-2 ${recorderState === RecorderState.PAUSED ? 'text-amber-500' : ''}`}>
