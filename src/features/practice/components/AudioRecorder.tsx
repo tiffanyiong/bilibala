@@ -459,9 +459,9 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
             </div>
             <div className="justify-self-start">
                 {recorderState === RecorderState.REVIEW ? (
-                    <button onClick={handleSubmit} className="p-2 hover:scale-110 transition-all">
-                        <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" className="analyze-icon-pulse">
-                            <path d="M4,23a1,1,0,0,1-1-1V19a1,1,0,0,1,2,0v3A1,1,0,0,1,4,23Zm9-1V15a1,1,0,0,0-2,0v7a1,1,0,0,0,2,0Zm7-11a1,1,0,0,0-1,1V22a1,1,0,0,0,2,0V12A1,1,0,0,0,20,11Zm.382-9.923A.991.991,0,0,0,20,1H16a1,1,0,0,0,0,2h1.586L12,8.586,8.707,5.293a1,1,0,0,0-1.414,0l-4,4a1,1,0,0,0,1.414,1.414L8,7.414l3.293,3.293a1,1,0,0,0,1.414,0L19,4.414V6a1,1,0,0,0,2,0V2a1,1,0,0,0-.618-.923Z"/>
+                    <button onClick={handleSubmit} className="p-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-full hover:scale-110 transition-all shadow-lg animate-pulse" title="Analyze">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M4 12H20M20 12L14 6M20 12L14 18" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
                     </button>
                 ) : recorderState !== RecorderState.IDLE && (
