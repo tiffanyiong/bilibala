@@ -1,8 +1,9 @@
-import { ContentAnalysis } from '../types';
 import { getBackendOrigin } from '../services/backend';
+import { ContentAnalysis } from '../types';
 
 export const analyzeVideoContent = async (
   videoTitle: string, 
+  videoUrl: string,
   nativeLang: string, 
   targetLang: string, 
   level: string
@@ -11,7 +12,7 @@ export const analyzeVideoContent = async (
     const resp = await fetch(`${getBackendOrigin()}/api/analyze-video-content`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ videoTitle, nativeLang, targetLang, level }),
+      body: JSON.stringify({ videoTitle, videoUrl, nativeLang, targetLang, level }),
     });
     if (!resp.ok) throw new Error('Failed to analyze video content. Please try again.');
     return (await resp.json()) as ContentAnalysis;

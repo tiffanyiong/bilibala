@@ -41,35 +41,34 @@ const Layout: React.FC<LayoutProps> = ({ children, onLogoClick, targetLang, leve
 
   return (
     <div className={classes.container}>
-      {/* Absolute positioning to float logo/nav without occupying layout space */}
-      <header className="absolute top-0 left-0 w-full px-6 py-4 flex items-center justify-between z-[100] pointer-events-none">
+      <header className="absolute top-0 left-0 w-full px-6 py-5 flex items-center justify-between z-[100] pointer-events-none border-b border-black/5 bg-[#FAF9F6]/80 backdrop-blur-sm">
         <div 
-          className="flex items-center gap-3 cursor-pointer group select-none hover:scale-105 transition-transform pointer-events-auto" 
+          className="flex items-center gap-3 cursor-pointer group select-none pointer-events-auto" 
           onClick={onLogoClick}
         >
-          {/* Custom Plastic Duck Icon */}
-          <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-md ring-4 ring-white/30">
+          {/* Duck Logo - Clean & Framed */}
+          <div className="w-10 h-10 border border-stone-200 bg-[#FAF9F6] rounded-lg flex items-center justify-center shadow-sm">
              <DuckLogo />
           </div>
           <div>
-              <h1 className="text-3xl font-black text-white tracking-wide font-display drop-shadow-md" style={{ textShadow: '2px 2px 0px rgba(8, 145, 178, 1)' }}>Bilibala</h1>
+              <h1 className="text-2xl font-serif text-stone-900 tracking-tight">Bilibala</h1>
           </div>
         </div>
         
         {targetLang && level && (
             <nav className="flex gap-3 pointer-events-auto">
-            <span className="hidden md:flex items-center gap-2 bg-white/90 backdrop-blur border-2 border-white text-cyan-800 px-4 py-1.5 rounded-full shadow-sm font-bold text-sm">
-                <span className="w-2 h-2 rounded-full bg-cyan-500"></span>
+            <span className="hidden md:flex items-center gap-2 bg-[#FAF9F6] border border-stone-200 text-stone-600 px-3 py-1 rounded-md shadow-sm text-xs font-medium uppercase tracking-wide">
+                <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 border border-yellow-600"></span>
                 {targetLang}
             </span>
-            <span className="hidden md:flex items-center gap-2 bg-white/90 backdrop-blur border-2 border-white text-pink-600 px-4 py-1.5 rounded-full shadow-sm font-bold text-sm">
-                <span className="w-2 h-2 rounded-full bg-pink-500"></span>
+            <span className="hidden md:flex items-center gap-2 bg-[#FAF9F6] border border-stone-200 text-stone-600 px-3 py-1 rounded-md shadow-sm text-xs font-medium uppercase tracking-wide">
+                <span className="w-1.5 h-1.5 rounded-full bg-stone-400"></span>
                 {level}
             </span>
             </nav>
         )}
       </header>
-      <main className={classes.main}>
+      <main className={`${classes.main} pt-20`}>
         {children}
       </main>
     </div>

@@ -20,7 +20,7 @@ const Transcript: React.FC<TranscriptProps> = ({
   return (
     <div className="flex-1 min-h-0 w-full px-4 z-10 relative flex flex-col">
         <div className="w-full h-full pb-2 flex flex-col min-h-0">
-            <div className="flex-1 bg-white/60 backdrop-blur-xl rounded-[2rem] p-4 shadow-lg border border-white/60 flex flex-col overflow-hidden relative min-h-0">
+            <div className="flex-1 bg-white backdrop-blur-xl rounded-2xl p-4 shadow-sm border border-zinc-200 flex flex-col overflow-hidden relative min-h-0">
             
             <div className="absolute inset-2 overflow-y-auto scrollbar-hide pr-2">
                 {history.length === 0 && !realtimeInput && !realtimeOutput && (
@@ -33,14 +33,14 @@ const Transcript: React.FC<TranscriptProps> = ({
                     {history.map((msg, idx) => (
                         <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-fadeIn`}>
                             {msg.role === 'model' && (
-                                <div className="w-8 h-8 rounded-full bg-cyan-100 flex items-center justify-center shadow-sm flex-shrink-0 text-cyan-600 border border-white mr-2 self-end mb-1">
+                                <div className="w-8 h-8 rounded-full bg-zinc-100 flex items-center justify-center shadow-sm flex-shrink-0 text-zinc-500 border border-white mr-2 self-end mb-1">
                                     <BotIcon />
                                 </div>
                             )}
-                            <div className={`max-w-[85%] px-4 py-2.5 rounded-2xl text-sm font-bold shadow-sm leading-relaxed ${
+                            <div className={`max-w-[85%] px-3 py-2 rounded-xl text-[15px] leading-snug shadow-sm ${
                                 msg.role === 'user' 
-                                ? 'bg-cyan-600 text-white rounded-br-none' 
-                                : 'bg-white text-slate-700 rounded-bl-none border border-slate-100'
+                                ? 'bg-zinc-900 text-white rounded-br-none' 
+                                : 'bg-zinc-50 text-zinc-800 rounded-bl-none border border-zinc-100'
                             }`}>
                                 {msg.text}
                             </div>
@@ -49,10 +49,10 @@ const Transcript: React.FC<TranscriptProps> = ({
 
                     {realtimeOutput && (
                         <div className="flex justify-start">
-                            <div className="w-8 h-8 rounded-full bg-cyan-100 flex items-center justify-center shadow-sm flex-shrink-0 text-cyan-600 border border-white mr-2 self-end mb-1">
+                            <div className="w-8 h-8 rounded-full bg-zinc-100 flex items-center justify-center shadow-sm flex-shrink-0 text-zinc-500 border border-white mr-2 self-end mb-1">
                                 <BotIcon />
                             </div>
-                            <div className="max-w-[85%] px-4 py-2.5 rounded-2xl rounded-bl-none bg-white text-slate-600 text-sm font-bold shadow-sm border border-slate-100 opacity-80 animate-pulse">
+                            <div className="max-w-[85%] px-3 py-2 rounded-xl rounded-bl-none bg-zinc-50 text-zinc-600 text-[15px] leading-snug shadow-sm border border-zinc-100 opacity-80 animate-pulse">
                                 {realtimeOutput}...
                             </div>
                         </div>
@@ -60,7 +60,7 @@ const Transcript: React.FC<TranscriptProps> = ({
 
                     {realtimeInput && (
                         <div className="flex justify-end">
-                            <div className="max-w-[85%] px-4 py-2.5 rounded-2xl rounded-br-none bg-cyan-600 text-white text-sm font-bold shadow-sm opacity-80 animate-pulse">
+                            <div className="max-w-[85%] px-3 py-2 rounded-xl rounded-br-none bg-zinc-900 text-white text-[15px] leading-snug shadow-sm opacity-80 animate-pulse">
                                 {realtimeInput}...
                             </div>
                         </div>

@@ -35,13 +35,17 @@ export const fetchVideoMetadata = async (input: string): Promise<{ title: string
 
     // Catch specific error messages from the API
     if (data.error) {
-        if (data.error === "401 Unauthorized" || (typeof data.error === 'string' && data.error.includes("Unauthorized"))) {
-             // This is a restricted video, but we still want to try to let the user proceed if possible,
-             // or at least give a specific message.
-             throw new Error("Restricted Video");
+        const errStr = String(data.error).toLowerCase();
+        // Check for common restriction/embed errors
+        if (errStr.includes("unauthorized") || 
+            errStr.includes("restricted") || 
+            errStr.includes("private") || 
+            errStr.includes("401") || 
+            errStr.includes("403")) {
+             throw new Error("This video cannot be played (Embedding disabled by owner). Please try another video.");
         }
-        // Other errors (private, deleted)
-        throw new Error("Video Metadata Error");
+        // Other errors
+        throw new Error("Video unavailable");
     }
     
     if (!data.title) {
@@ -51,12 +55,15 @@ export const fetchVideoMetadata = async (input: string): Promise<{ title: string
     return { 
       title: data.title 
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error("Failed to fetch video metadata:", error);
     
-    // FALLBACK: Return a generic title or the URL so the app doesn't crash.
-    // This allows the user to proceed to the dashboard even if we can't get the perfect title.
-    // The AI might struggle slightly with context, but it's better than a hard block.
+    // If it's a specific restriction error, re-throw it to stop the flow
+    if (error.message && error.message.includes("Embedding disabled")) {
+        throw error;
+    }
+    
+    // For other errors (e.g. network glitch), fallback to generic title
     return { title: "YouTube Video" };
   }
 };
