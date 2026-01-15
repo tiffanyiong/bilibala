@@ -1,7 +1,7 @@
 import dagre from 'dagre';
 import { Edge, Node, Position } from 'reactflow';
 
-export const generateFlowData = (data: any, isAIImproved: boolean = false, isMobile: boolean = false) => {
+export const generateFlowData = (data: any, isAIImproved: boolean = false, isMobile: boolean = false, labels: any = {}) => {
   if (!data) return { nodes: [], edges: [] };
 
   // --- RESPONSIVE CONFIGURATION ---
@@ -27,7 +27,8 @@ export const generateFlowData = (data: any, isAIImproved: boolean = false, isMob
       headline: data.conclusion,
       isRoot: true,
       isImproved: isAIImproved,
-      isMobile: isMobile 
+      isMobile: isMobile,
+      labels: labels
     },
     position: { x: 0, y: 0 },
   });
@@ -53,7 +54,8 @@ export const generateFlowData = (data: any, isAIImproved: boolean = false, isMob
         status: item.status,
         isImproved: isAIImproved,
         statusStyle: statusColor,
-        isMobile: isMobile
+        isMobile: isMobile,
+        labels: labels
       },
       position: { x: 0, y: 0 },
     });

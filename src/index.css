@@ -7,3 +7,16 @@
     @apply bg-[#F6F4EF] text-stone-800 antialiased;
   }
 }
+
+@keyframes analyze-color-pulse {
+  0%, 100% {
+    fill: #1c1917;
+  }
+  50% {
+    fill: #eab308;
+  }
+}
+
+.analyze-icon-pulse {
+  animation: analyze-color-pulse 2s ease-in-out infinite;
+}

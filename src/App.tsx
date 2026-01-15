@@ -395,7 +395,7 @@ const App: React.FC = () => {
                     disabled={!videoUrl}
                     className="w-full bg-stone-800 text-white font-medium py-3 text-sm rounded-lg shadow-md hover:bg-stone-900 hover:shadow-lg hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
                  >
-                    Start Analysis
+                    Start
                  </button>
               </div>
            </div>
