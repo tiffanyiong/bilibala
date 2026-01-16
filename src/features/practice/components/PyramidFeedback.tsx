@@ -112,8 +112,24 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
     retake: 'Retake',
     story: 'Story',
     fact: 'Fact',
-    opinion: 'Opinion'
+    opinion: 'Opinion',
+    scorePerfect: 'Perfect!',
+    scoreExcellent: 'Excellent',
+    scoreGreatJob: 'Great Job',
+    scoreGoodStart: 'Good Start',
+    scoreKeepGrowing: 'Keep Growing'
   };
+
+  // Helper to get score label and styling based on score value
+  const getScoreDisplay = (score: number) => {
+    if (score >= 95) return { label: labels.scorePerfect, style: 'bg-emerald-100 text-emerald-800 ring-emerald-200' };
+    if (score >= 85) return { label: labels.scoreExcellent, style: 'bg-green-100 text-green-800 ring-green-200' };
+    if (score >= 75) return { label: labels.scoreGreatJob, style: 'bg-blue-100 text-blue-800 ring-blue-200' };
+    if (score >= 60) return { label: labels.scoreGoodStart, style: 'bg-amber-100 text-amber-800 ring-amber-200' };
+    return { label: labels.scoreKeepGrowing, style: 'bg-stone-100 text-stone-700 ring-stone-200' };
+  };
+
+  const scoreDisplay = getScoreDisplay(feedback?.score || 0);
 
   // MiniMap Handlers
   const showMap = () => setIsMapVisible(true);
@@ -129,8 +145,12 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
 
   const { nodes: initialNodes, edges: initialEdges } = useMemo(() => {
       const targetStructure = viewMode === 'ai' && improved_structure ? improved_structure : structure;
-      return generateFlowData(targetStructure, viewMode === 'ai', isMobile, labels);
-  }, [structure, improved_structure, viewMode, isMobile, labels]);
+      // Pass the appropriate framework: detected_framework for user's logic, recommended_framework for AI improved
+      const framework = viewMode === 'ai'
+        ? (improved_structure?.recommended_framework || detected_framework || '')
+        : (detected_framework || '');
+      return generateFlowData(targetStructure, viewMode === 'ai', isMobile, labels, framework);
+  }, [structure, improved_structure, viewMode, isMobile, labels, detected_framework]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
@@ -161,7 +181,6 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
       {/* Header and Controls */}
       <div className="text-center space-y-6">
         <div className="space-y-2">
-            <div className="inline-flex items-center justify-center w-16 h-16 md:w-20 md:h-20 rounded-full bg-stone-900 text-white text-2xl md:text-3xl font-serif font-bold shadow-xl ring-4 ring-stone-100">{feedback?.score || 0}</div>
             <h2 className="text-xl md:text-2xl font-serif text-stone-800">{labels.communicationLogic}</h2>
             {detected_framework && <div className="inline-block mt-2 px-3 py-1 bg-indigo-50 text-indigo-700 text-[10px] md:text-xs font-bold uppercase tracking-wider rounded-full border border-indigo-100">{labels.detected}: {detected_framework.replace(/_/g, ' ')}</div>}
         </div>
@@ -233,6 +252,7 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
       )}
 
       {/* Stats and Transcription */}
+   
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           <div className="space-y-6">
               <h3 className="text-lg font-bold text-stone-800 font-serif border-b border-stone-200 pb-2">{labels.coachFeedback}</h3>
@@ -251,7 +271,7 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
                   </div>
               </div>
           </div>
-          <div className="space-y-4">
+          <div className="space-y-4 relative">
               <h3 className="text-lg font-bold text-stone-800 font-serif border-b border-stone-200 pb-2">{labels.transcription}</h3>
 
               {audioUrl && (
@@ -264,6 +284,17 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
               )}
 
               <p className="text-stone-600 leading-relaxed text-sm bg-stone-50 p-4 rounded-lg">{transcription}</p>
+              {/* Score Stamp - positioned below transcript */}
+              <div className="flex justify-center md:justify-end mt-4">
+                  <div className="relative transform -rotate-12 mix-blend-multiply opacity-85">
+                      <div className="border-[6px] border-red-900/90 text-red-900/90 px-3 py-3 rounded-lg font-serif font-black text-2xl md:text-4xl uppercase tracking-widest text-center shadow-none relative">
+                          {/* Inner thin border common in rubber stamps */}
+                          <div className="border-[3px] border-red-900/90 rounded px-4 py-2">
+                              {scoreDisplay.label}
+                          </div>
+                      </div>
+                  </div>
+              </div>
           </div>
       </div>
 
@@ -306,6 +337,7 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
             </div>
         </div>
       )}
+      
     </div>
   );
 };
