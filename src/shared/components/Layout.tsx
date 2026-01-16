@@ -1,4 +1,6 @@
-import React, { ReactNode } from 'react';
+import React, { ReactNode, useState } from 'react';
+import AuthModal from './AuthModal';
+import UserMenu from './UserMenu';
 
 interface LayoutProps {
   children: ReactNode;
@@ -9,6 +11,8 @@ interface LayoutProps {
 }
 
 const Layout: React.FC<LayoutProps> = ({ children, onLogoClick, targetLang, level, isScrollable = false }) => {
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+
   // New "Icon1" Style Duck Logo (Flat, Profile View, Cute)
   const DuckLogo = () => (
     <svg width="40" height="40" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -55,19 +59,28 @@ const Layout: React.FC<LayoutProps> = ({ children, onLogoClick, targetLang, leve
           </div>
         </div>
         
-        {targetLang && level && (
-            <nav className="flex gap-3 pointer-events-auto">
-            <span className="hidden md:flex items-center gap-2 bg-[#FAF9F6] border border-stone-200 text-stone-600 px-3 py-1 rounded-md shadow-sm text-xs font-medium uppercase tracking-wide">
+        <div className="flex items-center gap-3 pointer-events-auto">
+          {/* Language and level badges */}
+          {targetLang && level && (
+            <nav className="hidden md:flex gap-3">
+              <span className="flex items-center gap-2 bg-[#FAF9F6] border border-stone-200 text-stone-600 px-3 py-1 rounded-md shadow-sm text-xs font-medium uppercase tracking-wide">
                 <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 border border-yellow-600"></span>
                 {targetLang}
-            </span>
-            <span className="hidden md:flex items-center gap-2 bg-[#FAF9F6] border border-stone-200 text-stone-600 px-3 py-1 rounded-md shadow-sm text-xs font-medium uppercase tracking-wide">
+              </span>
+              <span className="flex items-center gap-2 bg-[#FAF9F6] border border-stone-200 text-stone-600 px-3 py-1 rounded-md shadow-sm text-xs font-medium uppercase tracking-wide">
                 <span className="w-1.5 h-1.5 rounded-full bg-stone-400"></span>
                 {level}
-            </span>
+              </span>
             </nav>
-        )}
+          )}
+
+          {/* User Menu (Sign in button or Avatar with dropdown) */}
+          <UserMenu onOpenAuthModal={() => setIsAuthModalOpen(true)} />
+        </div>
       </header>
+
+      {/* Auth Modal */}
+      <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
       <main className={`${classes.main} pt-20`}>
         {children}
       </main>
