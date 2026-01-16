@@ -49,7 +49,13 @@ const defaultLabels = {
     structureYourAnswer: 'Take a moment to structure your answer. Think about your main point and supporting arguments.',
     yourNotesOutline: 'Your Notes / Outline',
     notesPlaceholder: 'Type your key points here to help you speak...',
-    analyzingStructure: 'Analyzing Structure...'
+    analyzingStructure: 'Analyzing Structure...',
+    // Score labels
+    scorePerfect: 'Perfect!',
+    scoreExcellent: 'Excellent',
+    scoreGreatJob: 'Great Job',
+    scoreGoodStart: 'Good Start',
+    scoreKeepGrowing: 'Keep Growing'
 };
 
 const PracticeSession: React.FC<PracticeSessionProps> = ({ topic, level, nativeLang, targetLang, onExit }) => {
