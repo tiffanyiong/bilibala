@@ -6,8 +6,23 @@ import PracticeSession from './features/practice/components/PracticeSession';
 import VideoPlayer, { VideoPlayerRef } from './features/video/components/VideoPlayer';
 import { extractVideoId, fetchVideoMetadata } from './features/video/services/youtubeService';
 import Layout from './shared/components/Layout';
+import UsageLimitModal from './shared/components/UsageLimitModal';
 import { LANGUAGES, LEVELS } from './shared/constants';
+import { useAuth } from './shared/context/AuthContext';
+import {
+  dbAnalysisToContentAnalysis,
+  getCachedAnalysis,
+  getOrCreateVideo,
+  saveCachedAnalysis,
+  savePracticeTopicsFromAnalysis,
+} from './shared/services/database';
 import { analyzeVideoContent } from './shared/services/geminiService';
+import {
+  checkAnonymousUsageLimit,
+  getUsageDisplayInfo,
+  recordAnonymousUsage,
+  UsageDisplayInfo
+} from './shared/services/usageTracking';
 import { AppState, PracticeTopic, TopicPoint, VideoData, VocabularyItem } from './shared/types';
 
 // Custom Chevron for Dropdowns
@@ -36,13 +51,19 @@ const useIsDesktop = () => {
 };
 
 const App: React.FC = () => {
+  const { user } = useAuth();
   const [appState, setAppState] = useState<AppState>(AppState.LANDING);
   const [videoUrl, setVideoUrl] = useState('');
-  
+
   // Language & Level State
   const [nativeLang, setNativeLang] = useState('Chinese (Mandarin - 中文)');
   const [targetLang, setTargetLang] = useState('English');
   const [level, setLevel] = useState('Easy');
+
+  // Usage limit modal state
+  const [showUsageLimitModal, setShowUsageLimitModal] = useState(false);
+  const [usageInfo, setUsageInfo] = useState<UsageDisplayInfo | null>(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   const [videoData, setVideoData] = useState<VideoData | null>(null);
   
@@ -187,14 +208,30 @@ const App: React.FC = () => {
       return;
     }
 
-    setAppState(AppState.LOADING);
-    setLoadingText("Preparing your lesson...");
     setErrorMsg('');
 
+    // 1. CHECK USAGE LIMIT FIRST (before any loading state)
+    // This keeps user on landing page if blocked
+    if (!user) {
+      const usageCheck = await checkAnonymousUsageLimit();
+
+      if (!usageCheck.allowed) {
+        // Show modal immediately, user stays on landing page
+        const info = await getUsageDisplayInfo();
+        setUsageInfo(info);
+        setShowUsageLimitModal(true);
+        return; // Don't proceed, don't change app state
+      }
+    }
+
+    // 2. Now start loading (user has permission)
+    setAppState(AppState.LOADING);
+    setLoadingText("Preparing your lesson...");
+
     try {
-      // 1. Fetch Video Metadata (Fast)
+      // 3. Fetch Video Metadata (Fast)
       const metadata = await fetchVideoMetadata(videoUrl);
-      
+
       const vData: VideoData = {
         id: videoId,
         url: videoUrl,
@@ -202,16 +239,50 @@ const App: React.FC = () => {
       };
       setVideoData(vData);
 
-      // Start loading content
+      // 4. Get or create video in database
+      const dbVideo = await getOrCreateVideo(videoId, metadata.title);
+
+      // 5. Check for cached analysis
+      let cachedAnalysis = null;
+      if (dbVideo) {
+        cachedAnalysis = await getCachedAnalysis(
+          dbVideo.id,
+          level,
+          targetLang,
+          nativeLang
+        );
+      }
+
+      if (cachedAnalysis) {
+        // CACHE HIT - Use cached data immediately (no API cost!)
+        console.log('Cache hit! Using cached analysis.');
+        const analysis = dbAnalysisToContentAnalysis(cachedAnalysis);
+
+        setSummary(analysis.summary);
+        setTranslatedSummary(analysis.translatedSummary);
+        setTopics(analysis.topics);
+        setVocabulary(analysis.vocabulary);
+        setTranscript(analysis.transcript || []);
+        setDiscussionTopics(analysis.discussionTopics || []);
+        setSelectedTopics([]);
+        setIsAnalysisLoading(false);
+        setAppState(AppState.DASHBOARD);
+
+        // Note: No usage recorded for cached results - Free for anonymous!
+        return;
+      }
+
+      // --- CACHE MISS: AI REQUIRED ---
+      console.log('Cache miss. Calling AI API...');
       setIsAnalysisLoading(true);
 
-      // 2. Hybrid Loading Logic:
+      // Hybrid Loading Logic:
       // - If analysis finishes fast (< 20s), go to dashboard immediately when done.
       // - At 10s, update loading text.
-      // - If analysis is slow (> 20s), go to dashboard at 20s mark and show skeletons.
-      
+      // - If analysis is slow (> 25s), go to dashboard at 25s mark and show skeletons.
+
       const analysisPromise = analyzeVideoContent(metadata.title, videoUrl, nativeLang, targetLang, level);
-      
+
       let isDashboardShown = false;
       const showDashboard = () => {
           if (!isDashboardShown) {
@@ -225,13 +296,13 @@ const App: React.FC = () => {
           setLoadingText("Longer videos require more time to analyze...");
       }, 10000);
 
-      // Timer 2: Max wait time for loading screen: 20 seconds
+      // Timer 2: Max wait time for loading screen: 25 seconds
       const maxWaitTimerId = setTimeout(() => {
           showDashboard();
       }, 25000);
 
       analysisPromise
-        .then(analysis => {
+        .then(async (analysis) => {
             setSummary(analysis.summary);
             setTranslatedSummary(analysis.translatedSummary);
             setTopics(analysis.topics);
@@ -239,7 +310,36 @@ const App: React.FC = () => {
             setTranscript(analysis.transcript || []);
             setDiscussionTopics(analysis.discussionTopics || []);
             setSelectedTopics([]);
-            
+
+            // Save to cache (async, don't block UI)
+            if (dbVideo) {
+              const savedAnalysis = await saveCachedAnalysis(
+                dbVideo.id,
+                level,
+                targetLang,
+                nativeLang,
+                analysis,
+                user?.id
+              );
+
+              // Save practice topics for Quick Start feature
+              if (savedAnalysis && analysis.discussionTopics) {
+                savePracticeTopicsFromAnalysis(
+                  savedAnalysis.id,
+                  analysis.discussionTopics,
+                  level
+                );
+              }
+            }
+
+            // Record anonymous usage (only for fresh analyses, not cached)
+            if (!user) {
+              recordAnonymousUsage();
+              // Update local state if needed
+              const info = await getUsageDisplayInfo();
+              setUsageInfo(info);
+            }
+
             // Done: Cancel timers and show dashboard now
             clearTimeout(messageTimerId);
             clearTimeout(maxWaitTimerId);
@@ -307,11 +407,13 @@ const App: React.FC = () => {
   const isScrollable = appState === AppState.DASHBOARD || appState === AppState.CALL_SESSION || appState === AppState.PRACTICE_SESSION;
 
   return (
-    <Layout 
+    <Layout
         onLogoClick={handleLogoClick}
         targetLang={shouldShowHeader ? targetLang : undefined}
         level={shouldShowHeader ? level : undefined}
         isScrollable={isScrollable}
+        authModalOpen={showAuthModal}
+        onAuthModalClose={() => setShowAuthModal(false)}
     >
       {/* 1. LANDING PAGE */}
       {appState === AppState.LANDING && (
@@ -493,6 +595,17 @@ const App: React.FC = () => {
             onExit={() => setAppState(AppState.DASHBOARD)}
           />
       )}
+
+      {/* Usage Limit Modal */}
+      <UsageLimitModal
+        isOpen={showUsageLimitModal}
+        onClose={() => setShowUsageLimitModal(false)}
+        onLogin={() => {
+          setShowUsageLimitModal(false);
+          setShowAuthModal(true);
+        }}
+        usageInfo={usageInfo}
+      />
     </Layout>
   );
 };

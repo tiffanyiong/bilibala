@@ -8,10 +8,20 @@ interface LayoutProps {
   targetLang?: string;
   level?: string;
   isScrollable?: boolean;
+  authModalOpen?: boolean;
+  onAuthModalClose?: () => void;
 }
 
-const Layout: React.FC<LayoutProps> = ({ children, onLogoClick, targetLang, level, isScrollable = false }) => {
+const Layout: React.FC<LayoutProps> = ({ children, onLogoClick, targetLang, level, isScrollable = false, authModalOpen, onAuthModalClose }) => {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+
+  // Allow external control of auth modal - use OR logic so either source can open it
+  const effectiveAuthModalOpen = authModalOpen || isAuthModalOpen;
+
+  const handleAuthModalClose = () => {
+    setIsAuthModalOpen(false);
+    onAuthModalClose?.();
+  };
 
   // New "Icon1" Style Duck Logo (Flat, Profile View, Cute)
   const DuckLogo = () => (
@@ -80,7 +90,7 @@ const Layout: React.FC<LayoutProps> = ({ children, onLogoClick, targetLang, leve
       </header>
 
       {/* Auth Modal */}
-      <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
+      <AuthModal isOpen={effectiveAuthModalOpen} onClose={handleAuthModalClose} />
       <main className={`${classes.main} pt-20`}>
         {children}
       </main>
