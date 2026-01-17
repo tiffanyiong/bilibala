@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ContentTabs from './features/content/components/ContentTabs';
 import TopicSelector from './features/content/components/TopicSelector';
-import LiveVoiceInterface from './features/live-voice/components/LiveVoiceInterface';
+import FloatingTutorWindow from './features/live-voice/components/FloatingTutorWindow';
 import PracticeSession from './features/practice/components/PracticeSession';
 import VideoPlayer, { VideoPlayerRef } from './features/video/components/VideoPlayer';
 import { extractVideoId, fetchVideoMetadata } from './features/video/services/youtubeService';
@@ -32,25 +32,13 @@ const ChevronDownIcon = () => (
   </svg>
 );
 
-const useIsDesktop = () => {
-  const [isDesktop, setIsDesktop] = useState(() => 
-    typeof window !== 'undefined' ? window.innerWidth >= 1024 : true
-  );
-
+const App: React.FC = () => {
+  // Reveal body after mount to prevent FOUC with Tailwind CDN
   useEffect(() => {
-    // Reveal body after mount to prevent FOUC with Tailwind CDN
     requestAnimationFrame(() => {
       document.body.style.opacity = '1';
     });
-
-    const check = () => setIsDesktop(window.innerWidth >= 1024);
-    window.addEventListener('resize', check);
-    return () => window.removeEventListener('resize', check);
   }, []);
-  return isDesktop;
-};
-
-const App: React.FC = () => {
   const { user } = useAuth();
   const [appState, setAppState] = useState<AppState>(AppState.LANDING);
   const [videoUrl, setVideoUrl] = useState('');
@@ -64,6 +52,9 @@ const App: React.FC = () => {
   const [showUsageLimitModal, setShowUsageLimitModal] = useState(false);
   const [usageInfo, setUsageInfo] = useState<UsageDisplayInfo | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
+
+  // Floating AI Tutor window state
+  const [showTutorWindow, setShowTutorWindow] = useState(false);
 
   const [videoData, setVideoData] = useState<VideoData | null>(null);
   
@@ -86,14 +77,8 @@ const App: React.FC = () => {
   useEffect(() => {
     const handlePopState = () => {
       const hash = window.location.hash;
-      
-      if (hash === '#session') {
-        if (videoData) setAppState(AppState.CALL_SESSION);
-        else {
-            setAppState(AppState.LANDING);
-            window.history.replaceState(null, '', ' ');
-        }
-      } else if (hash === '#dashboard') {
+
+      if (hash === '#dashboard') {
         if (videoData) setAppState(AppState.DASHBOARD);
         else {
             setAppState(AppState.LANDING);
@@ -123,7 +108,6 @@ const App: React.FC = () => {
     let targetHash = '';
 
     if (appState === AppState.DASHBOARD) targetHash = '#dashboard';
-    if (appState === AppState.CALL_SESSION) targetHash = '#session';
     if (appState === AppState.PRACTICE_SESSION) targetHash = '#practice';
     if (appState === AppState.LANDING) targetHash = '';
 
@@ -179,7 +163,6 @@ const App: React.FC = () => {
     }
   }, [videoData, videoUrl, nativeLang, targetLang, level, summary, translatedSummary, topics, vocabulary, transcript, discussionTopics, selectedTopics]);
 
-  const isDesktop = useIsDesktop();
   const playerRef = useRef<VideoPlayerRef>(null);
 
   const handleTimestampClick = (offsetMs: number) => {
@@ -386,7 +369,7 @@ const App: React.FC = () => {
 
   const StartCallButton = () => (
     <button
-      onClick={() => setAppState(AppState.CALL_SESSION)}
+      onClick={() => setShowTutorWindow(true)}
       className="fixed bottom-8 right-8 z-50 group flex items-center gap-2 bg-zinc-900 text-white border border-zinc-700 p-4 rounded-full shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden max-w-[60px] hover:max-w-[200px]"
       aria-label="Start Chatting"
     >
@@ -403,8 +386,8 @@ const App: React.FC = () => {
     </button>
   );
 
-  const shouldShowHeader = appState === AppState.DASHBOARD || appState === AppState.CALL_SESSION || appState === AppState.PRACTICE_SESSION;
-  const isScrollable = appState === AppState.DASHBOARD || appState === AppState.CALL_SESSION || appState === AppState.PRACTICE_SESSION;
+  const shouldShowHeader = appState === AppState.DASHBOARD || appState === AppState.PRACTICE_SESSION;
+  const isScrollable = appState === AppState.DASHBOARD || appState === AppState.PRACTICE_SESSION;
 
   return (
     <Layout
@@ -548,44 +531,24 @@ const App: React.FC = () => {
                 />
            </div>
 
-           <StartCallButton />
+           {/* Start Conversation Button */}
+           {!showTutorWindow && <StartCallButton />}
+
+           {/* Floating AI Tutor Window */}
+           <FloatingTutorWindow
+             isOpen={showTutorWindow}
+             onClose={() => setShowTutorWindow(false)}
+             videoTitle={videoData.title}
+             summary={summary}
+             vocabulary={vocabulary}
+             nativeLang={nativeLang}
+             targetLang={targetLang}
+             level={level}
+           />
         </div>
       )}
 
-      {/* 4. CALL SESSION VIEW */}
-      {appState === AppState.CALL_SESSION && videoData && (
-        <div className="flex flex-col lg:grid lg:grid-cols-12 gap-6 p-4 md:p-6 pt-24 max-w-[1600px] mx-auto min-h-screen">
-           {/* Left: Phone Interface */}
-           <div className="lg:col-span-5 h-[85vh] lg:h-[calc(100vh-140px)] min-h-[550px] shrink-0">
-               <LiveVoiceInterface 
-                  videoTitle={videoData.title} 
-                  videoUrl={videoData.url} 
-                  summary={summary}
-                  vocabulary={vocabulary}
-                  nativeLang={nativeLang}
-                  targetLang={targetLang}
-                  level={level}
-                  onSessionEnd={() => setAppState(AppState.DASHBOARD)}
-               />
-           </div>
-
-           {/* Right: Content Reference */}
-           <div className="lg:col-span-7 h-auto lg:h-[calc(100vh-140px)] min-h-[400px] shrink-0">
-               <ContentTabs 
-                  summary={summary}
-                  translatedSummary={translatedSummary}
-                  topics={topics} 
-                  vocabulary={vocabulary} 
-                  transcript={transcript}
-                  isLoading={false} 
-                  targetLang={targetLang}
-                  layoutMode={isDesktop ? 'fixed' : 'auto'}
-                />
-           </div>
-        </div>
-      )}
-
-      {/* 5. PRACTICE SESSION VIEW (NEW) */}
+      {/* 4. PRACTICE SESSION VIEW */}
       {appState === AppState.PRACTICE_SESSION && videoData && activePracticeTopic && (
           <PracticeSession
             topic={activePracticeTopic}
