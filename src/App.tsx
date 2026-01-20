@@ -55,6 +55,7 @@ const App: React.FC = () => {
 
   // Floating AI Tutor window state
   const [showTutorWindow, setShowTutorWindow] = useState(false);
+  const [tutorWindowMinimized, setTutorWindowMinimized] = useState(false);
 
   const [videoData, setVideoData] = useState<VideoData | null>(null);
   
@@ -538,6 +539,8 @@ const App: React.FC = () => {
            <FloatingTutorWindow
              isOpen={showTutorWindow}
              onClose={() => setShowTutorWindow(false)}
+             isMinimized={tutorWindowMinimized}
+             onMinimizeChange={setTutorWindowMinimized}
              videoTitle={videoData.title}
              summary={summary}
              vocabulary={vocabulary}
