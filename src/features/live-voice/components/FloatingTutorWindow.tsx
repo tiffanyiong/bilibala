@@ -12,6 +12,8 @@ type WindowState = 'closed' | 'minimized' | 'expanded';
 interface FloatingTutorWindowProps {
   isOpen: boolean;
   onClose: () => void;
+  isMinimized: boolean;
+  onMinimizeChange: (minimized: boolean) => void;
   videoTitle: string;
   summary: string;
   vocabulary: VocabularyItem[];
@@ -55,6 +57,8 @@ const DuckIcon = () => (
 const FloatingTutorWindow: React.FC<FloatingTutorWindowProps> = ({
   isOpen,
   onClose,
+  isMinimized,
+  onMinimizeChange,
   videoTitle,
   summary,
   vocabulary,
@@ -62,7 +66,8 @@ const FloatingTutorWindow: React.FC<FloatingTutorWindowProps> = ({
   targetLang,
   level,
 }) => {
-  const [windowState, setWindowState] = useState<WindowState>('expanded');
+  // Derive windowState from parent-controlled isMinimized prop
+  const windowState: WindowState = isMinimized ? 'minimized' : 'expanded';
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -133,12 +138,9 @@ const FloatingTutorWindow: React.FC<FloatingTutorWindowProps> = ({
     return () => window.removeEventListener('resize', handleResize);
   }, [isOpen, windowState, calculateWindowSize]);
 
-  // Initialize position and state when opening (only on isOpen change)
+  // Initialize position when opening
   useEffect(() => {
     if (isOpen) {
-      // Set to expanded when first opened
-      setWindowState('expanded');
-
       // Calculate initial size and position for desktop
       const mobile = window.innerWidth < 768;
       if (!mobile) {
@@ -219,11 +221,11 @@ const FloatingTutorWindow: React.FC<FloatingTutorWindowProps> = ({
   };
 
   const handleMinimize = () => {
-    setWindowState('minimized');
+    onMinimizeChange(true);
   };
 
   const handleExpand = () => {
-    setWindowState('expanded');
+    onMinimizeChange(false);
   };
 
   if (!isOpen) return null;
