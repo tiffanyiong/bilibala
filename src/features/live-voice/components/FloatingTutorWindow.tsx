@@ -67,6 +67,7 @@ const FloatingTutorWindow: React.FC<FloatingTutorWindowProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [windowSize, setWindowSize] = useState({ width: 400, height: 560 });
+  const [isPositionReady, setIsPositionReady] = useState(false);
 
   const windowRef = useRef<HTMLDivElement>(null);
   const dragStartRef = useRef({ x: 0, y: 0 });
@@ -150,6 +151,9 @@ const FloatingTutorWindow: React.FC<FloatingTutorWindowProps> = ({
         setPosition({ x: Math.max(32, initialX), y: Math.max(100, initialY) });
         positionRef.current = { x: Math.max(32, initialX), y: Math.max(100, initialY) };
       }
+      setIsPositionReady(true);
+    } else {
+      setIsPositionReady(false);
     }
   }, [isOpen, calculateWindowSize]);
 
@@ -224,12 +228,15 @@ const FloatingTutorWindow: React.FC<FloatingTutorWindowProps> = ({
 
   if (!isOpen) return null;
 
+  // Don't render until position is calculated (prevents flash from 0,0)
+  if (!isPositionReady) return null;
+
   // Minimized view - just a pill bar (always bottom-right)
   if (windowState === 'minimized') {
     return (
       <div
         ref={windowRef}
-        className="fixed z-[150] bottom-8 right-8"
+        className="fixed z-[150] bottom-8 right-8 animate-[fadeScaleIn_0.2s_ease-out]"
       >
         <div className="bg-[#FAF9F6] border border-stone-200 rounded-full shadow-lg px-4 py-2 flex items-center gap-3">
           <div className="w-6 h-6 shrink-0">
@@ -271,13 +278,12 @@ const FloatingTutorWindow: React.FC<FloatingTutorWindowProps> = ({
       ref={windowRef}
       className={`fixed z-[150] ${
         isMobile ? 'inset-4 top-20' : ''
-      } flex flex-col bg-[#FAF9F6] rounded-2xl border border-stone-200 shadow-2xl overflow-hidden`}
+      } flex flex-col bg-[#FAF9F6] rounded-2xl border border-stone-200 shadow-2xl overflow-hidden animate-[fadeScaleIn_0.2s_ease-out]`}
       style={isMobile ? {} : {
         left: position.x,
         top: position.y,
         width: windowSize.width,
-        height: windowSize.height,
-        transition: isDragging ? 'none' : 'all 0.2s ease'
+        height: windowSize.height
       }}
     >
       {/* Header with drag handle */}
