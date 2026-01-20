@@ -6,6 +6,8 @@ import PyramidFeedback from './PyramidFeedback';
 
 interface PracticeSessionProps {
   topic: PracticeTopic;
+  allTopics?: PracticeTopic[];
+  onTopicChange?: (topic: PracticeTopic) => void;
   level: string;
   nativeLang: string;
   targetLang: string;
@@ -58,7 +60,7 @@ const defaultLabels = {
     scoreKeepGrowing: 'Keep Growing'
 };
 
-const PracticeSession: React.FC<PracticeSessionProps> = ({ topic, level, nativeLang, targetLang, onExit }) => {
+const PracticeSession: React.FC<PracticeSessionProps> = ({ topic, allTopics = [], onTopicChange, level, nativeLang, targetLang, onExit }) => {
   const [state, setState] = useState<SessionState>(SessionState.PREP);
   const [analysisResult, setAnalysisResult] = useState<SpeechAnalysisResult | null>(null);
   const [error, setError] = useState('');
@@ -161,6 +163,22 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({ topic, level, nativeL
       handleRecordingComplete(audioData);
   };
 
+  const handleTopicSwitch = (newTopic: PracticeTopic) => {
+    if (newTopic.topic === topic.topic) return;
+    // Reset state for new topic
+    setState(SessionState.PREP);
+    setAnalysisResult(null);
+    setError('');
+    setUserNote('');
+    if (currentAudioUrl) URL.revokeObjectURL(currentAudioUrl);
+    setCurrentAudioUrl(null);
+    // Notify parent
+    onTopicChange?.(newTopic);
+  };
+
+  const currentTopicIndex = allTopics.findIndex(t => t.topic === topic.topic);
+  const hasMultipleTopics = allTopics.length > 1;
+
   return (
     <div className="min-h-screen bg-[#F6F4EF] p-6 lg:p-12 flex flex-col">
       {/* Header */}
@@ -179,9 +197,45 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({ topic, level, nativeL
         
         {/* SHARED HEADER: Topic & Question (Always Visible) */}
         <div className="text-center space-y-4 animate-in fade-in slide-in-from-top-4 duration-500">
-            <span className="bg-stone-200 text-stone-600 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
-                {translatedLabels.topic}: {topic.topic}
-            </span>
+            {/* Topic indicator with arrows */}
+            <div className="flex items-center justify-center gap-6">
+              {/* Previous Arrow */}
+              {hasMultipleTopics && (
+                <button
+                  onClick={() => {
+                    const prevIndex = currentTopicIndex > 0 ? currentTopicIndex - 1 : allTopics.length - 1;
+                    handleTopicSwitch(allTopics[prevIndex]);
+                  }}
+                  className="text-stone-300 hover:text-stone-500 transition-colors p-1"
+                  aria-label="Previous topic"
+                >
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="15 18 9 12 15 6" />
+                  </svg>
+                </button>
+              )}
+
+              {/* Current Topic Pill */}
+              <span className="bg-stone-100 text-stone-600 px-4 py-1.5 rounded-full text-xs font-medium border border-stone-200">
+                {hasMultipleTopics ? `${currentTopicIndex + 1}/${allTopics.length} ${topic.topic}` : topic.topic}
+              </span>
+
+              {/* Next Arrow */}
+              {hasMultipleTopics && (
+                <button
+                  onClick={() => {
+                    const nextIndex = currentTopicIndex < allTopics.length - 1 ? currentTopicIndex + 1 : 0;
+                    handleTopicSwitch(allTopics[nextIndex]);
+                  }}
+                  className="text-stone-300 hover:text-stone-500 transition-colors p-1"
+                  aria-label="Next topic"
+                >
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="9 18 15 12 9 6" />
+                  </svg>
+                </button>
+              )}
+            </div>
             <h1 className="text-3xl md:text-4xl font-serif text-stone-900 leading-tight max-w-3xl mx-auto">
                 {topic.question}
             </h1>
@@ -198,7 +252,7 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({ topic, level, nativeL
             {/* 1. PREP & RECORDING STATES */}
             {(state === SessionState.PREP || state === SessionState.RECORDING) && (
                 <div className="max-w-2xl mx-auto w-full space-y-10 animate-in fade-in duration-300">
-                    
+
                     {/* Notes Area */}
                     <div className="bg-white p-6 rounded-xl border border-stone-200 shadow-sm relative">
                         <label className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-3 block text-center">{translatedLabels.yourNotesOutline}</label>
