@@ -66,6 +66,7 @@ const FloatingTutorWindow: React.FC<FloatingTutorWindowProps> = ({
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [windowSize, setWindowSize] = useState({ width: 400, height: 560 });
 
   const windowRef = useRef<HTMLDivElement>(null);
   const dragStartRef = useRef({ x: 0, y: 0 });
@@ -80,29 +81,77 @@ const FloatingTutorWindow: React.FC<FloatingTutorWindowProps> = ({
     level,
   });
 
-  // Check if mobile
-  useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768);
+  // Calculate responsive window size
+  const calculateWindowSize = useCallback(() => {
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    // Base sizes
+    const baseWidth = 400;
+    const baseHeight = 560;
+
+    // Max sizes (with margins)
+    const maxWidth = Math.min(baseWidth, viewportWidth - 64); // 32px margin on each side
+    const maxHeight = Math.min(baseHeight, viewportHeight - 120); // 80px top + 40px bottom margin
+
+    // Min sizes
+    const minWidth = 320;
+    const minHeight = 400;
+
+    return {
+      width: Math.max(minWidth, maxWidth),
+      height: Math.max(minHeight, maxHeight),
     };
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // Initialize position when opening
+  // Check if mobile and handle window resize
   useEffect(() => {
-    if (isOpen && !isMobile) {
-      // Position at bottom-right with some margin
-      const initialX = window.innerWidth - 420 - 32; // 420px width + 32px margin
-      const initialY = window.innerHeight - 580 - 32; // 580px height + 32px margin
-      setPosition({ x: Math.max(32, initialX), y: Math.max(100, initialY) });
-      positionRef.current = { x: Math.max(32, initialX), y: Math.max(100, initialY) };
-    }
+    const handleResize = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+
+      // Update responsive window size
+      const newSize = calculateWindowSize();
+      setWindowSize(newSize);
+
+      // Always anchor expanded window to bottom-right corner when resizing
+      if (!mobile && isOpen && windowState === 'expanded') {
+        const newX = window.innerWidth - newSize.width - 32;
+        const newY = window.innerHeight - newSize.height - 32;
+
+        const constrainedX = Math.max(32, newX);
+        const constrainedY = Math.max(100, newY);
+
+        positionRef.current = { x: constrainedX, y: constrainedY };
+        setPosition({ x: constrainedX, y: constrainedY });
+      }
+    };
+
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [isOpen, windowState, calculateWindowSize]);
+
+  // Initialize position and state when opening (only on isOpen change)
+  useEffect(() => {
     if (isOpen) {
+      // Set to expanded when first opened
       setWindowState('expanded');
+
+      // Calculate initial size and position for desktop
+      const mobile = window.innerWidth < 768;
+      if (!mobile) {
+        const size = calculateWindowSize();
+        setWindowSize(size);
+
+        // Position at bottom-right with some margin
+        const initialX = window.innerWidth - size.width - 32; // 32px margin from right
+        const initialY = window.innerHeight - size.height - 32; // height + 32px margin from bottom
+        setPosition({ x: Math.max(32, initialX), y: Math.max(100, initialY) });
+        positionRef.current = { x: Math.max(32, initialX), y: Math.max(100, initialY) };
+      }
     }
-  }, [isOpen, isMobile]);
+  }, [isOpen, calculateWindowSize]);
 
   // Dragging handlers (desktop/tablet only)
   const handleDragStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
@@ -175,33 +224,14 @@ const FloatingTutorWindow: React.FC<FloatingTutorWindowProps> = ({
 
   if (!isOpen) return null;
 
-  // Minimized view - just a pill bar
+  // Minimized view - just a pill bar (always bottom-right)
   if (windowState === 'minimized') {
     return (
       <div
         ref={windowRef}
-        className={`fixed z-[150] ${isMobile ? 'bottom-4 right-4 left-4' : ''}`}
-        style={isMobile ? {} : { left: position.x, top: position.y }}
+        className="fixed z-[150] bottom-8 right-8"
       >
         <div className="bg-[#FAF9F6] border border-stone-200 rounded-full shadow-lg px-4 py-2 flex items-center gap-3">
-          {/* Drag handle (desktop only) */}
-          {!isMobile && (
-            <div
-              className="cursor-move text-stone-400 hover:text-stone-600"
-              onMouseDown={handleDragStart}
-              onTouchStart={handleDragStart}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                <circle cx="9" cy="6" r="1.5" />
-                <circle cx="15" cy="6" r="1.5" />
-                <circle cx="9" cy="12" r="1.5" />
-                <circle cx="15" cy="12" r="1.5" />
-                <circle cx="9" cy="18" r="1.5" />
-                <circle cx="15" cy="18" r="1.5" />
-              </svg>
-            </div>
-          )}
-
           <div className="w-6 h-6 shrink-0">
             <DuckIcon />
           </div>
@@ -240,14 +270,14 @@ const FloatingTutorWindow: React.FC<FloatingTutorWindowProps> = ({
     <div
       ref={windowRef}
       className={`fixed z-[150] ${
-        isMobile
-          ? 'inset-4 top-20'
-          : 'w-[400px] h-[560px]'
+        isMobile ? 'inset-4 top-20' : ''
       } flex flex-col bg-[#FAF9F6] rounded-2xl border border-stone-200 shadow-2xl overflow-hidden`}
       style={isMobile ? {} : {
         left: position.x,
         top: position.y,
-        transition: isDragging ? 'none' : 'box-shadow 0.2s ease'
+        width: windowSize.width,
+        height: windowSize.height,
+        transition: isDragging ? 'none' : 'all 0.2s ease'
       }}
     >
       {/* Header with drag handle */}
