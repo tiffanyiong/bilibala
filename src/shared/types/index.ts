@@ -101,7 +101,6 @@ export enum AppState {
   LANDING,
   LOADING,
   DASHBOARD,
-  CALL_SESSION,
   PRACTICE_SESSION,
   ERROR
 }
