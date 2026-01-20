@@ -71,24 +71,32 @@ const TopicSelector: React.FC<TopicSelectorProps> = ({
       )}
 
       {/* Start Speaking Practice Button */}
-      <button 
+      <style>
+        {`
+          @keyframes color-fade {
+            0%, 100% { background-color: #fbbf24; }
+            50% { background-color: #1c1917; }
+          }
+          .btn-color-fade {
+            animation: color-fade 4s ease-in-out infinite;
+          }
+        `}
+      </style>
+      <button
         onClick={handleStartClick}
         disabled={isLoading || selectedTopics.length === 0}
-        className={`w-full text-sm font-medium py-3 rounded-lg flex items-center justify-center gap-2 transition-all
-            ${isLoading || selectedTopics.length === 0 
-                ? 'bg-stone-100 text-stone-400 border border-stone-200 border-dashed cursor-not-allowed'
-                : 'bg-stone-800 text-white shadow-md hover:bg-stone-900 hover:shadow-lg hover:-translate-y-0.5'
+        className={`px-5 py-2 rounded-full text-sm font-medium flex items-center gap-2 transition-all
+            ${isLoading || selectedTopics.length === 0
+                ? 'bg-stone-100 text-stone-400 cursor-not-allowed'
+                : 'btn-color-fade text-white'
             }
         `}
       >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M12 18.5C15.5899 18.5 18.5 15.5899 18.5 12C18.5 8.41015 15.5899 5.5 12 5.5C8.41015 5.5 5.5 8.41015 5.5 12C5.5 15.5899 8.41015 18.5 12 18.5Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M19.5 12H21.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M2.5 12H4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M12 19.5V21.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M12 2.5V4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15Z" fill="currentColor"/>
+            <path d="M12 18.5C15.5899 18.5 18.5 15.5899 18.5 12C18.5 8.41015 15.5899 5.5 12 5.5C8.41015 5.5 5.5 8.41015 5.5 12C5.5 15.5899 8.41015 18.5 12 18.5Z" stroke="currentColor" strokeWidth="1.5"/>
         </svg>
-        {selectedTopics.length > 0 ? "Start Speaking Practice" : "Select a topic to start"}
+        {selectedTopics.length > 0 ? "Start Practice" : "Select a topic"}
       </button>
     </div>
   );

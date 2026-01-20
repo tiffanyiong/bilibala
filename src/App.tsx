@@ -68,6 +68,7 @@ const App: React.FC = () => {
   const [discussionTopics, setDiscussionTopics] = useState<PracticeTopic[]>([]);
   const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
   const [activePracticeTopic, setActivePracticeTopic] = useState<PracticeTopic | null>(null);
+  const [allSelectedPracticeTopics, setAllSelectedPracticeTopics] = useState<PracticeTopic[]>([]);
   const [isAnalysisLoading, setIsAnalysisLoading] = useState(false);
   const [loadingText, setLoadingText] = useState("Preparing your lesson...");
   const [currentTime, setCurrentTime] = useState(0);
@@ -181,6 +182,9 @@ const App: React.FC = () => {
   };
 
   const handleStartPractice = (topic: PracticeTopic) => {
+    // Get all selected topic objects
+    const allTopics = discussionTopics.filter(t => selectedTopics.includes(t.topic));
+    setAllSelectedPracticeTopics(allTopics);
     setActivePracticeTopic(topic);
     setAppState(AppState.PRACTICE_SESSION);
   };
@@ -555,6 +559,8 @@ const App: React.FC = () => {
       {appState === AppState.PRACTICE_SESSION && videoData && activePracticeTopic && (
           <PracticeSession
             topic={activePracticeTopic}
+            allTopics={allSelectedPracticeTopics}
+            onTopicChange={setActivePracticeTopic}
             level={level}
             nativeLang={nativeLang}
             targetLang={targetLang}
