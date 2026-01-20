@@ -322,20 +322,20 @@ const FloatingTutorWindow: React.FC<FloatingTutorWindowProps> = ({
         {/* Background texture */}
         <div className="absolute inset-0 z-0 opacity-[0.02] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/cream-paper.png')]" />
 
-        {/* Avatar Area */}
-        <div className={`${liveVoice.isActiveSession ? 'shrink-0 py-3' : 'flex-1 flex flex-col items-center justify-center'} relative w-full min-h-[120px] ${liveVoice.hints.length > 0 ? 'z-[70]' : 'z-10'}`}>
+        {/* Avatar Area - compact when in session, larger when idle */}
+        <div className={`${liveVoice.isActiveSession ? 'shrink-0 py-2' : 'flex-1 flex flex-col items-center justify-center min-h-[120px]'} relative w-full ${liveVoice.hints.length > 0 ? 'z-[70]' : 'z-10'}`}>
 
           {liveVoice.hints.length > 0 ? (
             <RescueRing hints={liveVoice.hints} onClose={liveVoice.clearHints} />
           ) : (
             <>
               <div className="relative w-full max-w-[200px] mx-auto flex justify-center items-center">
-                <div className="w-20 h-20 relative z-10 transition-all">
+                <div className={`${liveVoice.isActiveSession ? 'w-12 h-12' : 'w-20 h-20'} relative z-10 transition-all`}>
                   <DuckAvatar />
                 </div>
               </div>
 
-              <div className="min-h-[1.5rem] mt-2 flex items-center justify-center relative z-20 px-4">
+              <div className={`${liveVoice.isActiveSession ? 'mt-1' : 'min-h-[1.5rem] mt-2'} flex items-center justify-center relative z-20 px-4`}>
                 {liveVoice.callEnded ? (
                   <div className="px-3 py-1.5 rounded-full text-[11px] font-medium bg-zinc-50 text-zinc-600 border border-zinc-200 shadow-sm flex items-center gap-2">
                     <span>{liveVoice.callEndedNote}</span>
@@ -356,7 +356,7 @@ const FloatingTutorWindow: React.FC<FloatingTutorWindowProps> = ({
 
         {/* Transcript (shown when connected) */}
         {liveVoice.isActiveSession && (
-          <div className="flex-1 min-h-0 px-3 pb-2 overflow-hidden">
+          <div className="flex-1 min-h-0 px-3 pb-2">
             <Transcript
               history={liveVoice.history}
               realtimeInput={liveVoice.realtimeInput}
