@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
+import { useAuth } from '../../../shared/context/AuthContext';
 import { getBackendOrigin } from '../../../shared/services/backend';
+import { savePracticeSession, uploadPracticeAudio } from '../../../shared/services/database';
 import { PracticeTopic, SpeechAnalysisResult } from '../../../shared/types';
 import AudioRecorder from './AudioRecorder';
 import PyramidFeedback from './PyramidFeedback';
@@ -11,6 +13,7 @@ interface PracticeSessionProps {
   level: string;
   nativeLang: string;
   targetLang: string;
+  analysisId?: string | null;
   onExit: () => void;
 }
 
@@ -60,13 +63,14 @@ const defaultLabels = {
     scoreKeepGrowing: 'Keep Growing'
 };
 
-const PracticeSession: React.FC<PracticeSessionProps> = ({ topic, allTopics = [], onTopicChange, level, nativeLang, targetLang, onExit }) => {
+const PracticeSession: React.FC<PracticeSessionProps> = ({ topic, allTopics = [], onTopicChange, level, nativeLang, targetLang, analysisId, onExit }) => {
+  const { user } = useAuth();
   const [state, setState] = useState<SessionState>(SessionState.PREP);
   const [analysisResult, setAnalysisResult] = useState<SpeechAnalysisResult | null>(null);
   const [error, setError] = useState('');
   const [currentAudioUrl, setCurrentAudioUrl] = useState<string | null>(null);
   const [userNote, setUserNote] = useState('');
-  
+
   // NEW: Store the translated labels here
   const [translatedLabels, setTranslatedLabels] = useState<any>(defaultLabels);
 
@@ -141,12 +145,44 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({ topic, allTopics = []
 
       // Set Data
       setAnalysisResult(analysisData);
-      
+
       // Update Labels (Merge new translations with defaults)
       if (translationData && translationData.labels) {
           setTranslatedLabels({ ...defaultLabels, ...translationData.labels });
       } else {
           setTranslatedLabels(defaultLabels);
+      }
+
+      // Save practice session to database (only for logged-in users)
+      if (user) {
+        // Upload audio to storage (async, don't block UI)
+        uploadPracticeAudio(user.id, audioData)
+          .then((audioUrl) => {
+            return savePracticeSession({
+              user_id: user.id,
+              analysis_id: analysisId || null,
+              topic_id: topic.topicId || null,
+              question_id: topic.questionId || null,
+              topic_text: topic.topic,
+              question_text: topic.question,
+              target_lang: targetLang,
+              native_lang: nativeLang,
+              level,
+              audio_url: audioUrl,
+              transcription: analysisData.transcription || null,
+              score: analysisData.feedback?.score || null,
+              feedback_data: {
+                detected_framework: analysisData.detected_framework,
+                structure: analysisData.structure,
+                improved_structure: analysisData.improved_structure,
+                feedback: analysisData.feedback,
+                improvements: analysisData.improvements,
+              },
+            });
+          })
+          .catch((err) => {
+            console.error('Failed to save practice session:', err);
+          });
       }
 
       // Finally, show results (User sees everything ready at once)
