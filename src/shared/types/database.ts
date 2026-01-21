@@ -106,3 +106,43 @@ export type InsertTopicQuestion = {
   created_by?: string | null;
   is_public?: boolean;
 };
+
+// ============================================
+// PRACTICE SESSIONS
+// ============================================
+
+export interface DbPracticeSession {
+  id: string;
+  user_id: string;
+  analysis_id: string | null;
+  topic_id: string | null;
+  question_id: string | null;
+  topic_text: string;
+  question_text: string;
+  target_lang: string;
+  native_lang: string;
+  level: string;
+  audio_url: string | null;
+  recording_duration_sec: number | null;
+  transcription: string | null;
+  score: number | null;
+  feedback_data: object | null;
+  created_at: string;
+}
+
+export type InsertPracticeSession = {
+  user_id: string;
+  analysis_id?: string | null;
+  topic_id?: string | null;
+  question_id?: string | null;
+  topic_text: string;
+  question_text: string;
+  target_lang: string;
+  native_lang: string;
+  level: string;
+  audio_url?: string | null;
+  recording_duration_sec?: number | null;
+  transcription?: string | null;
+  score?: number | null;
+  feedback_data?: object | null;
+};

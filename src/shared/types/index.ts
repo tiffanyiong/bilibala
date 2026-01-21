@@ -19,6 +19,9 @@ export interface PracticeTopic {
   topic: string;
   question: string;
   targetWords: string[];
+  // Optional database IDs (populated when loaded from DB)
+  topicId?: string;
+  questionId?: string;
 }
 
 export interface ContentAnalysis {
