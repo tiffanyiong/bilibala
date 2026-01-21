@@ -69,6 +69,7 @@ const App: React.FC = () => {
   const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
   const [activePracticeTopic, setActivePracticeTopic] = useState<PracticeTopic | null>(null);
   const [allSelectedPracticeTopics, setAllSelectedPracticeTopics] = useState<PracticeTopic[]>([]);
+  const [currentAnalysisId, setCurrentAnalysisId] = useState<string | null>(null);
   const [isAnalysisLoading, setIsAnalysisLoading] = useState(false);
   const [loadingText, setLoadingText] = useState("Preparing your lesson...");
   const [currentTime, setCurrentTime] = useState(0);
@@ -253,6 +254,7 @@ const App: React.FC = () => {
         setTranscript(analysis.transcript || []);
         setDiscussionTopics(analysis.discussionTopics || []);
         setSelectedTopics([]);
+        setCurrentAnalysisId(cachedAnalysis.id);
         setIsAnalysisLoading(false);
         setAppState(AppState.DASHBOARD);
 
@@ -310,13 +312,22 @@ const App: React.FC = () => {
                 user?.id
               );
 
-              // Save practice topics for Quick Start feature
-              if (savedAnalysis && analysis.discussionTopics) {
-                savePracticeTopicsFromAnalysis(
-                  savedAnalysis.id,
-                  analysis.discussionTopics,
-                  level
-                );
+              // Store the analysis ID for linking practice sessions
+              if (savedAnalysis) {
+                setCurrentAnalysisId(savedAnalysis.id);
+
+                // Save practice topics for Quick Start feature and get IDs
+                if (analysis.discussionTopics) {
+                  const topicsWithIds = await savePracticeTopicsFromAnalysis(
+                    savedAnalysis.id,
+                    analysis.discussionTopics,
+                    level
+                  );
+                  // Update discussion topics with database IDs
+                  if (topicsWithIds.length > 0) {
+                    setDiscussionTopics(topicsWithIds);
+                  }
+                }
               }
             }
 
@@ -369,6 +380,7 @@ const App: React.FC = () => {
     setTranscript([]);
     setDiscussionTopics([]);
     setSelectedTopics([]);
+    setCurrentAnalysisId(null);
     setErrorMsg('');
   };
 
@@ -564,6 +576,7 @@ const App: React.FC = () => {
             level={level}
             nativeLang={nativeLang}
             targetLang={targetLang}
+            analysisId={currentAnalysisId}
             onExit={() => setAppState(AppState.DASHBOARD)}
           />
       )}
