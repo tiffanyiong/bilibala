@@ -4,11 +4,13 @@ import {
   DbGlobalVideo,
   DbCachedAnalysis,
   DbPracticeTopic,
+  DbPracticeSession,
   AnalysisContent,
   InsertGlobalVideo,
   InsertCachedAnalysis,
   InsertPracticeTopic,
   InsertTopicQuestion,
+  InsertPracticeSession,
 } from '../types/database';
 
 // ============================================
@@ -194,18 +196,18 @@ export function dbAnalysisToContentAnalysis(
 
 /**
  * Save practice topics and their questions from an analysis
- * Returns the created topic IDs
+ * Returns the topics with their database IDs included
  */
 export async function savePracticeTopicsFromAnalysis(
   analysisId: string,
   discussionTopics: PracticeTopic[],
   difficultyLevel?: string
-): Promise<string[]> {
+): Promise<PracticeTopic[]> {
   if (!discussionTopics || discussionTopics.length === 0) {
     return [];
   }
 
-  const createdTopicIds: string[] = [];
+  const topicsWithIds: PracticeTopic[] = [];
 
   for (const topic of discussionTopics) {
     // Check if topic already exists for this analysis
@@ -217,7 +219,19 @@ export async function savePracticeTopicsFromAnalysis(
       .single();
 
     if (existingTopic) {
-      createdTopicIds.push(existingTopic.id);
+      // Get the existing question ID
+      const { data: existingQuestion } = await supabase
+        .from('topic_questions')
+        .select('id')
+        .eq('topic_id', existingTopic.id)
+        .eq('question', topic.question)
+        .single();
+
+      topicsWithIds.push({
+        ...topic,
+        topicId: existingTopic.id,
+        questionId: existingQuestion?.id || undefined,
+      });
       continue;
     }
 
@@ -239,10 +253,11 @@ export async function savePracticeTopicsFromAnalysis(
 
     if (topicError) {
       console.error('Error saving practice topic:', topicError);
+      topicsWithIds.push(topic); // Add without IDs on error
       continue;
     }
 
-    createdTopicIds.push(createdTopic.id);
+    let questionId: string | undefined;
 
     // Insert associated question
     if (topic.question) {
@@ -253,17 +268,27 @@ export async function savePracticeTopicsFromAnalysis(
         is_public: true,
       };
 
-      const { error: questionError } = await supabase
+      const { data: createdQuestion, error: questionError } = await supabase
         .from('topic_questions')
-        .insert(questionData);
+        .insert(questionData)
+        .select()
+        .single();
 
       if (questionError) {
         console.error('Error saving topic question:', questionError);
+      } else {
+        questionId = createdQuestion.id;
       }
     }
+
+    topicsWithIds.push({
+      ...topic,
+      topicId: createdTopic.id,
+      questionId,
+    });
   }
 
-  return createdTopicIds;
+  return topicsWithIds;
 }
 
 /**
@@ -331,4 +356,97 @@ export async function getPracticeTopicsForAnalysis(
   }
 
   return data as DbPracticeTopic[];
+}
+
+// ============================================
+// PRACTICE SESSIONS
+// ============================================
+
+/**
+ * Upload practice audio to Supabase Storage
+ * Returns the public URL of the uploaded audio
+ */
+export async function uploadPracticeAudio(
+  userId: string,
+  audioBase64: string
+): Promise<string | null> {
+  try {
+    // Convert base64 to blob
+    const byteCharacters = atob(audioBase64);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: 'audio/mp3' });
+
+    // Generate unique filename
+    const timestamp = Date.now();
+    const filename = `${userId}/${timestamp}.mp3`;
+
+    // Upload to Supabase Storage
+    const { data, error } = await supabase.storage
+      .from('practice-recordings')
+      .upload(filename, blob, {
+        contentType: 'audio/mp3',
+        upsert: false,
+      });
+
+    if (error) {
+      console.error('Error uploading audio:', error);
+      return null;
+    }
+
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from('practice-recordings')
+      .getPublicUrl(data.path);
+
+    return urlData.publicUrl;
+  } catch (err) {
+    console.error('Error processing audio upload:', err);
+    return null;
+  }
+}
+
+/**
+ * Save a practice session (user's speech practice attempt)
+ */
+export async function savePracticeSession(
+  session: InsertPracticeSession
+): Promise<DbPracticeSession | null> {
+  const { data, error } = await supabase
+    .from('practice_sessions')
+    .insert(session)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error saving practice session:', error);
+    return null;
+  }
+
+  return data as DbPracticeSession;
+}
+
+/**
+ * Get practice sessions for a user
+ */
+export async function getUserPracticeSessions(
+  userId: string,
+  limit: number = 20
+): Promise<DbPracticeSession[]> {
+  const { data, error } = await supabase
+    .from('practice_sessions')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.error('Error fetching practice sessions:', error);
+    return [];
+  }
+
+  return data as DbPracticeSession[];
 }

@@ -1,5 +1,56 @@
 # Changelog
 
+## [Unreleased] - 2026-01-21
+
+### Added
+
+#### Practice Session Database Integration
+- **Direct Analysis Linking**: Practice sessions now directly link to their source video analysis
+  - Added `analysis_id` column to `practice_sessions` table
+  - Enables querying all practice sessions for a specific analyzed video
+  - Prepares codebase for Video Library feature
+
+#### Audio Recording Storage
+- **Persistent Audio Playback**: User recordings are now saved to Supabase Storage
+  - `uploadPracticeAudio()` function uploads recordings to `practice-recordings` bucket
+  - Audio URLs saved to `practice_sessions.audio_url` field
+  - Users can replay their recordings from practice history
+
+### Changed
+
+- **Database Types** (`src/shared/types/database.ts`):
+  - Added `analysis_id: string | null` to `DbPracticeSession`
+  - Added `analysis_id?: string | null` to `InsertPracticeSession`
+
+- **PracticeSession Component** (`src/features/practice/components/PracticeSession.tsx`):
+  - Added `analysisId?: string | null` prop
+  - Now passes `analysis_id` when saving practice sessions
+
+- **App.tsx**:
+  - Added `currentAnalysisId` state to track active analysis
+  - Sets `currentAnalysisId` when loading from cache or saving new analysis
+  - Passes `analysisId` prop to `PracticeSession` component
+  - Resets `currentAnalysisId` when navigating to landing page
+
+### Database Migration Required
+
+```sql
+-- Add analysis_id column to practice_sessions
+ALTER TABLE public.practice_sessions
+ADD COLUMN analysis_id uuid NULL
+REFERENCES cached_analyses(id) ON DELETE SET NULL;
+
+-- Add index for efficient querying
+CREATE INDEX idx_practice_sessions_analysis
+ON public.practice_sessions(analysis_id);
+```
+
+### Supabase Storage Setup Required
+
+Create a `practice-recordings` bucket with public access for audio playback.
+
+---
+
 ## [Unreleased] - 2026-01-16
 
 ### Added
