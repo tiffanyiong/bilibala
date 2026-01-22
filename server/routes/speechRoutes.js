@@ -90,6 +90,7 @@ router.post('/analyze-speech', async (req, res) => {
       - **PREP:** Point -> Reason -> Example (The Story) -> Point.
 
       # TASK 3: COACHING FEEDBACK
+      - **Score:** Provide a score from 0 to 100 based on overall speech quality, structure, clarity, and language use.
       - **Gap Analysis:** Explain why the new structure is better.
 
       # Output Requirements

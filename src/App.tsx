@@ -10,9 +10,11 @@ import UsageLimitModal from './shared/components/UsageLimitModal';
 import { LANGUAGES, LEVELS } from './shared/constants';
 import { useAuth } from './shared/context/AuthContext';
 import {
+  addToUserLibrary,
   dbAnalysisToContentAnalysis,
   getCachedAnalysis,
   getOrCreateVideo,
+  getPracticeTopicsForAnalysis,
   saveCachedAnalysis,
   savePracticeTopicsFromAnalysis,
 } from './shared/services/database';
@@ -145,12 +147,13 @@ const App: React.FC = () => {
             setTranscript(p.transcript || []);
             setDiscussionTopics(p.discussionTopics || []);
             setSelectedTopics(p.selectedTopics || []);
-            
+            setCurrentAnalysisId(p.currentAnalysisId || null);
+
             // Restore to Dashboard (safer than restoring active call session immediately)
             setAppState(AppState.DASHBOARD);
         }
-      } catch (e) { 
-          console.error("Failed to hydrate state", e); 
+      } catch (e) {
+          console.error("Failed to hydrate state", e);
       }
     }
   }, []);
@@ -159,12 +162,13 @@ const App: React.FC = () => {
     if (videoData) {
         localStorage.setItem(STORAGE_KEY, JSON.stringify({
             videoUrl, nativeLang, targetLang, level, videoData,
-            summary, translatedSummary, topics, vocabulary, transcript, discussionTopics, selectedTopics
+            summary, translatedSummary, topics, vocabulary, transcript, discussionTopics, selectedTopics,
+            currentAnalysisId
         }));
     } else {
         localStorage.removeItem(STORAGE_KEY);
     }
-  }, [videoData, videoUrl, nativeLang, targetLang, level, summary, translatedSummary, topics, vocabulary, transcript, discussionTopics, selectedTopics]);
+  }, [videoData, videoUrl, nativeLang, targetLang, level, summary, translatedSummary, topics, vocabulary, transcript, discussionTopics, selectedTopics, currentAnalysisId]);
 
   const playerRef = useRef<VideoPlayerRef>(null);
 
@@ -183,6 +187,7 @@ const App: React.FC = () => {
   };
 
   const handleStartPractice = (topic: PracticeTopic) => {
+    console.log('[App] handleStartPractice called. currentAnalysisId:', currentAnalysisId);
     // Get all selected topic objects
     const allTopics = discussionTopics.filter(t => selectedTopics.includes(t.topic));
     setAllSelectedPracticeTopics(allTopics);
@@ -244,7 +249,7 @@ const App: React.FC = () => {
 
       if (cachedAnalysis) {
         // CACHE HIT - Use cached data immediately (no API cost!)
-        console.log('Cache hit! Using cached analysis.');
+        console.log('Cache hit! Using cached analysis. Analysis ID:', cachedAnalysis.id);
         const analysis = dbAnalysisToContentAnalysis(cachedAnalysis);
 
         setSummary(analysis.summary);
@@ -252,11 +257,40 @@ const App: React.FC = () => {
         setTopics(analysis.topics);
         setVocabulary(analysis.vocabulary);
         setTranscript(analysis.transcript || []);
-        setDiscussionTopics(analysis.discussionTopics || []);
         setSelectedTopics([]);
         setCurrentAnalysisId(cachedAnalysis.id);
+        console.log('[App] setCurrentAnalysisId called with:', cachedAnalysis.id);
         setIsAnalysisLoading(false);
         setAppState(AppState.DASHBOARD);
+
+        // Fetch practice topics with database IDs and merge with discussion topics
+        const dbTopics = await getPracticeTopicsForAnalysis(cachedAnalysis.id);
+        if (dbTopics.length > 0 && analysis.discussionTopics) {
+          // Merge database IDs into discussion topics
+          const topicsWithIds = analysis.discussionTopics.map(topic => {
+            const dbTopic = dbTopics.find(dt => dt.topic === topic.topic);
+            if (dbTopic) {
+              return {
+                ...topic,
+                topicId: dbTopic.id,
+                questionId: dbTopic.questionId,
+              };
+            }
+            return topic;
+          });
+          setDiscussionTopics(topicsWithIds);
+          console.log('[App] Discussion topics with IDs:', topicsWithIds);
+        } else {
+          setDiscussionTopics(analysis.discussionTopics || []);
+        }
+
+        // Add to user's library (even if it's someone else's cached analysis)
+        // This ensures the video appears in their library for future access
+        if (user) {
+          addToUserLibrary(user.id, cachedAnalysis.id).catch((err) => {
+            console.error('Failed to add to user library:', err);
+          });
+        }
 
         // Note: No usage recorded for cached results - Free for anonymous!
         return;
@@ -315,6 +349,13 @@ const App: React.FC = () => {
               // Store the analysis ID for linking practice sessions
               if (savedAnalysis) {
                 setCurrentAnalysisId(savedAnalysis.id);
+
+                // Add to user's library (for logged-in users)
+                if (user) {
+                  addToUserLibrary(user.id, savedAnalysis.id).catch((err) => {
+                    console.error('Failed to add to user library:', err);
+                  });
+                }
 
                 // Save practice topics for Quick Start feature and get IDs
                 if (analysis.discussionTopics) {
