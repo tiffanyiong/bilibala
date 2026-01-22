@@ -146,3 +146,49 @@ export type InsertPracticeSession = {
   score?: number | null;
   feedback_data?: object | null;
 };
+
+// ============================================
+// USER LIBRARY
+// ============================================
+
+export interface DbUserLibrary {
+  id: string;
+  user_id: string;
+  analysis_id: string;
+  is_favorite: boolean;
+  practice_count: number;
+  last_score: number | null;
+  last_accessed_at: string;
+  created_at: string;
+}
+
+export type InsertUserLibrary = {
+  user_id: string;
+  analysis_id: string;
+  is_favorite?: boolean;
+  practice_count?: number;
+  last_score?: number | null;
+};
+
+// Combined type for UI display (joins user_library + cached_analyses + global_videos)
+export interface VideoHistoryItem {
+  // From user_library
+  libraryId: string;
+  isFavorite: boolean;
+  practiceCount: number;
+  lastScore: number | null;
+  lastAccessedAt: string;
+
+  // From cached_analyses
+  analysisId: string;
+  level: string;
+  targetLang: string;
+  nativeLang: string;
+  analyzedAt: string;
+
+  // From global_videos
+  videoId: string;
+  youtubeId: string;
+  title: string;
+  thumbnailUrl: string | null;
+}
