@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ContentTabs from './features/content/components/ContentTabs';
 import TopicSelector from './features/content/components/TopicSelector';
+import VideoLibraryPage from './features/library/components/VideoLibraryPage';
 import FloatingTutorWindow from './features/live-voice/components/FloatingTutorWindow';
 import PracticeSession from './features/practice/components/PracticeSession';
 import VideoPlayer, { VideoPlayerRef } from './features/video/components/VideoPlayer';
@@ -13,11 +14,14 @@ import {
   addToUserLibrary,
   dbAnalysisToContentAnalysis,
   getCachedAnalysis,
+  getCachedAnalysisById,
   getOrCreateVideo,
   getPracticeTopicsForAnalysis,
   saveCachedAnalysis,
   savePracticeTopicsFromAnalysis,
+  updateLibraryAccess,
 } from './shared/services/database';
+import { VideoHistoryItem } from './shared/types/database';
 import { analyzeVideoContent } from './shared/services/geminiService';
 import {
   checkAnonymousUsageLimit,
@@ -55,6 +59,7 @@ const App: React.FC = () => {
   const [usageInfo, setUsageInfo] = useState<UsageDisplayInfo | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
 
+  
   // Floating AI Tutor window state
   const [showTutorWindow, setShowTutorWindow] = useState(false);
   const [tutorWindowMinimized, setTutorWindowMinimized] = useState(false);
@@ -425,6 +430,79 @@ const App: React.FC = () => {
     setErrorMsg('');
   };
 
+  // Handle loading a video from the library
+  const handleLoadFromLibrary = async (video: VideoHistoryItem) => {
+    // Set loading state
+    setAppState(AppState.LOADING);
+    setLoadingText('Loading your video...');
+
+    try {
+      // Reconstruct video URL from youtubeId
+      const videoUrl = `https://www.youtube.com/watch?v=${video.youtubeId}`;
+      setVideoUrl(videoUrl);
+
+      // Set language/level from the stored analysis
+      setNativeLang(video.nativeLang);
+      setTargetLang(video.targetLang);
+      setLevel(video.level);
+
+      // Set video data
+      setVideoData({
+        id: video.youtubeId,
+        url: videoUrl,
+        title: video.title,
+      });
+
+      // Fetch the cached analysis directly by analysisId
+      const cachedAnalysis = await getCachedAnalysisById(video.analysisId);
+
+      if (cachedAnalysis) {
+        const analysis = dbAnalysisToContentAnalysis(cachedAnalysis);
+        setSummary(analysis.summary);
+        setTranslatedSummary(analysis.translatedSummary || '');
+        setTopics(analysis.topics);
+        setVocabulary(analysis.vocabulary);
+        setTranscript(analysis.transcript || []);
+        setCurrentAnalysisId(video.analysisId);
+
+        // Fetch practice topics with database IDs and merge with discussion topics
+        const dbTopics = await getPracticeTopicsForAnalysis(video.analysisId);
+        if (dbTopics.length > 0 && analysis.discussionTopics) {
+          // Merge database IDs into discussion topics
+          const topicsWithIds = analysis.discussionTopics.map(topic => {
+            const dbTopic = dbTopics.find(dt => dt.topic === topic.topic);
+            if (dbTopic) {
+              return {
+                ...topic,
+                topicId: dbTopic.id,
+                questionId: dbTopic.questionId,
+              };
+            }
+            return topic;
+          });
+          setDiscussionTopics(topicsWithIds);
+        } else {
+          setDiscussionTopics(analysis.discussionTopics || []);
+        }
+
+        // Update last_accessed_at
+        if (user) {
+          updateLibraryAccess(user.id, video.analysisId).catch((err) => {
+            console.error('Failed to update library access:', err);
+          });
+        }
+
+        setAppState(AppState.DASHBOARD);
+      } else {
+        throw new Error('Failed to load analysis');
+      }
+    } catch (error) {
+      console.error('Error loading from library:', error);
+      setErrorMsg('Failed to load video. Please try again.');
+      setAppState(AppState.LANDING);
+    }
+  };
+
   const StartCallButton = () => (
     <button
       onClick={() => setShowTutorWindow(true)}
@@ -445,7 +523,7 @@ const App: React.FC = () => {
   );
 
   const shouldShowHeader = appState === AppState.DASHBOARD || appState === AppState.PRACTICE_SESSION;
-  const isScrollable = appState === AppState.DASHBOARD || appState === AppState.PRACTICE_SESSION;
+  const isScrollable = appState === AppState.DASHBOARD || appState === AppState.PRACTICE_SESSION || appState === AppState.VIDEO_LIBRARY;
 
   return (
     <Layout
@@ -455,6 +533,7 @@ const App: React.FC = () => {
         isScrollable={isScrollable}
         authModalOpen={showAuthModal}
         onAuthModalClose={() => setShowAuthModal(false)}
+        onOpenVideoLibrary={() => setAppState(AppState.VIDEO_LIBRARY)}
     >
       {/* 1. LANDING PAGE */}
       {appState === AppState.LANDING && (
@@ -622,6 +701,14 @@ const App: React.FC = () => {
           />
       )}
 
+      {/* 5. VIDEO LIBRARY PAGE */}
+      {appState === AppState.VIDEO_LIBRARY && (
+        <VideoLibraryPage
+          onSelectVideo={handleLoadFromLibrary}
+          onBack={() => setAppState(AppState.LANDING)}
+        />
+      )}
+
       {/* Usage Limit Modal */}
       <UsageLimitModal
         isOpen={showUsageLimitModal}
@@ -632,7 +719,8 @@ const App: React.FC = () => {
         }}
         usageInfo={usageInfo}
       />
-    </Layout>
+
+      </Layout>
   );
 };
 

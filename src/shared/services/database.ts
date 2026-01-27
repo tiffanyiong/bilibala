@@ -133,6 +133,26 @@ export async function getCachedAnalysis(
 }
 
 /**
+ * Get cached analysis by its ID (for loading from library)
+ */
+export async function getCachedAnalysisById(
+  analysisId: string
+): Promise<DbCachedAnalysis | null> {
+  const { data, error } = await supabase
+    .from('cached_analyses')
+    .select('*')
+    .eq('id', analysisId)
+    .single();
+
+  if (error) {
+    console.error('Error fetching cached analysis by ID:', error);
+    return null;
+  }
+
+  return data as DbCachedAnalysis;
+}
+
+/**
  * Save analysis to cache
  */
 export async function saveCachedAnalysis(

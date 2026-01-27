@@ -105,5 +105,6 @@ export enum AppState {
   LOADING,
   DASHBOARD,
   PRACTICE_SESSION,
+  VIDEO_LIBRARY,
   ERROR
 }

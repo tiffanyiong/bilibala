@@ -3,9 +3,10 @@ import { useAuth } from '../context/AuthContext';
 
 interface UserMenuProps {
   onOpenAuthModal: () => void;
+  onOpenVideoLibrary?: () => void;
 }
 
-const UserMenu: React.FC<UserMenuProps> = ({ onOpenAuthModal }) => {
+const UserMenu: React.FC<UserMenuProps> = ({ onOpenAuthModal, onOpenVideoLibrary }) => {
   const { user, userProfile, loading, signOut } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -42,7 +43,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ onOpenAuthModal }) => {
 
   const menuItems = [
     { label: 'Profile', icon: ProfileIcon, onClick: () => console.log('Profile clicked') },
-    { label: 'Video', icon: VideoIcon, onClick: () => console.log('Video clicked') },
+    { label: 'Video', icon: VideoIcon, onClick: () => onOpenVideoLibrary?.() },
     { label: 'Vocabulary', icon: VocabularyIcon, onClick: () => console.log('Vocabulary clicked') },
     { label: 'Subscription Plan', icon: SubscriptionIcon, onClick: () => console.log('Subscription clicked') },
     { label: 'Settings', icon: SettingsIcon, onClick: () => console.log('Settings clicked') },
