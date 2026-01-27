@@ -10,9 +10,10 @@ interface LayoutProps {
   isScrollable?: boolean;
   authModalOpen?: boolean;
   onAuthModalClose?: () => void;
+  onOpenVideoLibrary?: () => void;
 }
 
-const Layout: React.FC<LayoutProps> = ({ children, onLogoClick, targetLang, level, isScrollable = false, authModalOpen, onAuthModalClose }) => {
+const Layout: React.FC<LayoutProps> = ({ children, onLogoClick, targetLang, level, isScrollable = false, authModalOpen, onAuthModalClose, onOpenVideoLibrary }) => {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
   // Allow external control of auth modal - use OR logic so either source can open it
@@ -85,7 +86,7 @@ const Layout: React.FC<LayoutProps> = ({ children, onLogoClick, targetLang, leve
           )}
 
           {/* User Menu (Sign in button or Avatar with dropdown) */}
-          <UserMenu onOpenAuthModal={() => setIsAuthModalOpen(true)} />
+          <UserMenu onOpenAuthModal={() => setIsAuthModalOpen(true)} onOpenVideoLibrary={onOpenVideoLibrary} />
         </div>
       </header>
 
