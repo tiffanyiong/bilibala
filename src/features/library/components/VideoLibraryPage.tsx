@@ -3,6 +3,7 @@ import { VideoHistoryItem } from '../../../shared/types/database';
 import { getUserVideoLibrary, toggleLibraryFavorite, removeFromLibrary } from '../../../shared/services/database';
 import { searchVideos } from '../../../shared/services/geminiService';
 import { useAuth } from '../../../shared/context/AuthContext';
+import { useSubscription } from '../../../shared/context/SubscriptionContext';
 import VideoCard, { VideoCardSkeleton } from './VideoCard';
 import FilterBar, { SortOrder } from './FilterBar';
 import PracticeReportsModal from './PracticeReportsModal';
@@ -17,6 +18,7 @@ const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({
   onExpandReports,
 }) => {
   const { user } = useAuth();
+  const { tier } = useSubscription();
   const [videos, setVideos] = useState<VideoHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -36,14 +38,16 @@ const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({
   // Practice reports modal state
   const [selectedVideoForReports, setSelectedVideoForReports] = useState<VideoHistoryItem | null>(null);
 
-  // Fetch videos on mount
+  // Fetch videos on mount (re-fetch when tier changes, e.g. after upgrade)
   useEffect(() => {
     if (user) {
       setLoading(true);
       setError(null);
       getUserVideoLibrary(user.id)
         .then((data) => {
-          setVideos(data);
+          // Free tier: limit to most recent 10 videos
+          const limited = tier === 'free' ? data.slice(0, 10) : data;
+          setVideos(limited);
           setLoading(false);
         })
         .catch((err) => {
@@ -52,7 +56,7 @@ const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({
           setLoading(false);
         });
     }
-  }, [user]);
+  }, [user, tier]);
 
   // Debounced search handler
   const handleSearch = useCallback((query: string) => {

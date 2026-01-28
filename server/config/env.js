@@ -2,8 +2,9 @@ import dotenv from 'dotenv';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// Load env from server/.env
+// Load env: root .env.local first (overrides), then server/.env as fallback
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.join(__dirname, '../../.env.local') });
 dotenv.config({ path: path.join(__dirname, '../.env') });
 
 export const config = {
@@ -18,6 +19,16 @@ export const config = {
   },
   supadata: {
     apiKey: process.env.SUPADATA_API_KEY,
+  },
+  stripe: {
+    secretKey: process.env.STRIPE_SECRET_KEY,
+    webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
+    proPriceId: process.env.STRIPE_PRO_PRICE_ID,
+    proAnnualPriceId: process.env.STRIPE_PRO_ANNUAL_PRICE_ID,
+  },
+  supabase: {
+    url: process.env.SUPABASE_URL,
+    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
   },
 };
 

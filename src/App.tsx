@@ -4,6 +4,7 @@ import TopicSelector from './features/content/components/TopicSelector';
 import VideoLibraryPage from './features/library/components/VideoLibraryPage';
 import PracticeReportsPage from './features/library/components/PracticeReportsPage';
 import PracticeReportDetailPage from './features/library/components/PracticeReportDetailPage';
+import SubscriptionPage from './features/subscription/components/SubscriptionPage';
 import FloatingTutorWindow from './features/live-voice/components/FloatingTutorWindow';
 import PracticeSession from './features/practice/components/PracticeSession';
 import VideoPlayer, { VideoPlayerRef } from './features/video/components/VideoPlayer';
@@ -12,6 +13,8 @@ import Layout from './shared/components/Layout';
 import UsageLimitModal from './shared/components/UsageLimitModal';
 import { LANGUAGES, LEVELS } from './shared/constants';
 import { useAuth } from './shared/context/AuthContext';
+import { useSubscription } from './shared/context/SubscriptionContext';
+import UpgradeModal from './features/subscription/components/UpgradeModal';
 import {
   addToUserLibrary,
   dbAnalysisToContentAnalysis,
@@ -49,8 +52,13 @@ const App: React.FC = () => {
     });
   }, []);
   const { user } = useAuth();
+  const { canAddVideo, canStartPractice, canUseAiTutor, canExportPdf, recordAction, tier } = useSubscription();
   const [appState, setAppState] = useState<AppState>(AppState.LANDING);
   const [videoUrl, setVideoUrl] = useState('');
+
+  // Upgrade modal state
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [upgradeFeature, setUpgradeFeature] = useState('');
 
   // Language & Level State
   const [nativeLang, setNativeLang] = useState('Chinese (Mandarin - 中文)');
@@ -105,6 +113,9 @@ const App: React.FC = () => {
     if (parts[0] === 'library') {
       return { type: 'library' as const };
     }
+    if (parts[0] === 'subscription') {
+      return { type: 'subscription' as const };
+    }
     // Assume first part is video ID (which is actually analysisId for reports)
     const videoId = parts[0];
     if (parts[1] === 'practice') {
@@ -124,7 +135,9 @@ const App: React.FC = () => {
     const handlePopState = () => {
       const route = parsePathRoute(window.location.pathname);
 
-      if (route.type === 'library') {
+      if (route.type === 'subscription') {
+        setAppState(AppState.SUBSCRIPTION);
+      } else if (route.type === 'library') {
         setCurrentReportsVideo(null);
         setCurrentReportSessionId(null);
         setAppState(AppState.VIDEO_LIBRARY);
@@ -184,6 +197,8 @@ const App: React.FC = () => {
       targetPath = `/${videoData.id}`;
     } else if (appState === AppState.PRACTICE_SESSION && videoData) {
       targetPath = `/${videoData.id}/practice`;
+    } else if (appState === AppState.SUBSCRIPTION) {
+      targetPath = '/subscription';
     } else if (appState === AppState.VIDEO_LIBRARY) {
       targetPath = '/library';
     } else if (appState === AppState.PRACTICE_REPORTS && currentReportsVideo) {
@@ -207,6 +222,12 @@ const App: React.FC = () => {
     // Handle library route directly
     if (route.type === 'library') {
       setAppState(AppState.VIDEO_LIBRARY);
+      return;
+    }
+
+    // Handle subscription route directly
+    if (route.type === 'subscription') {
+      setAppState(AppState.SUBSCRIPTION);
       return;
     }
 
@@ -293,6 +314,13 @@ const App: React.FC = () => {
   };
 
   const handleStartPractice = (topic: PracticeTopic) => {
+    // Check practice session limit for logged-in users
+    if (user && !canStartPractice) {
+      setUpgradeFeature('Practice Session');
+      setShowUpgradeModal(true);
+      return;
+    }
+
     console.log('[App] handleStartPractice called. currentAnalysisId:', currentAnalysisId);
     // Get all selected topic objects
     const allTopics = discussionTopics.filter(t => selectedTopics.includes(t.topic));
@@ -322,6 +350,11 @@ const App: React.FC = () => {
         setShowUsageLimitModal(true);
         return; // Don't proceed, don't change app state
       }
+    } else if (!canAddVideo) {
+      // Logged-in user hit their video limit
+      setUpgradeFeature('Video Analysis');
+      setShowUpgradeModal(true);
+      return;
     }
 
     // 2. Now start loading (user has permission)
@@ -500,12 +533,15 @@ const App: React.FC = () => {
               }
             }
 
-            // Record anonymous usage (only for fresh analyses, not cached)
+            // Record usage (only for fresh analyses, not cached)
             if (!user) {
               recordAnonymousUsage();
               // Update local state if needed
               const info = await getUsageDisplayInfo();
               setUsageInfo(info);
+            } else {
+              // Record usage for logged-in user
+              recordAction('video_analysis');
             }
 
             // Done: Cancel timers and show dashboard now
@@ -693,9 +729,18 @@ const App: React.FC = () => {
     setAppState(AppState.VIDEO_LIBRARY);
   };
 
+  const handleStartTutor = () => {
+    if (user && !canUseAiTutor) {
+      setUpgradeFeature('AI Tutor');
+      setShowUpgradeModal(true);
+      return;
+    }
+    setShowTutorWindow(true);
+  };
+
   const StartCallButton = () => (
     <button
-      onClick={() => setShowTutorWindow(true)}
+      onClick={handleStartTutor}
       className="fixed bottom-8 right-8 z-50 group flex items-center gap-2 bg-zinc-900 text-white border border-zinc-700 p-4 rounded-full shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden max-w-[60px] hover:max-w-[200px]"
       aria-label="Start Chatting"
     >
@@ -713,7 +758,7 @@ const App: React.FC = () => {
   );
 
   const shouldShowHeader = appState === AppState.DASHBOARD || appState === AppState.PRACTICE_SESSION;
-  const isScrollable = appState === AppState.DASHBOARD || appState === AppState.PRACTICE_SESSION || appState === AppState.VIDEO_LIBRARY || appState === AppState.PRACTICE_REPORTS || appState === AppState.PRACTICE_REPORT_DETAIL;
+  const isScrollable = appState === AppState.DASHBOARD || appState === AppState.PRACTICE_SESSION || appState === AppState.VIDEO_LIBRARY || appState === AppState.PRACTICE_REPORTS || appState === AppState.PRACTICE_REPORT_DETAIL || appState === AppState.SUBSCRIPTION;
 
   return (
     <Layout
@@ -724,6 +769,7 @@ const App: React.FC = () => {
         authModalOpen={showAuthModal}
         onAuthModalClose={() => setShowAuthModal(false)}
         onOpenVideoLibrary={() => setAppState(AppState.VIDEO_LIBRARY)}
+        onOpenSubscription={() => setAppState(AppState.SUBSCRIPTION)}
     >
       {/* 1. LANDING PAGE */}
       {appState === AppState.LANDING && (
@@ -953,6 +999,25 @@ const App: React.FC = () => {
           onBackToLibrary={handleBackFromReportsToLibrary}
         />
       )}
+
+      {/* 8. SUBSCRIPTION PAGE */}
+      {appState === AppState.SUBSCRIPTION && (
+        <SubscriptionPage
+          onBack={() => setAppState(AppState.LANDING)}
+          onOpenAuthModal={() => setShowAuthModal(true)}
+        />
+      )}
+
+      {/* Upgrade Modal (for subscription gating) */}
+      <UpgradeModal
+        isOpen={showUpgradeModal}
+        onClose={() => setShowUpgradeModal(false)}
+        onUpgrade={() => {
+          setShowUpgradeModal(false);
+          setAppState(AppState.SUBSCRIPTION);
+        }}
+        feature={upgradeFeature}
+      />
 
       {/* Usage Limit Modal */}
       <UsageLimitModal

@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import './index.css';
 import App from './App';
 import { AuthProvider } from './shared/context/AuthContext';
+import { SubscriptionProvider } from './shared/context/SubscriptionContext';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -13,7 +14,9 @@ const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
     <AuthProvider>
-      <App />
+      <SubscriptionProvider>
+        <App />
+      </SubscriptionProvider>
     </AuthProvider>
   </React.StrictMode>
 );
