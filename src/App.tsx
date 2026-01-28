@@ -1,6 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ContentTabs from './features/content/components/ContentTabs';
 import TopicSelector from './features/content/components/TopicSelector';
+import VideoLibraryPage from './features/library/components/VideoLibraryPage';
+import PracticeReportsPage from './features/library/components/PracticeReportsPage';
+import PracticeReportDetailPage from './features/library/components/PracticeReportDetailPage';
 import FloatingTutorWindow from './features/live-voice/components/FloatingTutorWindow';
 import PracticeSession from './features/practice/components/PracticeSession';
 import VideoPlayer, { VideoPlayerRef } from './features/video/components/VideoPlayer';
@@ -10,11 +13,16 @@ import UsageLimitModal from './shared/components/UsageLimitModal';
 import { LANGUAGES, LEVELS } from './shared/constants';
 import { useAuth } from './shared/context/AuthContext';
 import {
+  addToUserLibrary,
   dbAnalysisToContentAnalysis,
   getCachedAnalysis,
+  getCachedAnalysisById,
   getOrCreateVideo,
+  getPracticeTopicsForAnalysis,
   saveCachedAnalysis,
   savePracticeTopicsFromAnalysis,
+  toggleLibraryFavorite,
+  updateLibraryAccess,
 } from './shared/services/database';
 import { analyzeVideoContent } from './shared/services/geminiService';
 import {
@@ -24,6 +32,7 @@ import {
   UsageDisplayInfo
 } from './shared/services/usageTracking';
 import { AppState, PracticeTopic, TopicPoint, VideoData, VocabularyItem } from './shared/types';
+import { VideoHistoryItem } from './shared/types/database';
 
 // Custom Chevron for Dropdowns
 const ChevronDownIcon = () => (
@@ -53,6 +62,7 @@ const App: React.FC = () => {
   const [usageInfo, setUsageInfo] = useState<UsageDisplayInfo | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
 
+  
   // Floating AI Tutor window state
   const [showTutorWindow, setShowTutorWindow] = useState(false);
   const [tutorWindowMinimized, setTutorWindowMinimized] = useState(false);
@@ -73,26 +83,86 @@ const App: React.FC = () => {
   const [isAnalysisLoading, setIsAnalysisLoading] = useState(false);
   const [loadingText, setLoadingText] = useState("Preparing your lesson...");
   const [currentTime, setCurrentTime] = useState(0);
-  
+
+  // Library entry state (for save/favorite functionality)
+  const [libraryEntry, setLibraryEntry] = useState<{ libraryId: string; isFavorite: boolean } | null>(null);
+
+  // Practice reports full-page state
+  const [currentReportsVideo, setCurrentReportsVideo] = useState<VideoHistoryItem | null>(null);
+  const [currentReportSessionId, setCurrentReportSessionId] = useState<string | null>(null);
+
   const [errorMsg, setErrorMsg] = useState('');
 
   // --- History / Navigation Logic ---
+  // Helper to parse path-based routes
+  const parsePathRoute = (pathname: string) => {
+    // Remove leading slash and split
+    const parts = pathname.slice(1).split('/').filter(Boolean);
+
+    if (parts.length === 0) {
+      return { type: 'landing' as const };
+    }
+    if (parts[0] === 'library') {
+      return { type: 'library' as const };
+    }
+    // Assume first part is video ID (which is actually analysisId for reports)
+    const videoId = parts[0];
+    if (parts[1] === 'practice') {
+      return { type: 'practice' as const, videoId };
+    }
+    if (parts[1] === 'reports') {
+      if (parts[2]) {
+        return { type: 'report-detail' as const, videoId, sessionId: parts[2] };
+      }
+      return { type: 'reports' as const, videoId };
+    }
+    return { type: 'dashboard' as const, videoId };
+  };
+
+  // Handle browser back/forward navigation
   useEffect(() => {
     const handlePopState = () => {
-      const hash = window.location.hash;
+      const route = parsePathRoute(window.location.pathname);
 
-      if (hash === '#dashboard') {
-        if (videoData) setAppState(AppState.DASHBOARD);
-        else {
-            setAppState(AppState.LANDING);
-            window.history.replaceState(null, '', ' ');
+      if (route.type === 'library') {
+        setCurrentReportsVideo(null);
+        setCurrentReportSessionId(null);
+        setAppState(AppState.VIDEO_LIBRARY);
+      } else if (route.type === 'reports') {
+        if (currentReportsVideo && currentReportsVideo.analysisId === route.videoId) {
+          setCurrentReportSessionId(null);
+          setAppState(AppState.PRACTICE_REPORTS);
+        } else {
+          // No video context, redirect to library
+          setAppState(AppState.VIDEO_LIBRARY);
+          window.history.replaceState(null, '', '/library');
         }
-      } else if (hash === '#practice') {
-        if (videoData && activePracticeTopic) setAppState(AppState.PRACTICE_SESSION);
-        else if (videoData) setAppState(AppState.DASHBOARD);
-        else {
-            setAppState(AppState.LANDING);
-            window.history.replaceState(null, '', ' ');
+      } else if (route.type === 'report-detail') {
+        if (currentReportsVideo && currentReportsVideo.analysisId === route.videoId) {
+          setCurrentReportSessionId(route.sessionId);
+          setAppState(AppState.PRACTICE_REPORT_DETAIL);
+        } else {
+          // No video context, redirect to library
+          setAppState(AppState.VIDEO_LIBRARY);
+          window.history.replaceState(null, '', '/library');
+        }
+      } else if (route.type === 'dashboard') {
+        if (videoData && videoData.id === route.videoId) {
+          setAppState(AppState.DASHBOARD);
+        } else {
+          // Video ID in URL doesn't match current video - go to landing
+          setAppState(AppState.LANDING);
+          window.history.replaceState(null, '', '/');
+        }
+      } else if (route.type === 'practice') {
+        if (videoData && videoData.id === route.videoId && activePracticeTopic) {
+          setAppState(AppState.PRACTICE_SESSION);
+        } else if (videoData && videoData.id === route.videoId) {
+          setAppState(AppState.DASHBOARD);
+          window.history.replaceState(null, '', `/${route.videoId}`);
+        } else {
+          setAppState(AppState.LANDING);
+          window.history.replaceState(null, '', '/');
         }
       } else {
         setAppState(AppState.LANDING);
@@ -101,33 +171,52 @@ const App: React.FC = () => {
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [videoData, activePracticeTopic]);
+  }, [videoData, activePracticeTopic, currentReportsVideo]);
 
-  // Sync State -> Hash
+  // Sync State -> URL path
   useEffect(() => {
     if (appState === AppState.LOADING) return;
 
-    const currentHash = window.location.hash;
-    let targetHash = '';
+    const currentPath = window.location.pathname;
+    let targetPath = '/';
 
-    if (appState === AppState.DASHBOARD) targetHash = '#dashboard';
-    if (appState === AppState.PRACTICE_SESSION) targetHash = '#practice';
-    if (appState === AppState.LANDING) targetHash = '';
-
-    if (currentHash !== targetHash) {
-        if (targetHash) {
-            window.history.pushState(null, '', targetHash);
-        } else {
-            // Remove hash when going to landing
-            window.history.pushState(null, '', window.location.pathname + window.location.search);
-        }
+    if (appState === AppState.DASHBOARD && videoData) {
+      targetPath = `/${videoData.id}`;
+    } else if (appState === AppState.PRACTICE_SESSION && videoData) {
+      targetPath = `/${videoData.id}/practice`;
+    } else if (appState === AppState.VIDEO_LIBRARY) {
+      targetPath = '/library';
+    } else if (appState === AppState.PRACTICE_REPORTS && currentReportsVideo) {
+      targetPath = `/${currentReportsVideo.analysisId}/reports`;
+    } else if (appState === AppState.PRACTICE_REPORT_DETAIL && currentReportsVideo && currentReportSessionId) {
+      targetPath = `/${currentReportsVideo.analysisId}/reports/${currentReportSessionId}`;
     }
-  }, [appState]);
+
+    if (currentPath !== targetPath) {
+      window.history.pushState(null, '', targetPath);
+    }
+  }, [appState, videoData, currentReportsVideo, currentReportSessionId]);
 
   // --- Persistence Logic ---
   const STORAGE_KEY = 'bilibala_state_v1';
 
   useEffect(() => {
+    // Check initial URL path for routing
+    const route = parsePathRoute(window.location.pathname);
+
+    // Handle library route directly
+    if (route.type === 'library') {
+      setAppState(AppState.VIDEO_LIBRARY);
+      return;
+    }
+
+    // Handle reports routes - redirect to library (need context to view reports)
+    if (route.type === 'reports' || route.type === 'report-detail') {
+      setAppState(AppState.VIDEO_LIBRARY);
+      window.history.replaceState(null, '', '/library');
+      return;
+    }
+
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       try {
@@ -145,13 +234,33 @@ const App: React.FC = () => {
             setTranscript(p.transcript || []);
             setDiscussionTopics(p.discussionTopics || []);
             setSelectedTopics(p.selectedTopics || []);
-            
-            // Restore to Dashboard (safer than restoring active call session immediately)
-            setAppState(AppState.DASHBOARD);
+            setCurrentAnalysisId(p.currentAnalysisId || null);
+
+            // Check if URL contains a video ID that matches saved data
+            if (route.type === 'dashboard' && route.videoId === p.videoData.id) {
+              setAppState(AppState.DASHBOARD);
+            } else if (route.type === 'practice' && route.videoId === p.videoData.id) {
+              // Can't restore practice without active topic, go to dashboard
+              setAppState(AppState.DASHBOARD);
+              window.history.replaceState(null, '', `/${p.videoData.id}`);
+            } else if (route.type === 'landing') {
+              // No video ID in URL, restore to dashboard with saved video
+              setAppState(AppState.DASHBOARD);
+            } else {
+              // URL video ID doesn't match saved data - go to landing
+              setAppState(AppState.LANDING);
+              window.history.replaceState(null, '', '/');
+            }
+            return;
         }
-      } catch (e) { 
-          console.error("Failed to hydrate state", e); 
+      } catch (e) {
+          console.error("Failed to hydrate state", e);
       }
+    }
+
+    // No saved state - if URL has a video ID, redirect to landing
+    if (route.type === 'dashboard' || route.type === 'practice') {
+      window.history.replaceState(null, '', '/');
     }
   }, []);
 
@@ -159,12 +268,13 @@ const App: React.FC = () => {
     if (videoData) {
         localStorage.setItem(STORAGE_KEY, JSON.stringify({
             videoUrl, nativeLang, targetLang, level, videoData,
-            summary, translatedSummary, topics, vocabulary, transcript, discussionTopics, selectedTopics
+            summary, translatedSummary, topics, vocabulary, transcript, discussionTopics, selectedTopics,
+            currentAnalysisId
         }));
     } else {
         localStorage.removeItem(STORAGE_KEY);
     }
-  }, [videoData, videoUrl, nativeLang, targetLang, level, summary, translatedSummary, topics, vocabulary, transcript, discussionTopics, selectedTopics]);
+  }, [videoData, videoUrl, nativeLang, targetLang, level, summary, translatedSummary, topics, vocabulary, transcript, discussionTopics, selectedTopics, currentAnalysisId]);
 
   const playerRef = useRef<VideoPlayerRef>(null);
 
@@ -183,6 +293,7 @@ const App: React.FC = () => {
   };
 
   const handleStartPractice = (topic: PracticeTopic) => {
+    console.log('[App] handleStartPractice called. currentAnalysisId:', currentAnalysisId);
     // Get all selected topic objects
     const allTopics = discussionTopics.filter(t => selectedTopics.includes(t.topic));
     setAllSelectedPracticeTopics(allTopics);
@@ -244,7 +355,7 @@ const App: React.FC = () => {
 
       if (cachedAnalysis) {
         // CACHE HIT - Use cached data immediately (no API cost!)
-        console.log('Cache hit! Using cached analysis.');
+        console.log('Cache hit! Using cached analysis. Analysis ID:', cachedAnalysis.id);
         const analysis = dbAnalysisToContentAnalysis(cachedAnalysis);
 
         setSummary(analysis.summary);
@@ -252,11 +363,51 @@ const App: React.FC = () => {
         setTopics(analysis.topics);
         setVocabulary(analysis.vocabulary);
         setTranscript(analysis.transcript || []);
-        setDiscussionTopics(analysis.discussionTopics || []);
         setSelectedTopics([]);
         setCurrentAnalysisId(cachedAnalysis.id);
+        console.log('[App] setCurrentAnalysisId called with:', cachedAnalysis.id);
         setIsAnalysisLoading(false);
         setAppState(AppState.DASHBOARD);
+
+        // Fetch practice topics with database IDs and merge with discussion topics
+        const dbTopics = await getPracticeTopicsForAnalysis(cachedAnalysis.id);
+        if (dbTopics.length > 0 && analysis.discussionTopics) {
+          // Merge database IDs into discussion topics
+          const topicsWithIds = analysis.discussionTopics.map(topic => {
+            const dbTopic = dbTopics.find(dt => dt.topic === topic.topic);
+            if (dbTopic) {
+              return {
+                ...topic,
+                topicId: dbTopic.id,
+                questionId: dbTopic.questionId,
+              };
+            }
+            return topic;
+          });
+          setDiscussionTopics(topicsWithIds);
+          console.log('[App] Discussion topics with IDs:', topicsWithIds);
+        } else {
+          setDiscussionTopics(analysis.discussionTopics || []);
+        }
+
+        // Add to user's library (even if it's someone else's cached analysis)
+        // This ensures the video appears in their library for future access
+        if (user) {
+          addToUserLibrary(user.id, cachedAnalysis.id)
+            .then((entry) => {
+              if (entry) {
+                setLibraryEntry({
+                  libraryId: entry.id,
+                  isFavorite: entry.is_favorite,
+                });
+              }
+            })
+            .catch((err) => {
+              console.error('Failed to add to user library:', err);
+            });
+        } else {
+          setLibraryEntry(null);
+        }
 
         // Note: No usage recorded for cached results - Free for anonymous!
         return;
@@ -315,6 +466,24 @@ const App: React.FC = () => {
               // Store the analysis ID for linking practice sessions
               if (savedAnalysis) {
                 setCurrentAnalysisId(savedAnalysis.id);
+
+                // Add to user's library (for logged-in users)
+                if (user) {
+                  addToUserLibrary(user.id, savedAnalysis.id)
+                    .then((entry) => {
+                      if (entry) {
+                        setLibraryEntry({
+                          libraryId: entry.id,
+                          isFavorite: entry.is_favorite,
+                        });
+                      }
+                    })
+                    .catch((err) => {
+                      console.error('Failed to add to user library:', err);
+                    });
+                } else {
+                  setLibraryEntry(null);
+                }
 
                 // Save practice topics for Quick Start feature and get IDs
                 if (analysis.discussionTopics) {
@@ -381,7 +550,147 @@ const App: React.FC = () => {
     setDiscussionTopics([]);
     setSelectedTopics([]);
     setCurrentAnalysisId(null);
+    setLibraryEntry(null);
     setErrorMsg('');
+  };
+
+  // Handle loading a video from the library
+  const handleLoadFromLibrary = async (video: VideoHistoryItem) => {
+    // Set loading state
+    setAppState(AppState.LOADING);
+    setLoadingText('Loading your video...');
+
+    try {
+      // Reconstruct video URL from youtubeId
+      const videoUrl = `https://www.youtube.com/watch?v=${video.youtubeId}`;
+      setVideoUrl(videoUrl);
+
+      // Set language/level from the stored analysis
+      setNativeLang(video.nativeLang);
+      setTargetLang(video.targetLang);
+      setLevel(video.level);
+
+      // Set video data
+      setVideoData({
+        id: video.youtubeId,
+        url: videoUrl,
+        title: video.title,
+      });
+
+      // Fetch the cached analysis directly by analysisId
+      const cachedAnalysis = await getCachedAnalysisById(video.analysisId);
+
+      if (cachedAnalysis) {
+        const analysis = dbAnalysisToContentAnalysis(cachedAnalysis);
+        setSummary(analysis.summary);
+        setTranslatedSummary(analysis.translatedSummary || '');
+        setTopics(analysis.topics);
+        setVocabulary(analysis.vocabulary);
+        setTranscript(analysis.transcript || []);
+        setCurrentAnalysisId(video.analysisId);
+
+        // Fetch practice topics with database IDs and merge with discussion topics
+        const dbTopics = await getPracticeTopicsForAnalysis(video.analysisId);
+        if (dbTopics.length > 0 && analysis.discussionTopics) {
+          // Merge database IDs into discussion topics
+          const topicsWithIds = analysis.discussionTopics.map(topic => {
+            const dbTopic = dbTopics.find(dt => dt.topic === topic.topic);
+            if (dbTopic) {
+              return {
+                ...topic,
+                topicId: dbTopic.id,
+                questionId: dbTopic.questionId,
+              };
+            }
+            return topic;
+          });
+          setDiscussionTopics(topicsWithIds);
+        } else {
+          setDiscussionTopics(analysis.discussionTopics || []);
+        }
+
+        // Update last_accessed_at and set library entry
+        if (user) {
+          updateLibraryAccess(user.id, video.analysisId).catch((err) => {
+            console.error('Failed to update library access:', err);
+          });
+        }
+
+        // Set library entry state
+        setLibraryEntry({
+          libraryId: video.libraryId,
+          isFavorite: video.isFavorite,
+        });
+
+        setAppState(AppState.DASHBOARD);
+      } else {
+        throw new Error('Failed to load analysis');
+      }
+    } catch (error) {
+      console.error('Error loading from library:', error);
+      setErrorMsg('Failed to load video. Please try again.');
+      setAppState(AppState.LANDING);
+    }
+  };
+
+  // Handle saving current video to library (for users viewing someone else's analysis)
+  const handleSaveToLibrary = async () => {
+    if (!user || !currentAnalysisId) return;
+
+    const entry = await addToUserLibrary(user.id, currentAnalysisId);
+    if (entry) {
+      setLibraryEntry({
+        libraryId: entry.id,
+        isFavorite: entry.is_favorite,
+      });
+    }
+  };
+
+  // Handle toggling favorite on current video
+  const handleToggleFavorite = async () => {
+    if (!user || !libraryEntry) return;
+
+    const newValue = await toggleLibraryFavorite(user.id, libraryEntry.libraryId);
+    if (newValue !== null) {
+      setLibraryEntry(prev => prev ? { ...prev, isFavorite: newValue } : null);
+    }
+  };
+
+  // Handle expanding reports from modal to full page
+  const handleExpandReports = (video: VideoHistoryItem, sessionId?: string) => {
+    setCurrentReportsVideo(video);
+    if (sessionId) {
+      setCurrentReportSessionId(sessionId);
+      setAppState(AppState.PRACTICE_REPORT_DETAIL);
+    } else {
+      setCurrentReportSessionId(null);
+      setAppState(AppState.PRACTICE_REPORTS);
+    }
+  };
+
+  // Handle viewing a report from the reports page
+  const handleViewReportFromPage = (session: { id: string }) => {
+    setCurrentReportSessionId(session.id);
+    setAppState(AppState.PRACTICE_REPORT_DETAIL);
+  };
+
+  // Handle going back to reports list from report detail
+  const handleBackToReportsList = () => {
+    // Use replaceState to avoid duplicate history entries
+    if (currentReportsVideo) {
+      window.history.replaceState(null, '', `/${currentReportsVideo.analysisId}/reports`);
+    }
+    setCurrentReportSessionId(null);
+    setAppState(AppState.PRACTICE_REPORTS);
+  };
+
+  // Handle going back to library from reports
+  const handleBackFromReportsToLibrary = () => {
+    // Use replaceState to avoid duplicate history entries
+    window.history.replaceState(null, '', '/library');
+    setCurrentReportsVideo(null);
+    setCurrentReportSessionId(null);
+    setAppState(AppState.VIDEO_LIBRARY);
   };
 
   const StartCallButton = () => (
@@ -404,7 +713,7 @@ const App: React.FC = () => {
   );
 
   const shouldShowHeader = appState === AppState.DASHBOARD || appState === AppState.PRACTICE_SESSION;
-  const isScrollable = appState === AppState.DASHBOARD || appState === AppState.PRACTICE_SESSION;
+  const isScrollable = appState === AppState.DASHBOARD || appState === AppState.PRACTICE_SESSION || appState === AppState.VIDEO_LIBRARY || appState === AppState.PRACTICE_REPORTS || appState === AppState.PRACTICE_REPORT_DETAIL;
 
   return (
     <Layout
@@ -414,6 +723,7 @@ const App: React.FC = () => {
         isScrollable={isScrollable}
         authModalOpen={showAuthModal}
         onAuthModalClose={() => setShowAuthModal(false)}
+        onOpenVideoLibrary={() => setAppState(AppState.VIDEO_LIBRARY)}
     >
       {/* 1. LANDING PAGE */}
       {appState === AppState.LANDING && (
@@ -421,7 +731,7 @@ const App: React.FC = () => {
            <div className="w-full max-w-xl text-center space-y-8">
               <div className="space-y-3">
                   <h2 className="text-4xl md:text-5xl font-serif text-stone-800 tracking-tight">
-                    Daily efforts
+                    Bilibala
                   </h2>
                   <p className="text-base text-stone-500 max-w-md mx-auto leading-relaxed">
                     Turn any YouTube video into a structured language lesson.
@@ -522,7 +832,43 @@ const App: React.FC = () => {
                <div className="w-full aspect-video shrink-0 rounded-xl overflow-hidden shadow-sm border border-stone-200 bg-black">
                    <VideoPlayer ref={playerRef} url={videoData.url} onError={handleVideoError} onTimeUpdate={setCurrentTime} />
                </div>
-               
+
+               {/* Video Title & Actions */}
+               <div className="flex items-start justify-between gap-4">
+                 <h1 className="text-lg md:text-xl font-medium text-stone-800 line-clamp-2">
+                   {videoData.title}
+                 </h1>
+                 {user && (
+                   <div className="flex items-center gap-2 shrink-0">
+                     {libraryEntry ? (
+                       <button
+                         onClick={handleToggleFavorite}
+                         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${
+                           libraryEntry.isFavorite
+                             ? 'bg-red-500 text-white border-red-500 hover:bg-red-600'
+                             : 'bg-white text-stone-600 border-stone-200 hover:border-red-300 hover:text-red-500'
+                         }`}
+                       >
+                         <svg width="16" height="16" viewBox="0 0 24 24" fill={libraryEntry.isFavorite ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                           <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+                         </svg>
+                         {libraryEntry.isFavorite ? 'Favorited' : 'Favorite'}
+                       </button>
+                     ) : (
+                       <button
+                         onClick={handleSaveToLibrary}
+                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-stone-800 text-white hover:bg-stone-900 transition-all"
+                       >
+                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                           <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+                         </svg>
+                         Save to Library
+                       </button>
+                     )}
+                   </div>
+                 )}
+               </div>
+
                <TopicSelector 
                   topics={discussionTopics}
                   selectedTopics={selectedTopics}
@@ -581,6 +927,33 @@ const App: React.FC = () => {
           />
       )}
 
+      {/* 5. VIDEO LIBRARY PAGE */}
+      {appState === AppState.VIDEO_LIBRARY && (
+        <VideoLibraryPage
+          onSelectVideo={handleLoadFromLibrary}
+          onExpandReports={handleExpandReports}
+        />
+      )}
+
+      {/* 6. PRACTICE REPORTS PAGE (full page) */}
+      {appState === AppState.PRACTICE_REPORTS && currentReportsVideo && (
+        <PracticeReportsPage
+          video={currentReportsVideo}
+          onBack={handleBackFromReportsToLibrary}
+          onViewReport={handleViewReportFromPage}
+        />
+      )}
+
+      {/* 7. PRACTICE REPORT DETAIL PAGE (full page) */}
+      {appState === AppState.PRACTICE_REPORT_DETAIL && currentReportsVideo && currentReportSessionId && (
+        <PracticeReportDetailPage
+          sessionId={currentReportSessionId}
+          video={currentReportsVideo}
+          onBack={handleBackToReportsList}
+          onBackToLibrary={handleBackFromReportsToLibrary}
+        />
+      )}
+
       {/* Usage Limit Modal */}
       <UsageLimitModal
         isOpen={showUsageLimitModal}
@@ -591,7 +964,8 @@ const App: React.FC = () => {
         }}
         usageInfo={usageInfo}
       />
-    </Layout>
+
+      </Layout>
   );
 };
 

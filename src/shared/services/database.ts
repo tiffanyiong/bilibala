@@ -5,12 +5,14 @@ import {
   DbCachedAnalysis,
   DbPracticeTopic,
   DbPracticeSession,
+  DbUserLibrary,
   AnalysisContent,
   InsertGlobalVideo,
   InsertCachedAnalysis,
   InsertPracticeTopic,
   InsertTopicQuestion,
   InsertPracticeSession,
+  VideoHistoryItem,
 } from '../types/database';
 
 // ============================================
@@ -124,6 +126,26 @@ export async function getCachedAnalysis(
     if (error.code !== 'PGRST116') {
       console.error('Error fetching cached analysis:', error);
     }
+    return null;
+  }
+
+  return data as DbCachedAnalysis;
+}
+
+/**
+ * Get cached analysis by its ID (for loading from library)
+ */
+export async function getCachedAnalysisById(
+  analysisId: string
+): Promise<DbCachedAnalysis | null> {
+  const { data, error } = await supabase
+    .from('cached_analyses')
+    .select('*')
+    .eq('id', analysisId)
+    .single();
+
+  if (error) {
+    console.error('Error fetching cached analysis by ID:', error);
     return null;
   }
 
@@ -318,36 +340,98 @@ export async function getPopularPracticeTopics(
 export async function incrementTopicPracticeCount(
   topicId: string
 ): Promise<void> {
-  const { error } = await supabase.rpc('increment_topic_practice', {
+  console.log('[DB] incrementTopicPracticeCount called for:', topicId);
+
+  // Try RPC function first
+  const { error: rpcError } = await supabase.rpc('increment_topic_practice', {
     topic_id_input: topicId,
   });
 
-  if (error) {
+  if (rpcError) {
+    console.log('[DB] RPC increment_topic_practice failed, using fallback:', rpcError.message);
+
     // Fallback: manual increment
-    const { data: current } = await supabase
+    const { data: current, error: fetchError } = await supabase
       .from('practice_topics')
       .select('practice_count')
       .eq('id', topicId)
       .single();
 
-    if (current) {
-      await supabase
-        .from('practice_topics')
-        .update({ practice_count: (current.practice_count || 0) + 1 })
-        .eq('id', topicId);
+    if (fetchError) {
+      console.error('[DB] Error fetching topic practice count:', fetchError);
+      return;
     }
+
+    const newCount = (current?.practice_count || 0) + 1;
+    console.log('[DB] Updating topic practice_count from', current?.practice_count, 'to', newCount);
+
+    const { data: updateData, error: updateError } = await supabase
+      .from('practice_topics')
+      .update({ practice_count: newCount })
+      .eq('id', topicId)
+      .select();
+
+    if (updateError) {
+      console.error('[DB] Error updating topic practice count:', updateError);
+    } else {
+      console.log('[DB] Topic practice_count updated successfully:', updateData);
+    }
+  } else {
+    console.log('[DB] RPC increment_topic_practice succeeded');
   }
 }
 
 /**
- * Get practice topics for a specific analysis
+ * Increment use count for a question (for popularity ranking)
+ */
+export async function incrementQuestionUseCount(
+  questionId: string
+): Promise<void> {
+  console.log('[DB] incrementQuestionUseCount called for:', questionId);
+
+  // First get current use count
+  const { data: current, error: fetchError } = await supabase
+    .from('topic_questions')
+    .select('use_count')
+    .eq('id', questionId)
+    .single();
+
+  if (fetchError) {
+    console.error('[DB] Error fetching question use count:', fetchError);
+    return;
+  }
+
+  const newCount = (current?.use_count || 0) + 1;
+  console.log('[DB] Updating question use_count from', current?.use_count, 'to', newCount);
+
+  const { data: updateData, error: updateError } = await supabase
+    .from('topic_questions')
+    .update({ use_count: newCount })
+    .eq('id', questionId)
+    .select();
+
+  if (updateError) {
+    console.error('[DB] Error incrementing question use count:', updateError);
+  } else {
+    console.log('[DB] Question use_count updated successfully:', updateData);
+  }
+}
+
+/**
+ * Get practice topics for a specific analysis with their question IDs
  */
 export async function getPracticeTopicsForAnalysis(
   analysisId: string
-): Promise<DbPracticeTopic[]> {
+): Promise<(DbPracticeTopic & { questionId?: string })[]> {
   const { data, error } = await supabase
     .from('practice_topics')
-    .select('*')
+    .select(`
+      *,
+      topic_questions (
+        id,
+        question
+      )
+    `)
     .eq('analysis_id', analysisId);
 
   if (error) {
@@ -355,7 +439,17 @@ export async function getPracticeTopicsForAnalysis(
     return [];
   }
 
-  return data as DbPracticeTopic[];
+  console.log('[DB] Raw practice topics with questions:', data);
+
+  // Flatten the result to include questionId directly
+  const result = (data || []).map((topic: any) => ({
+    ...topic,
+    questionId: topic.topic_questions?.[0]?.id || undefined,
+  }));
+
+  console.log('[DB] Practice topics with questionId:', result.map(t => ({ topic: t.topic, topicId: t.id, questionId: t.questionId })));
+
+  return result;
 }
 
 // ============================================
@@ -449,4 +543,303 @@ export async function getUserPracticeSessions(
   }
 
   return data as DbPracticeSession[];
+}
+
+// ============================================
+// USER LIBRARY
+// ============================================
+
+/**
+ * Add a video analysis to user's library (upsert - won't duplicate)
+ * Called when user analyzes a video or loads from cache
+ */
+export async function addToUserLibrary(
+  userId: string,
+  analysisId: string
+): Promise<DbUserLibrary | null> {
+  const { data, error } = await supabase
+    .from('user_library')
+    .upsert(
+      {
+        user_id: userId,
+        analysis_id: analysisId,
+        last_accessed_at: new Date().toISOString(),
+      },
+      {
+        onConflict: 'user_id,analysis_id',
+        ignoreDuplicates: false,
+      }
+    )
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error adding to user library:', error);
+    return null;
+  }
+
+  return data as DbUserLibrary;
+}
+
+/**
+ * Check if an analysis is in the user's library and return library info
+ */
+export async function getLibraryEntry(
+  userId: string,
+  analysisId: string
+): Promise<{ libraryId: string; isFavorite: boolean } | null> {
+  const { data, error } = await supabase
+    .from('user_library')
+    .select('id, is_favorite')
+    .eq('user_id', userId)
+    .eq('analysis_id', analysisId)
+    .single();
+
+  if (error || !data) {
+    return null;
+  }
+
+  return {
+    libraryId: data.id,
+    isFavorite: data.is_favorite,
+  };
+}
+
+/**
+ * Get user's video library with full details (joins with cached_analyses and global_videos)
+ */
+export async function getUserVideoLibrary(
+  userId: string
+): Promise<VideoHistoryItem[]> {
+  const { data, error } = await supabase
+    .from('user_library')
+    .select(`
+      id,
+      is_favorite,
+      practice_count,
+      last_score,
+      last_accessed_at,
+      created_at,
+      cached_analyses (
+        id,
+        level,
+        target_lang,
+        native_lang,
+        created_at,
+        global_videos (
+          id,
+          youtube_id,
+          title,
+          thumbnail_url
+        )
+      )
+    `)
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching user library:', error);
+    return [];
+  }
+
+  // Transform the nested data into VideoHistoryItem format
+  return (data || [])
+    .filter((item: any) => item.cached_analyses && item.cached_analyses.global_videos)
+    .map((item: any) => ({
+      libraryId: item.id,
+      isFavorite: item.is_favorite,
+      practiceCount: item.practice_count,
+      lastScore: item.last_score,
+      lastAccessedAt: item.last_accessed_at,
+      addedAt: item.created_at,
+      analysisId: item.cached_analyses.id,
+      level: item.cached_analyses.level,
+      targetLang: item.cached_analyses.target_lang,
+      nativeLang: item.cached_analyses.native_lang,
+      analyzedAt: item.cached_analyses.created_at,
+      videoId: item.cached_analyses.global_videos.id,
+      youtubeId: item.cached_analyses.global_videos.youtube_id,
+      title: item.cached_analyses.global_videos.title || 'Untitled Video',
+      thumbnailUrl: item.cached_analyses.global_videos.thumbnail_url,
+    }));
+}
+
+/**
+ * Update last_accessed_at when user opens a video from library
+ */
+export async function updateLibraryAccess(
+  userId: string,
+  analysisId: string
+): Promise<void> {
+  const { error } = await supabase
+    .from('user_library')
+    .update({ last_accessed_at: new Date().toISOString() })
+    .eq('user_id', userId)
+    .eq('analysis_id', analysisId);
+
+  if (error) {
+    console.error('Error updating library access:', error);
+  }
+}
+
+/**
+ * Toggle favorite status for a library entry
+ */
+export async function toggleLibraryFavorite(
+  userId: string,
+  libraryId: string
+): Promise<boolean | null> {
+  // First get current state
+  const { data: current, error: fetchError } = await supabase
+    .from('user_library')
+    .select('is_favorite')
+    .eq('id', libraryId)
+    .eq('user_id', userId)
+    .single();
+
+  if (fetchError || !current) {
+    console.error('Error fetching library entry:', fetchError);
+    return null;
+  }
+
+  // Toggle the value
+  const newValue = !current.is_favorite;
+  const { error: updateError } = await supabase
+    .from('user_library')
+    .update({ is_favorite: newValue })
+    .eq('id', libraryId)
+    .eq('user_id', userId);
+
+  if (updateError) {
+    console.error('Error toggling favorite:', updateError);
+    return null;
+  }
+
+  return newValue;
+}
+
+/**
+ * Update practice count and last score after a practice session
+ * Creates the library entry if it doesn't exist (handles race conditions)
+ */
+export async function updateLibraryPracticeStats(
+  userId: string,
+  analysisId: string,
+  score: number
+): Promise<void> {
+  // First get current practice count
+  const { data: current, error: fetchError } = await supabase
+    .from('user_library')
+    .select('practice_count')
+    .eq('user_id', userId)
+    .eq('analysis_id', analysisId)
+    .single();
+
+  if (fetchError && fetchError.code !== 'PGRST116') {
+    // Real error (not "no rows found")
+    console.error('Error fetching library stats:', fetchError);
+    return;
+  }
+
+  if (!current) {
+    // Library entry doesn't exist - create it with initial practice count of 1
+    console.log('Library entry not found, creating new entry with practice stats');
+    const { error: insertError } = await supabase
+      .from('user_library')
+      .insert({
+        user_id: userId,
+        analysis_id: analysisId,
+        practice_count: 1,
+        last_score: score,
+        last_accessed_at: new Date().toISOString(),
+      });
+
+    if (insertError) {
+      console.error('Error creating library entry with practice stats:', insertError);
+    }
+    return;
+  }
+
+  // Update existing entry
+  const newCount = (current.practice_count || 0) + 1;
+
+  const { error: updateError } = await supabase
+    .from('user_library')
+    .update({
+      practice_count: newCount,
+      last_score: score,
+      last_accessed_at: new Date().toISOString(),
+    })
+    .eq('user_id', userId)
+    .eq('analysis_id', analysisId);
+
+  if (updateError) {
+    console.error('Error updating library practice stats:', updateError);
+  }
+}
+
+/**
+ * Get practice sessions for a specific analysis
+ * Now uses direct analysis_id link on practice_sessions
+ */
+export async function getPracticeSessionsForAnalysis(
+  userId: string,
+  analysisId: string
+): Promise<DbPracticeSession[]> {
+  const { data, error } = await supabase
+    .from('practice_sessions')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('analysis_id', analysisId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching practice sessions for analysis:', error);
+    return [];
+  }
+
+  return data as DbPracticeSession[];
+}
+
+/**
+ * Get a single practice session by ID
+ */
+export async function getPracticeSessionById(
+  userId: string,
+  sessionId: string
+): Promise<DbPracticeSession | null> {
+  const { data, error } = await supabase
+    .from('practice_sessions')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('id', sessionId)
+    .single();
+
+  if (error) {
+    console.error('Error fetching practice session:', error);
+    return null;
+  }
+
+  return data as DbPracticeSession;
+}
+
+/**
+ * Remove a video from user's library
+ */
+export async function removeFromLibrary(
+  userId: string,
+  libraryId: string
+): Promise<boolean> {
+  const { error } = await supabase
+    .from('user_library')
+    .delete()
+    .eq('id', libraryId)
+    .eq('user_id', userId);
+
+  if (error) {
+    console.error('Error removing from library:', error);
+    return false;
+  }
+
+  return true;
 }

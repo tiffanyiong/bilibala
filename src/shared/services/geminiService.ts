@@ -42,4 +42,40 @@ export const generateConversationHints = async (
         console.error("Hint generation failed", e);
         return [];
     }
+};
+
+export interface SearchableVideo {
+  libraryId: string;
+  title: string;
+  targetLang: string;
+  level: string;
+  summary?: string;
+  topics?: string[];
+  vocabulary?: string[];
 }
+
+export const searchVideos = async (
+  query: string,
+  videos: SearchableVideo[]
+): Promise<string[]> => {
+  if (!query.trim() || videos.length === 0) {
+    return videos.map(v => v.libraryId);
+  }
+
+  try {
+    const resp = await fetch(`${getBackendOrigin()}/api/search-videos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, videos }),
+    });
+    if (!resp.ok) {
+      // On error, return all videos
+      return videos.map(v => v.libraryId);
+    }
+    const data = await resp.json();
+    return data.matchedVideoIds || videos.map(v => v.libraryId);
+  } catch (e) {
+    console.error("Video search failed", e);
+    return videos.map(v => v.libraryId);
+  }
+};

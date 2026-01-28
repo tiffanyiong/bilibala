@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../../shared/context/AuthContext';
 import { getBackendOrigin } from '../../../shared/services/backend';
-import { savePracticeSession, uploadPracticeAudio } from '../../../shared/services/database';
+import { savePracticeSession, updateLibraryPracticeStats, uploadPracticeAudio, incrementTopicPracticeCount, incrementQuestionUseCount } from '../../../shared/services/database';
 import { PracticeTopic, SpeechAnalysisResult } from '../../../shared/types';
 import AudioRecorder from './AudioRecorder';
 import PyramidFeedback from './PyramidFeedback';
@@ -155,10 +155,31 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({ topic, allTopics = []
 
       // Save practice session to database (only for logged-in users)
       if (user) {
-        // Upload audio to storage (async, don't block UI)
-        uploadPracticeAudio(user.id, audioData)
-          .then((audioUrl) => {
-            return savePracticeSession({
+        // Extract score - use undefined check to handle score of 0
+        // Round to integer since database expects integer type
+        const score = analysisData.feedback?.score !== undefined
+          ? Math.round(analysisData.feedback.score)
+          : null;
+
+        console.log('[PracticeSession] Starting save process...', {
+          userId: user.id,
+          analysisId,
+          topicId: topic.topicId,
+          questionId: topic.questionId,
+          score,
+        });
+
+        // Save practice session async (don't block UI)
+        (async () => {
+          try {
+            // 1. Upload audio to storage
+            console.log('[PracticeSession] Uploading audio...');
+            const audioUrl = await uploadPracticeAudio(user.id, audioData);
+            console.log('[PracticeSession] Audio uploaded:', audioUrl ? 'success' : 'failed (null)');
+
+            // 2. Save practice session
+            console.log('[PracticeSession] Saving practice session...');
+            const savedSession = await savePracticeSession({
               user_id: user.id,
               analysis_id: analysisId || null,
               topic_id: topic.topicId || null,
@@ -170,7 +191,7 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({ topic, allTopics = []
               level,
               audio_url: audioUrl,
               transcription: analysisData.transcription || null,
-              score: analysisData.feedback?.score || null,
+              score,
               feedback_data: {
                 detected_framework: analysisData.detected_framework,
                 structure: analysisData.structure,
@@ -179,10 +200,41 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({ topic, allTopics = []
                 improvements: analysisData.improvements,
               },
             });
-          })
-          .catch((err) => {
-            console.error('Failed to save practice session:', err);
-          });
+
+            if (savedSession) {
+              console.log('[PracticeSession] Practice session saved successfully:', savedSession.id);
+            } else {
+              console.error('[PracticeSession] Practice session save returned null - check database.ts logs');
+            }
+
+            // 3. Update library practice stats (practice count and last score)
+            if (analysisId && score !== null) {
+              console.log('[PracticeSession] Updating library stats...');
+              await updateLibraryPracticeStats(user.id, analysisId, score);
+              console.log('[PracticeSession] Library stats updated for analysis:', analysisId);
+            } else {
+              console.log('[PracticeSession] Skipping library stats update:', { analysisId, score });
+            }
+
+            // 4. Increment topic practice count (for popularity ranking)
+            if (topic.topicId) {
+              console.log('[PracticeSession] Incrementing topic practice count...');
+              await incrementTopicPracticeCount(topic.topicId);
+              console.log('[PracticeSession] Topic practice count incremented:', topic.topicId);
+            }
+
+            // 5. Increment question use count (for popularity ranking)
+            if (topic.questionId) {
+              console.log('[PracticeSession] Incrementing question use count...');
+              await incrementQuestionUseCount(topic.questionId);
+              console.log('[PracticeSession] Question use count incremented:', topic.questionId);
+            }
+          } catch (err) {
+            console.error('[PracticeSession] Failed to save practice session:', err);
+          }
+        })();
+      } else {
+        console.log('[PracticeSession] User not logged in, skipping save');
       }
 
       // Finally, show results (User sees everything ready at once)
