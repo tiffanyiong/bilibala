@@ -43,7 +43,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ onOpenAuthModal, onOpenVideoLibrary
 
   const menuItems = [
     { label: 'Profile', icon: ProfileIcon, onClick: () => console.log('Profile clicked') },
-    { label: 'Video', icon: VideoIcon, onClick: () => onOpenVideoLibrary?.() },
+    { label: 'Video Library', icon: VideoIcon, onClick: () => onOpenVideoLibrary?.() },
     { label: 'Vocabulary', icon: VocabularyIcon, onClick: () => console.log('Vocabulary clicked') },
     { label: 'Subscription Plan', icon: SubscriptionIcon, onClick: () => console.log('Subscription clicked') },
     { label: 'Settings', icon: SettingsIcon, onClick: () => console.log('Settings clicked') },

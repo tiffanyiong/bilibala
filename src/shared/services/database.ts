@@ -582,6 +582,30 @@ export async function addToUserLibrary(
 }
 
 /**
+ * Check if an analysis is in the user's library and return library info
+ */
+export async function getLibraryEntry(
+  userId: string,
+  analysisId: string
+): Promise<{ libraryId: string; isFavorite: boolean } | null> {
+  const { data, error } = await supabase
+    .from('user_library')
+    .select('id, is_favorite')
+    .eq('user_id', userId)
+    .eq('analysis_id', analysisId)
+    .single();
+
+  if (error || !data) {
+    return null;
+  }
+
+  return {
+    libraryId: data.id,
+    isFavorite: data.is_favorite,
+  };
+}
+
+/**
  * Get user's video library with full details (joins with cached_analyses and global_videos)
  */
 export async function getUserVideoLibrary(
@@ -595,6 +619,7 @@ export async function getUserVideoLibrary(
       practice_count,
       last_score,
       last_accessed_at,
+      created_at,
       cached_analyses (
         id,
         level,
@@ -610,7 +635,7 @@ export async function getUserVideoLibrary(
       )
     `)
     .eq('user_id', userId)
-    .order('last_accessed_at', { ascending: false });
+    .order('created_at', { ascending: false });
 
   if (error) {
     console.error('Error fetching user library:', error);
@@ -626,6 +651,7 @@ export async function getUserVideoLibrary(
       practiceCount: item.practice_count,
       lastScore: item.last_score,
       lastAccessedAt: item.last_accessed_at,
+      addedAt: item.created_at,
       analysisId: item.cached_analyses.id,
       level: item.cached_analyses.level,
       targetLang: item.cached_analyses.target_lang,
@@ -773,6 +799,28 @@ export async function getPracticeSessionsForAnalysis(
   }
 
   return data as DbPracticeSession[];
+}
+
+/**
+ * Get a single practice session by ID
+ */
+export async function getPracticeSessionById(
+  userId: string,
+  sessionId: string
+): Promise<DbPracticeSession | null> {
+  const { data, error } = await supabase
+    .from('practice_sessions')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('id', sessionId)
+    .single();
+
+  if (error) {
+    console.error('Error fetching practice session:', error);
+    return null;
+  }
+
+  return data as DbPracticeSession;
 }
 
 /**
