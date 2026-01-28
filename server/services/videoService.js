@@ -1,5 +1,6 @@
 import { Innertube, UniversalCache } from 'youtubei.js';
 import { Supadata } from '@supadata/js';
+import { YoutubeTranscript } from 'youtube-transcript';
 import { config } from '../config/env.js';
 
 /**
@@ -36,6 +37,28 @@ export async function fetchTranscriptWithInnertube(videoId) {
 }
 
 /**
+ * Fetch transcript using youtube-transcript library (Second fallback)
+ */
+export async function fetchTranscriptWithYoutubeTranscript(videoId) {
+  try {
+    console.log(`[server] Fetching transcript fallback 2 (youtube-transcript) for ${videoId}...`);
+    const transcriptItems = await YoutubeTranscript.fetchTranscript(videoId, { lang: 'en' });
+
+    if (transcriptItems && transcriptItems.length > 0) {
+      return transcriptItems.map(item => ({
+        text: item.text,
+        offset: Math.round(item.offset * 1000), // Convert seconds to ms
+        duration: Math.round(item.duration * 1000) // Convert seconds to ms
+      }));
+    }
+    return [];
+  } catch (error) {
+    console.warn(`[server] youtube-transcript fallback failed: ${error.message}`);
+    return [];
+  }
+}
+
+/**
  * Fetch video metadata and transcript using both Innertube and Supadata
  */
 export async function fetchVideoContext(videoId) {
@@ -52,14 +75,21 @@ export async function fetchVideoContext(videoId) {
     try {
       console.log('[server] Requesting transcript from Supadata...');
       const supadata = new Supadata({ apiKey: config.supadata.apiKey });
-      const result = await supadata.transcript({
+
+      // Try native first (faster), then fall back to auto-generated if unavailable
+      let result = await supadata.transcript({
         url: `https://www.youtube.com/watch?v=${videoId}`,
-        text: false, // Must be false to get segments/timestamps for the UI
-        mode: 'native' // Request existing transcript for immediate response (HTTP 200)
+        text: false
       });
 
+      // Check if Supadata returned an error response
+      if (result.error) {
+        console.warn(`[server] Supadata error: ${result.error} - ${result.message}`);
+        result = null;
+      }
+
       let content = null;
-      if (result.jobId) {
+      if (result && result.jobId) {
         console.log(`[server] Supadata job started: ${result.jobId}`);
         let status = 'queued';
         let attempts = 0;
@@ -74,7 +104,7 @@ export async function fetchVideoContext(videoId) {
           }
           attempts++;
         }
-      } else {
+      } else if (result) {
         content = (result.content !== undefined) ? result.content : result;
       }
 
@@ -124,12 +154,21 @@ export async function fetchVideoContext(videoId) {
       console.warn(`[server] Supadata failed: ${e.message}`);
     }
 
-    // FALLBACK: If Supadata failed or returned no segments, try Innertube
+    // FALLBACK 1: If Supadata failed or returned no segments, try Innertube
     if (transcriptSegments.length === 0) {
       transcriptSegments = await fetchTranscriptWithInnertube(videoId);
       if (transcriptSegments.length > 0) {
         transcriptText = transcriptSegments.map(s => s.text).join(' ');
-        console.log(`[server] Fallback transcript received. Segments: ${transcriptSegments.length}`);
+        console.log(`[server] Innertube fallback transcript received. Segments: ${transcriptSegments.length}`);
+      }
+    }
+
+    // FALLBACK 2: If Innertube also failed, try youtube-transcript library
+    if (transcriptSegments.length === 0) {
+      transcriptSegments = await fetchTranscriptWithYoutubeTranscript(videoId);
+      if (transcriptSegments.length > 0) {
+        transcriptText = transcriptSegments.map(s => s.text).join(' ');
+        console.log(`[server] youtube-transcript fallback received. Segments: ${transcriptSegments.length}`);
       }
     }
 

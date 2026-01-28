@@ -224,4 +224,107 @@ router.post('/analyze-video-content', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/search-videos
+ * AI-powered semantic search for user's video library
+ */
+router.post('/search-videos', async (req, res) => {
+  try {
+    if (!config.gemini.apiKey) return res.status(500).json({ error: 'Server missing GEMINI_API_KEY' });
+
+    const { query, videos } = req.body || {};
+
+    if (!query || !videos || !Array.isArray(videos)) {
+      return res.status(400).json({ error: 'Missing query or videos array' });
+    }
+
+    if (videos.length === 0) {
+      return res.json({ matchedVideoIds: [] });
+    }
+
+    const ai = createAi();
+
+    // Build a concise representation of each video for the AI
+    const videoSummaries = videos.map((v, idx) => ({
+      idx,
+      id: v.libraryId,
+      title: v.title,
+      targetLang: v.targetLang,
+      level: v.level,
+      // Include summary and topics if available from the analysis
+      summary: v.summary || '',
+      topics: v.topics || [],
+      vocabulary: v.vocabulary || []
+    }));
+
+    const prompt = `
+    You are a search assistant for a language learning video library.
+
+    # User's Search Query
+    "${query}"
+
+    # Available Videos
+    ${JSON.stringify(videoSummaries, null, 2)}
+
+    # Task
+    Analyze the user's search query and find ALL videos that match. Consider:
+    - Video title matches (direct or semantic)
+    - Topic/subject matter relevance
+    - Language or level if mentioned
+    - Vocabulary or concepts if relevant
+
+    Be generous with matches - if a video could reasonably be relevant, include it.
+    Return the indices (idx) of matching videos, sorted by relevance (most relevant first).
+
+    If no videos match at all, return an empty array.
+
+    # Output
+    Return ONLY a JSON object with this structure:
+    {
+      "matchedIndices": [0, 2, 5]  // Array of idx values, or empty array
+    }
+    `.trim();
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            matchedIndices: {
+              type: Type.ARRAY,
+              items: { type: Type.NUMBER }
+            }
+          },
+          required: ['matchedIndices']
+        }
+      }
+    });
+
+    let candidates = response.candidates;
+    if (!candidates && response.data) candidates = response.data.candidates;
+
+    if (!candidates || !candidates[0] || !candidates[0].content || !candidates[0].content.parts) {
+      console.error('[server] Search response missing candidates');
+      // Fall back to returning all videos
+      return res.json({ matchedVideoIds: videos.map(v => v.libraryId) });
+    }
+
+    const json = safeJsonParse(candidates[0].content.parts[0].text);
+
+    // Map indices back to library IDs
+    const matchedVideoIds = (json.matchedIndices || [])
+      .filter(idx => idx >= 0 && idx < videos.length)
+      .map(idx => videos[idx].libraryId);
+
+    res.json({ matchedVideoIds });
+  } catch (err) {
+    console.error('search-videos failed', err);
+    // On error, don't block the user - return all videos
+    res.json({ matchedVideoIds: req.body?.videos?.map(v => v.libraryId) || [] });
+  }
+});
+
 export default router;
