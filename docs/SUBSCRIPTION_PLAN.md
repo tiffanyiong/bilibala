@@ -5,46 +5,182 @@ Implement a subscription system with tiered access, payment processing, and user
 
 ---
 
-## Phase 1: Requirements Clarification
+## Cost Analysis & Research
 
-### Questions to Answer Before Implementation
+### 1. Service Pricing (as of January 2026)
 
-1. **Authentication Status**
-   - [ ] Is user authentication already set up? (Google OAuth, etc.)
-   - [ ] What auth provider is being used? (Supabase Auth, Firebase, etc.)
+#### Gemini API Pricing
+| Model | Input (per 1M tokens) | Output (per 1M tokens) |
+|-------|----------------------|------------------------|
+| Gemini 2.0 Flash (text/image) | $0.10 | $0.40 |
+| Gemini 2.0 Flash (audio) | $0.70 | $0.40 |
+| **Gemini Live API (audio)** | $3.00 | $12.00 |
 
-2. **Payment Provider**
-   - [ ] Which payment provider? (Stripe recommended)
-   - [ ] What currencies to support?
-   - [ ] What regions to support?
+*Source: [Google AI Pricing](https://ai.google.dev/pricing)*
 
-3. **Subscription Tiers**
-   - [ ] What tiers? (e.g., Free, Pro, Premium)
-   - [ ] What are the price points?
-   - [ ] Monthly only or also annual billing?
+#### Supadata Pricing (YouTube Transcripts)
+| Plan | Credits/month | Price |
+|------|--------------|-------|
+| Free | 100 | $0 |
+| Basic | 300 | $5/mo |
+| Pro | 3,000 | $17/mo |
+| Mega | 30,000 | $47/mo |
 
-4. **Feature Gating**
-   - [ ] Which features are free vs paid?
-   - [ ] Usage limits for free tier? (e.g., X videos/month, Y practice sessions)
+*1 credit = 1 video transcript fetch*
+*Source: [Supadata Pricing](https://supadata.ai/pricing)*
+
+#### Supabase Pricing
+| Plan | Database | Storage | MAUs | Price |
+|------|----------|---------|------|-------|
+| Free | 500 MB | 1 GB | 50K | $0 |
+| Pro | 8 GB | 100 GB | 100K | $25/mo |
+
+*Source: [Supabase Pricing](https://supabase.com/pricing)*
+
+#### Vercel Pricing
+| Plan | Bandwidth | Price |
+|------|-----------|-------|
+| Hobby | 100 GB | $0 (non-commercial) |
+| Pro | 1 TB | $20/user/mo |
+
+*Source: [Vercel Pricing](https://vercel.com/pricing)*
 
 ---
 
-## Phase 2: Proposed Subscription Tiers
+### 2. Cost Per User Action
 
-### Tier Structure (Example)
+| Action | Gemini Cost | Supadata | Total Est. |
+|--------|-------------|----------|------------|
+| **Video Analysis (new)** | ~$0.001 | 1 credit | ~$0.001 + 1 credit |
+| **Video Analysis (cached)** | $0 | 0 | ~$0 |
+| **Speech Analysis** | ~$0.002-0.005 | 0 | ~$0.003 |
+| **Conversation Hints** | ~$0.0002 | 0 | ~$0.0002 |
+| **Video Search** | ~$0.0005 | 0 | ~$0.0005 |
+| **AI Tutor (10 min live)** | ~$0.50-1.50 | 0 | **~$1.00** |
 
-| Feature | Free | Pro ($X/mo) | Premium ($Y/mo) |
-|---------|------|-------------|-----------------|
-| Videos per month | 3 | Unlimited | Unlimited |
-| Practice sessions | 5/month | Unlimited | Unlimited |
-| AI feedback | Basic | Full | Full + Priority |
-| PDF export | No | Yes | Yes |
-| Video library | Last 10 | Unlimited | Unlimited |
-| Priority support | No | No | Yes |
+**Key Insight: AI Tutor (Live Conversation) is the most expensive feature!**
+- Uses Gemini Live API with audio input ($3/1M) and audio output ($12/1M)
+- A 10-minute session can cost $0.50-$1.50 depending on conversation length
 
 ---
 
-## Phase 3: Technical Implementation
+### 3. Monthly Cost Scenarios
+
+#### Scenario A: Light Free User
+- 3 videos analyzed
+- 5 practice sessions (speech analysis)
+- No AI Tutor
+
+| Item | Cost |
+|------|------|
+| 3 video analyses | $0.003 + 3 Supadata credits |
+| 5 speech analyses | $0.015 |
+| **Total** | **~$0.02** |
+
+#### Scenario B: Active Pro User
+- 10 videos analyzed
+- 20 practice sessions
+- 5 AI Tutor sessions (10 min each)
+
+| Item | Cost |
+|------|------|
+| 10 video analyses | $0.01 + 10 Supadata credits |
+| 20 speech analyses | $0.06 |
+| 5 AI Tutor sessions | $5.00 |
+| **Total** | **~$5.07** |
+
+#### Scenario C: Heavy Pro User
+- 30 videos analyzed
+- 60 practice sessions
+- 20 AI Tutor sessions (10 min each)
+
+| Item | Cost |
+|------|------|
+| 30 video analyses | $0.03 + 30 Supadata credits |
+| 60 speech analyses | $0.18 |
+| 20 AI Tutor sessions | $20.00 |
+| **Total** | **~$20.21** |
+
+---
+
+### 4. Fixed Monthly Costs (Infrastructure)
+
+| Service | Plan | Monthly Cost |
+|---------|------|--------------|
+| Supabase | Pro | $25 |
+| Vercel | Pro | $20 |
+| Supadata | Pro (3,000 credits) | $17 |
+| **Total Fixed** | | **$62/month** |
+
+*Note: Can start with free tiers initially, upgrade as user base grows*
+
+---
+
+### 5. Pricing Recommendation
+
+Based on cost analysis:
+
+| Tier | Price | Your Cost/User | Margin |
+|------|-------|----------------|--------|
+| **Free** | $0 | ~$0.02 | Loss leader |
+| **Pro** | $9-12/mo | ~$5-10 | ~$2-7 profit |
+| **BYOK (future)** | $5/mo | ~$0 API cost | $5 profit |
+
+**Recommended: $9/month for Pro** (or $7/month annual)
+- Covers average user cost (~$5)
+- Provides margin for infrastructure
+- Competitive with market ($7-15 for language apps)
+
+---
+
+## Finalized Subscription Tiers
+
+### Free Tier ($0)
+| Feature | Limit | Notes |
+|---------|-------|-------|
+| Videos per month | 3 | New video analyses |
+| Practice sessions | 5/month | Speech recording + AI feedback |
+| AI Tutor | NO | Most expensive feature |
+| AI feedback | YES (5 total) | Included in practice sessions |
+| PDF export | NO | Pro feature |
+| Video library | Last 10 | Older videos archived |
+
+### Pro Tier ($9/month or $7/month annual)
+| Feature | Limit | Notes |
+|---------|-------|-------|
+| Videos per month | Unlimited | |
+| Practice sessions | Unlimited | |
+| AI Tutor | 60 min/month | ~6 sessions × 10 min; 15 min max per session |
+| AI feedback | Unlimited | |
+| PDF export | YES | |
+| Video library | Unlimited | |
+
+### BYOK Tier - Future ($5/month)
+| Feature | Limit | Notes |
+|---------|-------|-------|
+| All Pro features | Unlimited | |
+| Uses user's own API key | - | User pays Gemini directly |
+
+---
+
+## Answers to Your Questions
+
+### Video Library Limit (Free: Last 10)
+**Recommendation: Last 10 is fine**
+- Storage cost is minimal (Supabase)
+- Encourages upgrade without being frustrating
+- Users can still see older videos exist, just can't access full details
+
+### AI Feedback Limit (Free: 5 total)
+**Recommendation: 5 per month (resets monthly)**
+- Ties to the 5 practice sessions limit
+- Each practice session = 1 AI feedback
+- If they retry same question, still counts as 1 (per question, not per attempt)
+- Alternative: 5 total ever (more restrictive, pushes upgrade faster)
+
+---
+
+## Technical Implementation
 
 ### 3.1 Database Schema
 
@@ -152,66 +288,72 @@ components/
 ```typescript
 // src/shared/hooks/useSubscription.ts
 interface SubscriptionContext {
-  tier: 'free' | 'pro' | 'premium';
+  tier: 'free' | 'pro';
   status: 'active' | 'canceled' | 'past_due' | 'trialing';
   usage: {
     videosUsed: number;
-    videosLimit: number;
+    videosLimit: number; // 3 for free, Infinity for pro
     practiceSessionsUsed: number;
-    practiceSessionsLimit: number;
+    practiceSessionsLimit: number; // 5 for free, Infinity for pro
   };
+  // Computed permissions
   canAddVideo: boolean;
   canStartPractice: boolean;
-  canExportPdf: boolean;
+  canUseAiTutor: boolean; // Pro only
+  canExportPdf: boolean; // Pro only
   isLoading: boolean;
 }
 
 // Usage in components
-const { canExportPdf, tier } = useSubscription();
+const { canExportPdf, canUseAiTutor, tier } = useSubscription();
 
 if (!canExportPdf) {
-  return <UpgradePrompt feature="PDF Export" />;
+  return <UpgradePrompt feature="PDF Export" requiredTier="pro" />;
+}
+
+if (!canUseAiTutor) {
+  return <UpgradePrompt feature="AI Tutor" requiredTier="pro" />;
 }
 ```
 
 ---
 
-## Phase 4: Implementation Order
+## Implementation Order
 
-### Step 1: Database Setup (Day 1)
+### Step 1: Database Setup
 - [ ] Create subscription tables in Supabase
 - [ ] Add RLS policies for security
 - [ ] Create database functions for usage tracking
 
-### Step 2: Stripe Setup (Day 1-2)
+### Step 2: Stripe Setup
 - [ ] Create Stripe account/products
 - [ ] Set up price IDs
 - [ ] Configure webhook endpoint
 
-### Step 3: Backend API (Day 2-3)
+### Step 3: Backend API
 - [ ] Implement checkout session creation
 - [ ] Implement webhook handler
 - [ ] Implement subscription status endpoint
 - [ ] Implement usage tracking
 
-### Step 4: Subscription Context (Day 3)
+### Step 4: Subscription Context
 - [ ] Create useSubscription hook
 - [ ] Add SubscriptionProvider to app
 - [ ] Implement usage checking logic
 
-### Step 5: UI Components (Day 4-5)
+### Step 5: UI Components
 - [ ] Build PricingTable component
 - [ ] Build SubscriptionPage
 - [ ] Build UpgradeModal
 - [ ] Build UsageMeter
 
-### Step 6: Feature Gating (Day 5-6)
+### Step 6: Feature Gating
 - [ ] Gate PDF export
 - [ ] Gate video limits
 - [ ] Gate practice session limits
 - [ ] Add upgrade prompts
 
-### Step 7: Testing (Day 6-7)
+### Step 7: Testing
 - [ ] Test checkout flow
 - [ ] Test webhook handling
 - [ ] Test subscription cancellation
@@ -220,7 +362,7 @@ if (!canExportPdf) {
 
 ---
 
-## Phase 5: UI/UX Considerations
+## UI/UX Considerations
 
 ### Pricing Page Design
 - Clean, Notion-style design matching app aesthetic
@@ -243,7 +385,7 @@ if (!canExportPdf) {
 
 ---
 
-## Phase 6: Security Considerations
+## Security Considerations
 
 - [ ] Verify webhook signatures from Stripe
 - [ ] Use RLS to protect subscription data

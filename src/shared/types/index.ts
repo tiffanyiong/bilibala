@@ -108,5 +108,6 @@ export enum AppState {
   VIDEO_LIBRARY,
   PRACTICE_REPORTS,       // Full-page reports list: /{videoId}/reports
   PRACTICE_REPORT_DETAIL, // Full-page single report: /{videoId}/reports/{sessionId}
+  SUBSCRIPTION,           // Subscription management page: /subscription
   ERROR
 }

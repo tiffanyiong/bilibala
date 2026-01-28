@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../../shared/context/AuthContext';
+import { useSubscription } from '../../../shared/context/SubscriptionContext';
 import { getBackendOrigin } from '../../../shared/services/backend';
 import { savePracticeSession, updateLibraryPracticeStats, uploadPracticeAudio, incrementTopicPracticeCount, incrementQuestionUseCount } from '../../../shared/services/database';
 import { PracticeTopic, SpeechAnalysisResult } from '../../../shared/types';
@@ -65,6 +66,7 @@ const defaultLabels = {
 
 const PracticeSession: React.FC<PracticeSessionProps> = ({ topic, allTopics = [], onTopicChange, level, nativeLang, targetLang, analysisId, onExit }) => {
   const { user } = useAuth();
+  const { recordAction } = useSubscription();
   const [state, setState] = useState<SessionState>(SessionState.PREP);
   const [analysisResult, setAnalysisResult] = useState<SpeechAnalysisResult | null>(null);
   const [error, setError] = useState('');
@@ -203,6 +205,7 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({ topic, allTopics = []
 
             if (savedSession) {
               console.log('[PracticeSession] Practice session saved successfully:', savedSession.id);
+              recordAction('practice_session');
             } else {
               console.error('[PracticeSession] Practice session save returned null - check database.ts logs');
             }

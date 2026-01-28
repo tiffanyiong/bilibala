@@ -3,6 +3,7 @@ import { VideoHistoryItem, DbPracticeSession } from '../../../shared/types/datab
 import { SpeechAnalysisResult } from '../../../shared/types';
 import { getPracticeSessionById } from '../../../shared/services/database';
 import { useAuth } from '../../../shared/context/AuthContext';
+import { useSubscription } from '../../../shared/context/SubscriptionContext';
 import PyramidFeedback from '../../practice/components/PyramidFeedback';
 import { exportPracticeReportToPdf } from '../../../shared/utils/pdfExport';
 
@@ -171,6 +172,7 @@ const PracticeReportDetailPage: React.FC<PracticeReportDetailPageProps> = ({
   onBackToLibrary,
 }) => {
   const { user } = useAuth();
+  const { canExportPdf, recordAction } = useSubscription();
   const [session, setSession] = useState<DbPracticeSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -228,6 +230,11 @@ const PracticeReportDetailPage: React.FC<PracticeReportDetailPageProps> = ({
   const handleExportPdf = async () => {
     if (!analysisData || !session || isExporting) return;
 
+    if (!canExportPdf) {
+      // PDF export is Pro-only; don't proceed
+      return;
+    }
+
     setIsExporting(true);
     try {
       await exportPracticeReportToPdf(analysisData, {
@@ -238,6 +245,8 @@ const PracticeReportDetailPage: React.FC<PracticeReportDetailPageProps> = ({
         targetLang: video.targetLang,
         level: video.level,
       });
+      // Record PDF export usage
+      recordAction('pdf_export');
     } finally {
       setIsExporting(false);
     }
@@ -295,13 +304,24 @@ const PracticeReportDetailPage: React.FC<PracticeReportDetailPageProps> = ({
             {analysisData && canRenderPyramid && (
               <button
                 onClick={handleExportPdf}
-                disabled={isExporting}
-                className={`flex items-center gap-2 px-3 py-2 text-sm font-medium bg-white border border-stone-200 rounded-lg transition-colors ${isExporting ? 'text-stone-400 cursor-wait' : 'text-stone-600 hover:bg-stone-50'}`}
+                disabled={isExporting || !canExportPdf}
+                className={`flex items-center gap-2 px-3 py-2 text-sm font-medium bg-white border border-stone-200 rounded-lg transition-colors ${
+                  !canExportPdf
+                    ? 'text-stone-400 cursor-not-allowed opacity-60'
+                    : isExporting ? 'text-stone-400 cursor-wait' : 'text-stone-600 hover:bg-stone-50'
+                }`}
+                title={!canExportPdf ? 'PDF export requires Pro plan' : undefined}
               >
                 {isExporting ? (
                   <>
                     <SpinnerIcon />
                     Exporting...
+                  </>
+                ) : !canExportPdf ? (
+                  <>
+                    <DownloadIcon />
+                    Export PDF
+                    <span className="text-[10px] bg-stone-200 text-stone-500 px-1.5 py-0.5 rounded-full ml-1">PRO</span>
                   </>
                 ) : (
                   <>

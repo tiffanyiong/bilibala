@@ -193,3 +193,61 @@ export interface VideoHistoryItem {
   title: string;
   thumbnailUrl: string | null;
 }
+
+// ============================================
+// SUBSCRIPTIONS
+// ============================================
+
+export type SubscriptionTier = 'free' | 'pro';
+export type SubscriptionStatus = 'active' | 'canceled' | 'past_due' | 'trialing' | null;
+
+export interface DbUserSubscription {
+  id: string;
+  user_id: string;
+  tier: SubscriptionTier;
+  monthly_usage_count: number;
+  usage_reset_month: string | null;
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
+  subscription_status: SubscriptionStatus;
+  current_period_start: string | null;
+  current_period_end: string | null;
+  credits_balance: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export type UsageActionType = 'video_analysis' | 'practice_session' | 'ai_tutor' | 'pdf_export';
+
+export interface DbUsageHistory {
+  id: string;
+  user_id: string;
+  action_type: UsageActionType;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface MonthlyUsage {
+  videosUsed: number;
+  practiceSessionsUsed: number;
+  aiTutorMinutesUsed: number;
+  pdfExportsUsed: number;
+}
+
+// Tier limits configuration
+export const TIER_LIMITS = {
+  free: {
+    videosPerMonth: 3,
+    practiceSessionsPerMonth: 5,
+    aiTutorMinutesPerMonth: 0,
+    pdfExport: false,
+    videoLibraryMax: 10,
+  },
+  pro: {
+    videosPerMonth: Infinity,
+    practiceSessionsPerMonth: Infinity,
+    aiTutorMinutesPerMonth: 60,
+    pdfExport: true,
+    videoLibraryMax: Infinity,
+  },
+} as const;
