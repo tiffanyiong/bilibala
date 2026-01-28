@@ -51,26 +51,28 @@ const DraggableWrapper = ({ children, isMinimized, onClose, onMinimize }: any) =
     );
 };
 
-interface PyramidFeedbackProps { 
-    analysis: SpeechAnalysisResult; 
-    onRetry: () => void; 
-    audioUrl?: string | null; 
-    startRetake: (audioData: string) => void; 
-    level: string; 
-    nativeLang: string; 
-    targetLang: string; 
+interface PyramidFeedbackProps {
+    analysis: SpeechAnalysisResult;
+    onRetry: () => void;
+    audioUrl?: string | null;
+    startRetake: (audioData: string) => void;
+    level: string;
+    nativeLang: string;
+    targetLang: string;
     preFetchedLabels: any; // Receive labels from parent
+    showRetry?: boolean; // Whether to show retry button (default: true for practice sessions)
 }
 
-const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({ 
-    analysis, 
-    onRetry, 
-    audioUrl, 
-    startRetake, 
-    level, 
-    nativeLang, 
-    targetLang, 
-    preFetchedLabels // Destructure passed labels
+const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
+    analysis,
+    onRetry,
+    audioUrl,
+    startRetake,
+    level,
+    nativeLang,
+    targetLang,
+    preFetchedLabels, // Destructure passed labels
+    showRetry = true // Default to true for practice sessions
 }) => {
   const { structure, improved_structure, feedback, transcription, detected_framework, improvements } = analysis;
   const [viewMode, setViewMode] = useState<'user' | 'ai'>('user');
@@ -323,14 +325,14 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
           </div>
       </div>
 
-      {!showRetakeModal && (
+      {showRetry && !showRetakeModal && (
           <div className="flex justify-center pt-8">
               <button onClick={handleOpenRetake} className="bg-stone-900 text-white w-20 h-20 md:w-24 md:h-24 rounded-full flex items-center justify-center hover:bg-black transition-all shadow-lg hover:shadow-xl hover:-translate-y-1 group"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:rotate-180 transition-transform duration-500"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></svg></button>
           </div>
       )}
 
       {/* --- UNIFIED RETAKE MODAL --- */}
-      {showRetakeModal && (
+      {showRetry && showRetakeModal && (
         <div className={getContainerClasses()}>
             
             {/* Header Controls (Minimize / Close) */}

@@ -1,402 +1,759 @@
+import dagre from 'dagre';
 import { jsPDF } from 'jspdf';
-import { SpeechAnalysisResult, ArgumentNode, ImprovedArgumentNode } from '../types';
+import { SpeechAnalysisResult } from '../types';
 
 interface ExportOptions {
   videoTitle: string;
   topicText: string;
+  questionText?: string;
   date: string;
   targetLang: string;
   level: string;
 }
 
-export function exportPracticeReportToPdf(
+// Sequential frameworks that use chain layout (root → arg1 → arg2 → ...)
+const SEQUENTIAL_FRAMEWORKS = ['STAR', 'PREP', 'GOLDEN_CIRCLE', 'WSN'];
+
+interface GraphNode {
+  id: string;
+  label: string;
+  type?: string;
+  status?: string;
+  elaboration?: string;
+  isRoot?: boolean;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface GraphEdge {
+  source: string;
+  target: string;
+  animated?: boolean;
+}
+
+// Check if text contains CJK characters
+const containsCJK = (text: string): boolean => {
+  return /[\u4e00-\u9fff\u3400-\u4dbf\u3000-\u303f\uff00-\uffef]/u.test(text);
+};
+
+// Convert ArrayBuffer to base64 safely (handles large files)
+const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
+  const bytes = new Uint8Array(buffer);
+
+  // For smaller files, use simple approach
+  if (bytes.length < 100000) {
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+  }
+
+  // For larger files (like CJK fonts), use chunked approach
+  const chunkSize = 0x8000; // 32KB chunks
+  const chunks: string[] = [];
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+    chunks.push(String.fromCharCode.apply(null, Array.from(chunk)));
+  }
+  return btoa(chunks.join(''));
+};
+
+// Load Chinese font dynamically
+const loadChineseFont = async (doc: jsPDF): Promise<boolean> => {
+  // Try multiple font sources - local file first (most reliable)
+  const fontSources = [
+    // Noto Sans SC - Google's official Chinese font, best compatibility with jsPDF
+    {
+      url: '/fonts/NotoSansSC-Regular.ttf',
+      ext: 'ttf',
+    },
+    // Fallback: LXGW WenKai font
+    {
+      url: '/fonts/LXGWWenKai-Regular.ttf',
+      ext: 'ttf',
+    },
+    // CDN fallback - Noto Sans SC from Google Fonts
+    {
+      url: 'https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYw.ttf',
+      ext: 'ttf',
+    },
+  ];
+
+  for (const { url, ext } of fontSources) {
+    try {
+      const response = await fetch(url, { mode: 'cors' });
+      if (!response.ok) continue;
+
+      const arrayBuffer = await response.arrayBuffer();
+      if (arrayBuffer.byteLength < 100000) continue;
+
+      const base64 = arrayBufferToBase64(arrayBuffer);
+      const fileName = `ChineseFont.${ext}`;
+
+      doc.addFileToVFS(fileName, base64);
+      doc.addFont(fileName, 'ChineseFont', 'normal', 'normal');
+
+      const fonts = doc.getFontList();
+      if (fonts['ChineseFont']) {
+        doc.setFont('ChineseFont', 'normal');
+        doc.getTextWidth('测试'); // Verify font works
+        return true;
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return false;
+};
+
+// Convert duck SVG to base64 PNG for PDF embedding
+const getDuckLogoBase64 = async (): Promise<string | null> => {
+  try {
+    const svgString = `<svg width="100" height="100" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M25 55C25 40 35 25 55 25C70 25 80 35 80 45C80 50 85 50 90 45C95 40 98 45 95 55C92 65 85 85 55 85C35 85 25 75 25 55Z" fill="#FCD34D" />
+      <path d="M45 60C45 60 55 50 70 60" stroke="#F59E0B" stroke-width="4" stroke-linecap="round" />
+      <path d="M25 45H15C10 45 10 55 15 55H25" fill="#F97316"/>
+      <circle cx="45" cy="40" r="4" fill="#1F2937"/>
+      <path d="M55 25C55 20 60 15 65 20" stroke="#FCD34D" stroke-width="4" stroke-linecap="round"/>
+    </svg>`;
+
+    // Create a canvas to render the SVG
+    const canvas = document.createElement('canvas');
+    const size = 100; // Render at good resolution
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    // Create an image from the SVG
+    const img = new Image();
+    const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(svgBlob);
+
+    return new Promise((resolve) => {
+      img.onload = () => {
+        ctx.drawImage(img, 0, 0, size, size);
+        URL.revokeObjectURL(url);
+        const base64 = canvas.toDataURL('image/png');
+        resolve(base64);
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        resolve(null);
+      };
+      img.src = url;
+    });
+  } catch {
+    return null;
+  }
+};
+
+export async function exportPracticeReportToPdf(
   analysis: SpeechAnalysisResult,
   options: ExportOptions
-): void {
-  const doc = new jsPDF();
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const margin = 20;
-  const contentWidth = pageWidth - margin * 2;
-  let yPos = 20;
+): Promise<void> {
 
-  // Helper to add wrapped text and return new Y position
-  const addWrappedText = (text: string, x: number, y: number, maxWidth: number, lineHeight: number = 6): number => {
-    const lines = doc.splitTextToSize(text, maxWidth);
-    doc.text(lines, x, y);
-    return y + lines.length * lineHeight;
-  };
+  try {
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 20;
+    const contentWidth = pageWidth - margin * 2;
+    let yPos = margin;
 
-  // Helper to check if we need a new page
-  const checkPageBreak = (requiredSpace: number): void => {
-    if (yPos + requiredSpace > doc.internal.pageSize.getHeight() - 20) {
-      doc.addPage();
-      yPos = 20;
+    // Check if we need Chinese font support
+    const allText = [
+      analysis.transcription || '',
+      options.videoTitle,
+      options.topicText,
+      options.questionText || '',
+      ...(analysis.feedback?.strengths || []),
+      ...(analysis.feedback?.weaknesses || []),
+      ...(analysis.feedback?.suggestions || []),
+      ...(analysis.improvements?.map(i => `${i.original} ${i.improved} ${i.explanation}`) || []),
+    ].join(' ');
+
+    const needsChinese = containsCJK(allText);
+    let chineseFontLoaded = false;
+
+    if (needsChinese) {
+      chineseFontLoaded = await loadChineseFont(doc);
     }
-  };
 
-  // Helper to draw a rounded rectangle box
-  const drawBox = (x: number, y: number, width: number, height: number, fillColor: [number, number, number], borderColor: [number, number, number]) => {
-    doc.setFillColor(...fillColor);
-    doc.setDrawColor(...borderColor);
-    doc.roundedRect(x, y, width, height, 2, 2, 'FD');
-  };
+    // Load duck logo for header
+    const duckLogoBase64 = await getDuckLogoBase64();
 
-  // Helper to get status color
-  const getStatusColor = (status: string): [number, number, number] => {
-    switch (status) {
-      case 'strong': return [34, 139, 34]; // Green
-      case 'weak': return [204, 136, 0]; // Amber
-      case 'missing': return [180, 0, 0]; // Red
-      default: return [100, 100, 100]; // Gray
-    }
-  };
+    // ==================== NOTION-STYLE COLORS ====================
+    const colors = {
+      black: [55, 53, 47] as [number, number, number],
+      darkGray: [120, 119, 116] as [number, number, number],
+      mediumGray: [155, 154, 151] as [number, number, number],
+      lightGray: [227, 226, 224] as [number, number, number],
+      background: [251, 251, 250] as [number, number, number],
+      white: [255, 255, 255] as [number, number, number],
 
-  // Helper to get type label
-  const getTypeLabel = (type: string): string => {
-    switch (type) {
-      case 'fact': return '[Fact]';
-      case 'story': return '[Story]';
-      case 'opinion': return '[Opinion]';
-      default: return '';
-    }
-  };
+      // Subtle callout backgrounds (Notion-style)
+      grayCallout: [241, 241, 239] as [number, number, number],
+      blueCallout: [231, 243, 248] as [number, number, number],
+      greenCallout: [237, 243, 236] as [number, number, number],
+      yellowCallout: [251, 243, 219] as [number, number, number],
+      orangeCallout: [250, 235, 221] as [number, number, number],
+      pinkCallout: [245, 224, 233] as [number, number, number],
+      purpleCallout: [234, 228, 242] as [number, number, number],
 
-  // Helper to draw user's structure (My Logic)
-  const drawUserStructure = () => {
-    if (!analysis.structure?.conclusion || !analysis.structure?.arguments) return;
+      // Status colors for graph
+      strong: [68, 131, 97] as [number, number, number],
+      weak: [203, 145, 47] as [number, number, number],
+      rootNode: [55, 53, 47] as [number, number, number],
+    };
 
-    checkPageBreak(60);
-
-    // Section title
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(0);
-    doc.text('My Logic (Detected Structure)', margin, yPos);
-    yPos += 12;
-
-    // Conclusion box at top (pyramid peak)
-    const conclusionBoxWidth = contentWidth * 0.7;
-    const conclusionBoxX = margin + (contentWidth - conclusionBoxWidth) / 2;
-    const boxPadding = 8;
-
-    doc.setFontSize(9);
-    const conclusionLines = doc.splitTextToSize(analysis.structure.conclusion, conclusionBoxWidth - boxPadding * 2);
-    const conclusionBoxHeight = 8 + conclusionLines.length * 5 + boxPadding;
-
-    checkPageBreak(conclusionBoxHeight + 15);
-    drawBox(conclusionBoxX, yPos, conclusionBoxWidth, conclusionBoxHeight, [230, 230, 250], [100, 100, 180]);
-
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(60, 60, 120);
-    doc.text('Main Point', conclusionBoxX + boxPadding, yPos + 6);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(0);
-    doc.text(conclusionLines, conclusionBoxX + boxPadding, yPos + 12);
-    yPos += conclusionBoxHeight + 10;
-
-    // Arguments (supporting points) - render vertically, one per row
-    const args = analysis.structure.arguments;
-    if (args.length > 0) {
-      const argBoxWidth = contentWidth * 0.85;
-      const argBoxX = margin + (contentWidth - argBoxWidth) / 2;
-
-      for (let i = 0; i < args.length; i++) {
-        const arg = args[i];
-
-        const statusColor = getStatusColor(arg.status);
-        const typeLabel = getTypeLabel(arg.type);
-        const pointText = `${typeLabel} ${arg.point}`.trim();
-
-        doc.setFontSize(9);
-        const pointLines = doc.splitTextToSize(pointText, argBoxWidth - boxPadding * 2);
-
-        // Calculate evidence lines if any
-        let evidenceLines: string[] = [];
-        if (arg.evidence && arg.evidence.length > 0) {
-          doc.setFontSize(8);
-          const evidenceText = `Evidence: ${arg.evidence.slice(0, 2).join('; ')}`;
-          evidenceLines = doc.splitTextToSize(evidenceText, argBoxWidth - boxPadding * 2);
-        }
-
-        // Calculate total box height: status label + point text + evidence + padding
-        const statusHeight = 6;
-        const pointHeight = pointLines.length * 5;
-        const evidenceHeight = evidenceLines.length > 0 ? evidenceLines.length * 4 + 4 : 0;
-        const argBoxHeight = statusHeight + pointHeight + evidenceHeight + boxPadding * 2;
-
-        checkPageBreak(argBoxHeight + 8);
-
-        // Status indicator color for background
-        const bgColor: [number, number, number] = arg.status === 'strong' ? [235, 250, 235] :
-                        arg.status === 'weak' ? [255, 248, 230] : [255, 240, 240];
-
-        drawBox(argBoxX, yPos, argBoxWidth, argBoxHeight, bgColor, statusColor);
-
-        // Status label
-        let textY = yPos + boxPadding;
-        doc.setFontSize(8);
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(...statusColor);
-        doc.text(arg.status.toUpperCase(), argBoxX + boxPadding, textY);
-        textY += statusHeight;
-
-        // Point text
-        doc.setFontSize(9);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(0);
-        doc.text(pointLines, argBoxX + boxPadding, textY);
-        textY += pointHeight;
-
-        // Evidence (inside the box)
-        if (evidenceLines.length > 0) {
-          textY += 3;
-          doc.setFontSize(8);
-          doc.setTextColor(100);
-          doc.setFont('helvetica', 'italic');
-          doc.text(evidenceLines, argBoxX + boxPadding, textY);
-        }
-
-        yPos += argBoxHeight + 6;
+    // Font helper - use Chinese font for all text when loaded to ensure consistency
+    const setFont = (style: 'normal' | 'bold' | 'italic' = 'normal', size: number = 10) => {
+      if (chineseFontLoaded) {
+        doc.setFont('ChineseFont', 'normal');
+      } else {
+        doc.setFont('helvetica', style);
       }
-    }
-    yPos += 8;
-  };
+      doc.setFontSize(size);
+    };
 
-  // Helper to draw AI improved structure
-  const drawImprovedStructure = () => {
-    if (!analysis.improved_structure?.conclusion || !analysis.improved_structure?.arguments) return;
-
-    checkPageBreak(60);
-
-    // Section title
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(0);
-    doc.text('AI Improved Structure', margin, yPos);
-    yPos += 12;
-
-    // Conclusion box at top
-    const conclusionBoxWidth = contentWidth * 0.7;
-    const conclusionBoxX = margin + (contentWidth - conclusionBoxWidth) / 2;
-    const boxPadding = 8;
-
-    doc.setFontSize(9);
-    const conclusionLines = doc.splitTextToSize(analysis.improved_structure.conclusion, conclusionBoxWidth - boxPadding * 2);
-    const conclusionBoxHeight = 8 + conclusionLines.length * 5 + boxPadding;
-
-    checkPageBreak(conclusionBoxHeight + 15);
-    drawBox(conclusionBoxX, yPos, conclusionBoxWidth, conclusionBoxHeight, [220, 245, 220], [34, 139, 34]);
-
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(34, 100, 34);
-    doc.text('Improved Main Point', conclusionBoxX + boxPadding, yPos + 6);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(0);
-    doc.text(conclusionLines, conclusionBoxX + boxPadding, yPos + 12);
-    yPos += conclusionBoxHeight + 10;
-
-    // Improved arguments - render vertically, one per row
-    const args = analysis.improved_structure.arguments;
-    if (args.length > 0) {
-      const argBoxWidth = contentWidth * 0.85;
-      const argBoxX = margin + (contentWidth - argBoxWidth) / 2;
-
-      for (let i = 0; i < args.length; i++) {
-        const arg = args[i];
-
-        const typeLabel = getTypeLabel(arg.type);
-        const headlineText = `${typeLabel} ${arg.headline}`.trim();
-
-        doc.setFontSize(9);
-        const headlineLines = doc.splitTextToSize(headlineText, argBoxWidth - boxPadding * 2);
-
-        // Calculate elaboration lines
-        let elaborationLines: string[] = [];
-        if (arg.elaboration) {
-          doc.setFontSize(8);
-          elaborationLines = doc.splitTextToSize(arg.elaboration, argBoxWidth - boxPadding * 2);
-        }
-
-        // Calculate total box height
-        const headlineHeight = headlineLines.length * 5;
-        const elaborationHeight = elaborationLines.length > 0 ? elaborationLines.length * 4 + 4 : 0;
-        const argBoxHeight = headlineHeight + elaborationHeight + boxPadding * 2;
-
-        checkPageBreak(argBoxHeight + 8);
-
-        drawBox(argBoxX, yPos, argBoxWidth, argBoxHeight, [220, 245, 220], [34, 139, 34]);
-
-        // Headline
-        let textY = yPos + boxPadding;
-        doc.setFontSize(9);
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(34, 100, 34);
-        doc.text(headlineLines, argBoxX + boxPadding, textY);
-        textY += headlineHeight;
-
-        // Elaboration (inside the box)
-        if (elaborationLines.length > 0) {
-          textY += 3;
-          doc.setFontSize(8);
-          doc.setFont('helvetica', 'normal');
-          doc.setTextColor(60);
-          doc.text(elaborationLines, argBoxX + boxPadding, textY);
-        }
-
-        yPos += argBoxHeight + 6;
+    // Check page break
+    const checkPageBreak = (requiredSpace: number): void => {
+      if (yPos + requiredSpace > pageHeight - 25) {
+        doc.addPage();
+        yPos = margin;
       }
-    }
-    yPos += 8;
-  };
+    };
 
-  // Title
-  doc.setFontSize(18);
-  doc.setFont('helvetica', 'bold');
-  doc.text('Practice Report', margin, yPos);
-  yPos += 10;
-
-  // Metadata
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(100);
-  doc.text(`Video: ${options.videoTitle}`, margin, yPos);
-  yPos += 5;
-  doc.text(`Topic: ${options.topicText}`, margin, yPos);
-  yPos += 5;
-  doc.text(`${options.targetLang} | ${options.level} | ${options.date}`, margin, yPos);
-  yPos += 12;
-  doc.setTextColor(0);
-
-  // Divider
-  doc.setDrawColor(200);
-  doc.line(margin, yPos, pageWidth - margin, yPos);
-  yPos += 10;
-
-  // Transcription
-  if (analysis.transcription) {
-    checkPageBreak(40);
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Your Response', margin, yPos);
-    yPos += 7;
-
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    yPos = addWrappedText(analysis.transcription, margin, yPos, contentWidth);
-    yPos += 15;
-  }
-
-  // Draw user's detected structure (My Logic graph)
-  drawUserStructure();
-
-  // Draw AI improved structure graph
-  drawImprovedStructure();
-
-  // Strengths
-  if (analysis.feedback?.strengths && analysis.feedback.strengths.length > 0) {
-    checkPageBreak(30);
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(34, 139, 34); // Green
-    doc.text('Strengths', margin, yPos);
-    yPos += 7;
-
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(0);
-
-    for (const strength of analysis.feedback.strengths) {
-      checkPageBreak(15);
-      yPos = addWrappedText(`• ${strength}`, margin + 3, yPos, contentWidth - 6);
-      yPos += 2;
-    }
-    yPos += 8;
-  }
-
-  // Areas for Improvement
-  if (analysis.feedback?.weaknesses && analysis.feedback.weaknesses.length > 0) {
-    checkPageBreak(30);
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(204, 136, 0); // Amber
-    doc.text('Areas for Improvement', margin, yPos);
-    yPos += 7;
-
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(0);
-
-    for (const weakness of analysis.feedback.weaknesses) {
-      checkPageBreak(15);
-      yPos = addWrappedText(`• ${weakness}`, margin + 3, yPos, contentWidth - 6);
-      yPos += 2;
-    }
-    yPos += 8;
-  }
-
-  // Actionable Tips
-  if (analysis.feedback?.suggestions && analysis.feedback.suggestions.length > 0) {
-    checkPageBreak(30);
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Actionable Tips', margin, yPos);
-    yPos += 7;
-
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-
-    for (const tip of analysis.feedback.suggestions) {
-      checkPageBreak(15);
-      yPos = addWrappedText(`• ${tip}`, margin + 3, yPos, contentWidth - 6);
-      yPos += 2;
-    }
-    yPos += 8;
-  }
-
-  // Language Improvements
-  if (analysis.improvements && analysis.improvements.length > 0) {
-    checkPageBreak(30);
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Language Polish & Alternatives', margin, yPos);
-    yPos += 10;
-
-    for (const imp of analysis.improvements) {
-      checkPageBreak(35);
-
-      // Original
-      doc.setFontSize(9);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(180, 0, 0);
-      doc.text('Original:', margin, yPos);
-      doc.setFont('helvetica', 'normal');
-      yPos = addWrappedText(`"${imp.original}"`, margin + 20, yPos, contentWidth - 20, 5);
-      yPos += 3;
-
-      // Improved
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(0, 128, 0);
-      doc.text('Better:', margin, yPos);
-      doc.setFont('helvetica', 'normal');
-      yPos = addWrappedText(`"${imp.improved}"`, margin + 20, yPos, contentWidth - 20, 5);
-      yPos += 3;
-
-      // Explanation
-      doc.setTextColor(100);
-      doc.setFontSize(8);
-      yPos = addWrappedText(imp.explanation, margin, yPos, contentWidth, 4);
-      doc.setTextColor(0);
+    // Draw a subtle horizontal divider
+    const drawDivider = () => {
+      doc.setDrawColor(...colors.lightGray);
+      doc.setLineWidth(0.3);
+      doc.line(margin, yPos, pageWidth - margin, yPos);
       yPos += 8;
+    };
+
+    // Draw section header (Notion-style: clean bold text)
+    const drawSectionHeader = (title: string) => {
+      checkPageBreak(15);
+
+      setFont('bold', 12);
+      doc.setTextColor(...colors.black);
+      doc.text(title, margin, yPos);
+      yPos += 8;
+    };
+
+    // Draw callout box (Notion-style light background)
+    const drawCallout = (text: string, bgColor: [number, number, number], textColor: [number, number, number] = colors.black) => {
+      setFont('normal', 10);
+      const lines = doc.splitTextToSize(text, contentWidth - 16);
+      const boxHeight = lines.length * 5.5 + 12;
+
+      checkPageBreak(boxHeight + 5);
+
+      // Background
+      doc.setFillColor(...bgColor);
+      doc.roundedRect(margin, yPos, contentWidth, boxHeight, 3, 3, 'F');
+
+      // Text
+      doc.setTextColor(...textColor);
+      doc.text(lines, margin + 8, yPos + 8);
+
+      yPos += boxHeight + 6;
+    };
+
+    // Draw bullet list item
+    const drawBulletItem = (text: string, bulletColor: [number, number, number] = colors.darkGray) => {
+      setFont('normal', 10);
+      const lines = doc.splitTextToSize(text, contentWidth - 12);
+      const itemHeight = lines.length * 5.5 + 2;
+
+      checkPageBreak(itemHeight);
+
+      // Bullet point
+      doc.setFillColor(...bulletColor);
+      doc.circle(margin + 3, yPos + 2, 1.5, 'F');
+
+      // Text
+      doc.setTextColor(...colors.black);
+      doc.text(lines, margin + 10, yPos + 4);
+
+      yPos += itemHeight + 3;
+    };
+
+    // Draw numbered item
+    const drawNumberedItem = (num: number, text: string) => {
+      setFont('normal', 10);
+      const lines = doc.splitTextToSize(text, contentWidth - 15);
+      const itemHeight = lines.length * 5.5 + 2;
+
+      checkPageBreak(itemHeight);
+
+      // Number
+      setFont('bold', 9);
+      doc.setTextColor(...colors.darkGray);
+      doc.text(`${num}.`, margin, yPos + 4);
+
+      // Text
+      setFont('normal', 10);
+      doc.setTextColor(...colors.black);
+      doc.text(lines, margin + 10, yPos + 4);
+
+      yPos += itemHeight + 3;
+    };
+
+    // ==================== GRAPH RENDERING ====================
+
+    const generateFlowData = (data: any, isImproved: boolean = false, framework: string = ''): { nodes: GraphNode[], edges: GraphEdge[] } => {
+      if (!data) return { nodes: [], edges: [] };
+
+      // Larger nodes to fit elaboration text
+      const NODE_WIDTH = 70;
+      const NODE_HEIGHT = 45;
+      const ROOT_HEIGHT = 35;
+      const RANK_SEP = 30;
+      const NODE_SEP = 15;
+
+      const dagreGraph = new dagre.graphlib.Graph();
+      dagreGraph.setDefaultEdgeLabel(() => ({}));
+      dagreGraph.setGraph({ rankdir: 'TB', nodesep: NODE_SEP, ranksep: RANK_SEP, align: 'DL' });
+
+      const nodes: GraphNode[] = [];
+      const edges: GraphEdge[] = [];
+      const rootId = 'root';
+
+      nodes.push({
+        id: rootId,
+        label: data.conclusion,
+        isRoot: true,
+        x: 0, y: 0,
+        width: NODE_WIDTH,
+        height: ROOT_HEIGHT,
+      });
+
+      const processNode = (item: any, parentId: string, index: number) => {
+        const nodeId = `${parentId}-${index}`;
+
+        nodes.push({
+          id: nodeId,
+          label: isImproved ? (item.headline || item.point) : item.point,
+          type: item.type,
+          status: item.status,
+          elaboration: item.elaboration,
+          x: 0, y: 0,
+          width: NODE_WIDTH,
+          height: NODE_HEIGHT,
+        });
+
+        edges.push({
+          source: parentId,
+          target: nodeId,
+          animated: item.status === 'weak' || item.status === 'missing',
+        });
+
+        if (item.sub_points?.length > 0) {
+          item.sub_points.forEach((child: any, idx: number) => processNode(child, nodeId, idx));
+        }
+      };
+
+      const isSequentialFramework = SEQUENTIAL_FRAMEWORKS.includes(framework.toUpperCase());
+
+      if (data.arguments?.length > 0) {
+        if (isSequentialFramework) {
+          const nodeIds: string[] = [];
+          data.arguments.forEach((arg: any, index: number) => {
+            const nodeId = `${rootId}-${index}`;
+            nodeIds.push(nodeId);
+
+            nodes.push({
+              id: nodeId,
+              label: isImproved ? (arg.headline || arg.point) : arg.point,
+              type: arg.type,
+              status: arg.status,
+              elaboration: arg.elaboration,
+              x: 0, y: 0,
+              width: NODE_WIDTH,
+              height: NODE_HEIGHT,
+            });
+
+            if (arg.sub_points?.length > 0) {
+              arg.sub_points.forEach((child: any, idx: number) => processNode(child, nodeId, idx));
+            }
+          });
+
+          edges.push({ source: rootId, target: nodeIds[0], animated: data.arguments[0].status === 'weak' || data.arguments[0].status === 'missing' });
+          for (let i = 0; i < nodeIds.length - 1; i++) {
+            edges.push({ source: nodeIds[i], target: nodeIds[i + 1], animated: data.arguments[i + 1].status === 'weak' || data.arguments[i + 1].status === 'missing' });
+          }
+        } else {
+          data.arguments.forEach((arg: any, index: number) => processNode(arg, rootId, index));
+        }
+      }
+
+      nodes.forEach(node => {
+        const h = node.isRoot ? ROOT_HEIGHT : NODE_HEIGHT;
+        dagreGraph.setNode(node.id, { width: NODE_WIDTH, height: h });
+      });
+      edges.forEach(edge => dagreGraph.setEdge(edge.source, edge.target));
+      dagre.layout(dagreGraph);
+
+      nodes.forEach(node => {
+        const pos = dagreGraph.node(node.id);
+        const h = node.isRoot ? ROOT_HEIGHT : NODE_HEIGHT;
+        if (pos) {
+          node.x = pos.x - NODE_WIDTH / 2;
+          node.y = pos.y - h / 2;
+        }
+      });
+
+      return { nodes, edges };
+    };
+
+    const drawGraph = (structure: any, title: string, isImproved: boolean = false, framework: string = '') => {
+      if (!structure?.conclusion || !structure?.arguments) return;
+
+      const { nodes, edges } = generateFlowData(structure, isImproved, framework);
+      if (nodes.length === 0) return;
+
+      // Calculate bounds (use actual node heights)
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      const ROOT_H = 35;
+      const CHILD_H = 45;
+      nodes.forEach(node => {
+        const nodeH = node.isRoot ? ROOT_H : CHILD_H;
+        minX = Math.min(minX, node.x);
+        maxX = Math.max(maxX, node.x + node.width);
+        minY = Math.min(minY, node.y);
+        maxY = Math.max(maxY, node.y + nodeH);
+      });
+
+      const graphWidth = maxX - minX;
+      const graphHeight = maxY - minY;
+      const scale = Math.min(1, (contentWidth - 10) / graphWidth);
+      const scaledHeight = graphHeight * scale;
+
+      checkPageBreak(scaledHeight + 25);
+
+      // Section header
+      drawSectionHeader(title);
+
+      const graphStartY = yPos;
+      const offsetX = margin + (contentWidth - graphWidth * scale) / 2 - minX * scale;
+      const offsetY = graphStartY - minY * scale;
+
+      // Draw edges (simple straight lines for Notion-like cleanliness)
+      doc.setDrawColor(...colors.lightGray);
+      doc.setLineWidth(0.5);
+      edges.forEach(edge => {
+        const source = nodes.find(n => n.id === edge.source);
+        const target = nodes.find(n => n.id === edge.target);
+        if (source && target) {
+          const sourceH = source.isRoot ? ROOT_H : CHILD_H;
+          const x1 = offsetX + (source.x + source.width / 2) * scale;
+          const y1 = offsetY + (source.y + sourceH) * scale;
+          const x2 = offsetX + (target.x + target.width / 2) * scale;
+          const y2 = offsetY + target.y * scale;
+
+          if (edge.animated) {
+            doc.setLineDashPattern([2, 2], 0);
+          } else {
+            doc.setLineDashPattern([], 0);
+          }
+          doc.line(x1, y1, x2, y2);
+        }
+      });
+      doc.setLineDashPattern([], 0);
+
+      // Draw nodes - use responsive font sizes based on actual rendered size
+      nodes.forEach(node => {
+        const x = offsetX + node.x * scale;
+        const y = offsetY + node.y * scale;
+        const w = node.width * scale;
+        const nodeH = node.isRoot ? ROOT_H : CHILD_H;
+        const h = nodeH * scale;
+        const r = Math.max(2, 3 * scale);
+        const pad = Math.max(3, 4 * scale);
+
+        // Calculate responsive font sizes based on rendered width
+        const baseFontSize = Math.max(7, Math.min(11, w / 6));
+        const smallFontSize = Math.max(5, baseFontSize - 2);
+        const tinyFontSize = Math.max(5, baseFontSize - 3);
+
+        if (node.isRoot) {
+          // Root node - dark background
+          doc.setFillColor(...colors.rootNode);
+          doc.roundedRect(x, y, w, h, r, r, 'F');
+
+          setFont('bold', baseFontSize);
+          doc.setTextColor(255, 255, 255);
+          const lines = doc.splitTextToSize(node.label, w - pad * 2);
+          const lineHeight = baseFontSize * 0.4;
+          const totalTextHeight = lines.length * lineHeight;
+          const startY = y + (h - totalTextHeight) / 2 + lineHeight;
+          doc.text(lines.slice(0, 4), x + pad, startY, { maxWidth: w - pad * 2 });
+        } else {
+          // Child nodes
+          let bgColor = colors.grayCallout;
+          let borderColor = colors.lightGray;
+
+          if (isImproved) {
+            bgColor = colors.greenCallout;
+            borderColor = colors.strong;
+          } else if (node.status === 'strong') {
+            bgColor = colors.greenCallout;
+            borderColor = colors.strong;
+          } else if (node.status === 'weak') {
+            bgColor = colors.yellowCallout;
+            borderColor = colors.weak;
+          }
+
+          doc.setFillColor(...bgColor);
+          doc.setDrawColor(...borderColor);
+          doc.setLineWidth(0.5);
+          doc.roundedRect(x, y, w, h, r, r, 'FD');
+
+          // Type badge at top
+          let currentY = y + pad;
+          if (node.type) {
+            setFont('bold', tinyFontSize);
+            doc.setTextColor(...colors.mediumGray);
+            doc.text(node.type.toUpperCase(), x + pad, currentY);
+            currentY += tinyFontSize * 0.5 + 2;
+          }
+
+          // Label (headline) - bold
+          setFont('bold', smallFontSize);
+          doc.setTextColor(...colors.black);
+          const labelLines = doc.splitTextToSize(node.label, w - pad * 2);
+          const labelLineHeight = smallFontSize * 0.45;
+          doc.text(labelLines.slice(0, 2), x + pad, currentY + labelLineHeight, { maxWidth: w - pad * 2 });
+          currentY += Math.min(labelLines.length, 2) * labelLineHeight + 3;
+
+          // Elaboration text (italic quote in light box) - for improved structure
+          if (node.elaboration && isImproved) {
+            const elabBoxTop = currentY + 1;
+            const elabBoxH = h - (elabBoxTop - y) - pad;
+
+            if (elabBoxH > 8) {
+              // Light blue background for elaboration
+              doc.setFillColor(235, 245, 255);
+              doc.roundedRect(x + pad - 1, elabBoxTop, w - pad * 2 + 2, elabBoxH, 2, 2, 'F');
+
+              // Italic elaboration text
+              setFont('italic', tinyFontSize);
+              doc.setTextColor(80, 80, 80);
+              const elabLines = doc.splitTextToSize(node.elaboration, w - pad * 2 - 4);
+              doc.text(elabLines.slice(0, 4), x + pad + 1, elabBoxTop + tinyFontSize * 0.5 + 2, { maxWidth: w - pad * 2 - 4 });
+            }
+          }
+        }
+      });
+
+      yPos = graphStartY + scaledHeight + 15;
+
+      // Simple legend for user structure
+      if (!isImproved) {
+        setFont('normal', 8);
+        doc.setTextColor(...colors.mediumGray);
+
+        doc.setFillColor(...colors.strong);
+        doc.circle(margin + 3, yPos, 2, 'F');
+        doc.text('Strong', margin + 8, yPos + 1);
+
+        doc.setFillColor(...colors.weak);
+        doc.circle(margin + 35, yPos, 2, 'F');
+        doc.text('Needs work', margin + 40, yPos + 1);
+
+        yPos += 10;
+      }
+    };
+
+    // ==================== PDF CONTENT ====================
+
+    // Title
+    setFont('bold', 24);
+    doc.setTextColor(...colors.black);
+    doc.text('Practice Report', margin, yPos + 5);
+    yPos += 15;
+
+    // Meta info (subtle gray text)
+    setFont('normal', 10);
+    doc.setTextColor(...colors.darkGray);
+    doc.text(`${options.date}  •  ${options.targetLang}  •  ${options.level}`, margin, yPos);
+    yPos += 12;
+
+    drawDivider();
+
+    // Topic & Question block
+    setFont('bold', 11);
+    doc.setTextColor(...colors.black);
+    doc.text('Topic', margin, yPos);
+    yPos += 6;
+
+    setFont('normal', 11);
+    doc.setTextColor(...colors.black);
+    const topicLines = doc.splitTextToSize(options.topicText, contentWidth);
+    doc.text(topicLines, margin, yPos);
+    yPos += topicLines.length * 5.5 + 4;
+
+    if (options.questionText) {
+      setFont('bold', 11);
+      doc.setTextColor(...colors.black);
+      doc.text('Question', margin, yPos);
+      yPos += 6;
+
+      setFont('normal', 10);
+      doc.setTextColor(...colors.darkGray);
+      const questionLines = doc.splitTextToSize(options.questionText, contentWidth);
+      doc.text(questionLines, margin, yPos);
+      yPos += questionLines.length * 5 + 4;
     }
+
+    // Video source
+    setFont('normal', 9);
+    doc.setTextColor(...colors.mediumGray);
+    const videoLines = doc.splitTextToSize(`Source: ${options.videoTitle}`, contentWidth);
+    doc.text(videoLines[0], margin, yPos);
+    yPos += 12;
+
+    drawDivider();
+
+    // ==================== 1. YOUR RESPONSE ====================
+    if (analysis.transcription) {
+      drawSectionHeader('Your Response');
+      drawCallout(analysis.transcription, colors.grayCallout);
+      yPos += 4;
+    }
+
+    // ==================== 2. LANGUAGE POLISH ====================
+    if (analysis.improvements && analysis.improvements.length > 0) {
+      drawSectionHeader('Language Polish');
+
+      for (const imp of analysis.improvements) {
+        checkPageBreak(35);
+
+        // Original (strikethrough style)
+        setFont('normal', 9);
+        doc.setTextColor(180, 80, 80);
+        doc.text('Before:', margin, yPos);
+        yPos += 5;
+
+        setFont('normal', 10);
+        doc.setTextColor(...colors.darkGray);
+        const origLines = doc.splitTextToSize(`"${imp.original}"`, contentWidth - 5);
+        doc.text(origLines, margin + 5, yPos);
+        yPos += origLines.length * 5 + 4;
+
+        // Improved
+        setFont('normal', 9);
+        doc.setTextColor(68, 131, 97);
+        doc.text('After:', margin, yPos);
+        yPos += 5;
+
+        setFont('normal', 10);
+        doc.setTextColor(...colors.black);
+        const improvLines = doc.splitTextToSize(`"${imp.improved}"`, contentWidth - 5);
+        doc.text(improvLines, margin + 5, yPos);
+        yPos += improvLines.length * 5 + 4;
+
+        // Explanation (subtle)
+        setFont('italic', 9);
+        doc.setTextColor(...colors.mediumGray);
+        const explLines = doc.splitTextToSize(imp.explanation, contentWidth - 5);
+        doc.text(explLines, margin + 5, yPos);
+        yPos += explLines.length * 4.5 + 8;
+      }
+      yPos += 4;
+    }
+
+    // ==================== 3. STRENGTHS ====================
+    if (analysis.feedback?.strengths && analysis.feedback.strengths.length > 0) {
+      drawSectionHeader('Strengths');
+
+      for (const strength of analysis.feedback.strengths) {
+        drawBulletItem(strength, colors.strong);
+      }
+      yPos += 6;
+    }
+
+    // ==================== 4. AREAS FOR IMPROVEMENT ====================
+    if (analysis.feedback?.weaknesses && analysis.feedback.weaknesses.length > 0) {
+      drawSectionHeader('Areas for Improvement');
+
+      for (const weakness of analysis.feedback.weaknesses) {
+        drawBulletItem(weakness, colors.weak);
+      }
+      yPos += 6;
+    }
+
+    // ==================== 5. ACTIONABLE TIPS ====================
+    if (analysis.feedback?.suggestions && analysis.feedback.suggestions.length > 0) {
+      drawSectionHeader('Actionable Tips');
+
+      for (let i = 0; i < analysis.feedback.suggestions.length; i++) {
+        drawNumberedItem(i + 1, analysis.feedback.suggestions[i]);
+      }
+      yPos += 6;
+    }
+
+    // ==================== 6. LOGIC STRUCTURE ====================
+    const detectedFramework = analysis.detected_framework || '';
+
+    if (analysis.structure?.conclusion && analysis.structure?.arguments) {
+      drawGraph(analysis.structure, 'Your Logic Structure', false, detectedFramework);
+    }
+
+    // ==================== 7. AI IMPROVED STRUCTURE ====================
+    if (analysis.improved_structure?.conclusion && analysis.improved_structure?.arguments) {
+      const improvedFramework = analysis.improved_structure.recommended_framework || detectedFramework;
+      drawGraph(analysis.improved_structure, 'Improved Structure', true, improvedFramework);
+    }
+
+    // ==================== HEADER & FOOTER ON ALL PAGES ====================
+    const totalPages = doc.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+
+      // Header - duck logo + "bilibala" branding on top right
+      setFont('bold', 11);
+      doc.setTextColor(...colors.darkGray);
+      const brandText = 'Bilibala';
+      const brandWidth = doc.getTextWidth(brandText);
+      const logoSize = 6; // Size of the duck logo in mm
+      const logoTextGap = 1; // Gap between logo and text
+      const totalBrandWidth = logoSize + logoTextGap + brandWidth;
+      const brandStartX = pageWidth - margin - totalBrandWidth;
+
+      // Add duck logo if available
+      if (duckLogoBase64) {
+        doc.addImage(duckLogoBase64, 'PNG', brandStartX, 7, logoSize, logoSize);
+      }
+
+      // Add "bilibala" text
+      doc.text(brandText, brandStartX + logoSize + logoTextGap, 12);
+
+      // Footer - page number at bottom right
+      setFont('normal', 8);
+      doc.setTextColor(...colors.mediumGray);
+      const pageText = `${i} / ${totalPages}`;
+      const pageTextWidth = doc.getTextWidth(pageText);
+      doc.text(pageText, pageWidth - margin - pageTextWidth, pageHeight - 10);
+    }
+
+    // Save - format: {topic}-report-{date}.pdf
+    const sanitizedTopic = options.topicText
+      .substring(0, 50) // Limit topic length
+      .replace(/[^a-zA-Z0-9\u4e00-\u9fff]/g, '-') // Keep alphanumeric and Chinese chars
+      .replace(/-+/g, '-') // Remove consecutive dashes
+      .replace(/^-|-$/g, ''); // Remove leading/trailing dashes
+    const sanitizedDate = options.date.replace(/[^a-zA-Z0-9]/g, '-');
+    const fileName = `${sanitizedTopic}-report-${sanitizedDate}.pdf`;
+    doc.save(fileName);
+  } catch (error) {
+    throw error;
   }
-
-  // Footer
-  checkPageBreak(20);
-  doc.setFontSize(8);
-  doc.setTextColor(150);
-  doc.text('Generated by Bilibala', margin, doc.internal.pageSize.getHeight() - 10);
-
-  // Save the PDF
-  const fileName = `practice-report-${options.date.replace(/[^a-zA-Z0-9]/g, '-')}.pdf`;
-  doc.save(fileName);
 }

@@ -255,8 +255,17 @@ const PracticeReportsModal: React.FC<PracticeReportsModalProps> = ({
   };
 
   // Handle PDF export
-  const handleExportPdf = () => {
-    if (!selectedSession) return;
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExportPdf = async () => {
+    console.log('[PracticeReportsModal] handleExportPdf called');
+    console.log('[PracticeReportsModal] selectedSession:', selectedSession);
+    console.log('[PracticeReportsModal] isExporting:', isExporting);
+
+    if (!selectedSession || isExporting) {
+      console.log('[PracticeReportsModal] Early return - no session or already exporting');
+      return;
+    }
 
     const analysis: SpeechAnalysisResult | null = selectedSession.feedback_data
       ? {
@@ -265,15 +274,30 @@ const PracticeReportsModal: React.FC<PracticeReportsModalProps> = ({
         }
       : null;
 
-    if (!analysis) return;
+    console.log('[PracticeReportsModal] analysis:', analysis);
 
-    exportPracticeReportToPdf(analysis, {
-      videoTitle: videoTitle,
-      topicText: selectedSession.topic_text || 'Practice Session',
-      date: formatDate(selectedSession.created_at),
-      targetLang: targetLang,
-      level: level,
-    });
+    if (!analysis) {
+      console.log('[PracticeReportsModal] Early return - no analysis data');
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      console.log('[PracticeReportsModal] Starting PDF export...');
+      await exportPracticeReportToPdf(analysis, {
+        videoTitle: videoTitle,
+        topicText: selectedSession.topic_text || 'Practice Session',
+        questionText: selectedSession.question_text || undefined,
+        date: formatDate(selectedSession.created_at),
+        targetLang: targetLang,
+        level: level,
+      });
+      console.log('[PracticeReportsModal] PDF export completed');
+    } catch (error) {
+      console.error('[PracticeReportsModal] PDF export error:', error);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -329,11 +353,12 @@ const PracticeReportsModal: React.FC<PracticeReportsModalProps> = ({
             {viewMode === 'report' && selectedSession && analysisData && (
               <button
                 onClick={handleExportPdf}
-                className="text-stone-400 hover:text-stone-600 transition-colors"
+                disabled={isExporting}
+                className={`transition-colors ${isExporting ? 'text-stone-300 cursor-wait' : 'text-stone-400 hover:text-stone-600'}`}
                 aria-label="Export as PDF"
-                title="Export as PDF"
+                title={isExporting ? "Exporting..." : "Export as PDF"}
               >
-                <DownloadIcon />
+                {isExporting ? <SpinnerIcon /> : <DownloadIcon />}
               </button>
             )}
             {onExpand && (
@@ -435,6 +460,7 @@ const PracticeReportsModal: React.FC<PracticeReportsModalProps> = ({
                     nativeLang={selectedSession.native_lang || 'English'}
                     targetLang={targetLang}
                     preFetchedLabels={DEFAULT_LABELS}
+                    showRetry={false}
                   />
                 </ReportErrorBoundary>
               ) : (
@@ -513,6 +539,13 @@ const DownloadIcon = () => (
     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
     <polyline points="7 10 12 15 17 10"></polyline>
     <line x1="12" y1="15" x2="12" y2="3"></line>
+  </svg>
+);
+
+const SpinnerIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin">
+    <circle cx="12" cy="12" r="10" strokeOpacity="0.25"></circle>
+    <path d="M12 2a10 10 0 0 1 10 10" strokeOpacity="1"></path>
   </svg>
 );
 
