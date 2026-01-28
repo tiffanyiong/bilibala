@@ -15,6 +15,8 @@ interface AuthContextType {
   userProfile: UserProfile | null;
   loading: boolean;
   signOut: () => Promise<void>;
+  updatePassword: (newPassword: string) => Promise<{ error: string | null }>;
+  isOAuthOnly: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -77,8 +79,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     await supabase.auth.signOut();
   };
 
+  const updatePassword = async (newPassword: string): Promise<{ error: string | null }> => {
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) {
+      return { error: error.message };
+    }
+    return { error: null };
+  };
+
+  // Check if user signed up with OAuth only (no password set)
+  // Users with 'email' provider have a password, OAuth providers don't
+  const isOAuthOnly = user?.app_metadata?.provider !== 'email' &&
+    !user?.identities?.some(id => id.provider === 'email');
+
   return (
-    <AuthContext.Provider value={{ session, user, userProfile, loading, signOut }}>
+    <AuthContext.Provider value={{ session, user, userProfile, loading, signOut, updatePassword, isOAuthOnly }}>
       {children}
     </AuthContext.Provider>
   );

@@ -37,6 +37,8 @@ interface SubscriptionContextType {
   // Actions
   recordAction: (actionType: UsageActionType, metadata?: Record<string, unknown>) => Promise<boolean>;
   refreshUsage: () => Promise<void>;
+  refreshSubscription: () => Promise<void>;
+  syncWithStripe: () => Promise<boolean>;
   createCheckout: (priceType?: 'monthly' | 'annual') => Promise<string | null>;
   createPortal: () => Promise<string | null>;
 
@@ -78,6 +80,30 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
         ]);
         setSubscription(sub);
         setUsage(monthlyUsage);
+
+        // Smart sync: Only sync with Stripe if there's a potential mismatch
+        // (user has stripe_customer_id but is on free tier - indicates missed webhook)
+        if (sub?.stripe_customer_id && sub?.tier === 'free' && session?.access_token) {
+          console.log('[SubscriptionContext] Potential mismatch detected, syncing with Stripe...');
+          try {
+            const res = await fetch(`${getBackendOrigin()}/api/subscriptions/sync`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${session.access_token}`,
+              },
+            });
+            const data = await res.json();
+            if (data.synced && data.tier === 'pro') {
+              // Reload subscription data after sync
+              const updatedSub = await getOrCreateSubscription(user.id);
+              setSubscription(updatedSub);
+              console.log('[SubscriptionContext] Synced - user upgraded to pro');
+            }
+          } catch (syncErr) {
+            console.error('Error during smart sync:', syncErr);
+          }
+        }
       } catch (err) {
         console.error('Error loading subscription data:', err);
       } finally {
@@ -86,7 +112,7 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
     };
 
     loadData();
-  }, [user]);
+  }, [user, session]);
 
   const refreshUsage = useCallback(async () => {
     if (!user) return;
@@ -97,6 +123,43 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
       console.error('Error refreshing usage:', err);
     }
   }, [user]);
+
+  const refreshSubscription = useCallback(async () => {
+    if (!user) return;
+    try {
+      const sub = await getOrCreateSubscription(user.id);
+      setSubscription(sub);
+    } catch (err) {
+      console.error('Error refreshing subscription:', err);
+    }
+  }, [user]);
+
+  // Sync subscription status directly with Stripe (fallback for missed webhooks)
+  const syncWithStripe = useCallback(async (): Promise<boolean> => {
+    if (!session?.access_token) return false;
+    try {
+      const res = await fetch(`${getBackendOrigin()}/api/subscriptions/sync`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      });
+      const data = await res.json();
+      if (data.synced) {
+        // Refresh local subscription data from database
+        if (user) {
+          const sub = await getOrCreateSubscription(user.id);
+          setSubscription(sub);
+        }
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error('Error syncing with Stripe:', err);
+      return false;
+    }
+  }, [session, user]);
 
   const recordAction = useCallback(async (
     actionType: UsageActionType,
@@ -186,6 +249,8 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
       aiTutorMinutesLimit: limits.aiTutorMinutesPerMonth,
       recordAction,
       refreshUsage,
+      refreshSubscription,
+      syncWithStripe,
       createCheckout,
       createPortal,
       isLoading,

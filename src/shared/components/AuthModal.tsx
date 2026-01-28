@@ -7,7 +7,7 @@ interface AuthModalProps {
   onClose: () => void;
 }
 
-type AuthView = 'sign_in' | 'sign_up' | 'magic_link' | 'forgot_password';
+type AuthView = 'sign_in' | 'sign_up' | 'forgot_password';
 
 const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   const { user } = useAuth();
@@ -79,26 +79,6 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     setLoading(false);
   };
 
-  const handleMagicLink = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setMessage(null);
-
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: window.location.origin
-      }
-    });
-
-    if (error) {
-      setMessage({ type: 'error', text: error.message });
-    } else {
-      setMessage({ type: 'success', text: 'Check your email for the magic link!' });
-    }
-    setLoading(false);
-  };
-
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -166,13 +146,11 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
           <h2 className="text-2xl font-serif text-stone-900">
             {view === 'sign_in' && 'Welcome back'}
             {view === 'sign_up' && 'Create account'}
-            {view === 'magic_link' && 'Magic link'}
             {view === 'forgot_password' && 'Reset password'}
           </h2>
           <p className="text-stone-500 text-sm mt-1">
             {view === 'sign_in' && 'Sign in to continue your learning journey'}
             {view === 'sign_up' && 'Start your learning journey today'}
-            {view === 'magic_link' && 'We\'ll email you a magic link to sign in'}
             {view === 'forgot_password' && 'Enter your email to reset your password'}
           </p>
         </div>
@@ -237,9 +215,6 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
             </form>
 
             <div className="mt-4 flex flex-col items-center gap-2">
-              <span className={linkClasses} onClick={() => setView('magic_link')}>
-                Sign in with magic link
-              </span>
               <span className={linkClasses} onClick={() => setView('forgot_password')}>
                 Forgot your password?
               </span>
@@ -307,34 +282,6 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                 <span className="text-stone-800 hover:underline cursor-pointer" onClick={() => setView('sign_in')}>
                   Sign in
                 </span>
-              </span>
-            </div>
-          </>
-        )}
-
-        {/* Magic Link View */}
-        {view === 'magic_link' && (
-          <>
-            <form onSubmit={handleMagicLink} className="space-y-4">
-              <div>
-                <label className="block text-stone-600 text-sm mb-1.5">Email</label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="your@email.com"
-                  required
-                  className={inputClasses}
-                />
-              </div>
-              <button type="submit" disabled={loading} className={buttonClasses}>
-                {loading ? 'Sending...' : 'Send magic link'}
-              </button>
-            </form>
-
-            <div className="mt-4 text-center">
-              <span className={linkClasses} onClick={() => setView('sign_in')}>
-                Back to sign in
               </span>
             </div>
           </>

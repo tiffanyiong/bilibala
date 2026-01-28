@@ -4,36 +4,54 @@ import { useSubscription } from '../../../shared/context/SubscriptionContext';
 import { TIER_LIMITS } from '../../../shared/types/database';
 
 interface SubscriptionPageProps {
-  onBack: () => void;
   onOpenAuthModal: () => void;
 }
 
-const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ onBack, onOpenAuthModal }) => {
+const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ onOpenAuthModal }) => {
   const { user } = useAuth();
   const {
     tier,
+    status,
+    subscription,
     usage,
     videosLimit,
     practiceSessionsLimit,
     aiTutorMinutesLimit,
     createCheckout,
     createPortal,
+    syncWithStripe,
     isLoading,
   } = useSubscription();
+
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return null;
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+  };
 
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
 
-  // Check URL for success/canceled params
+  // Check URL for success/canceled params and sync with Stripe
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('success') === 'true') {
       setShowSuccess(true);
       // Clean up URL
       window.history.replaceState(null, '', '/subscription');
+      // Sync with Stripe to ensure database is updated (fallback for missed webhooks)
+      syncWithStripe().then((synced) => {
+        if (synced) {
+          console.log('[SubscriptionPage] Synced subscription with Stripe');
+        }
+      });
     }
-  }, []);
+  }, [syncWithStripe]);
 
   const handleUpgrade = async () => {
     if (!user) {
@@ -97,17 +115,6 @@ const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ onBack, onOpenAuthM
   return (
     <div className="min-h-screen pt-20 pb-12 px-4">
       <div className="max-w-3xl mx-auto">
-        {/* Back button */}
-        <button
-          onClick={onBack}
-          className="flex items-center gap-2 text-sm text-stone-500 hover:text-stone-700 mb-6 transition-colors"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M19 12H5" /><path d="M12 19l-7-7 7-7" />
-          </svg>
-          Back
-        </button>
-
         {/* Success banner */}
         {showSuccess && (
           <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-xl mb-6 text-sm flex items-center gap-2">
@@ -250,12 +257,20 @@ const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ onBack, onOpenAuthM
             </div>
 
             {tier === 'pro' ? (
-              <button
-                onClick={handleManageBilling}
-                className="w-full bg-stone-200 text-stone-700 py-2.5 rounded-lg text-sm font-medium hover:bg-stone-300 transition-all"
-              >
-                Manage Billing
-              </button>
+              <>
+                <button
+                  onClick={handleManageBilling}
+                  className="w-full bg-stone-200 text-stone-700 py-2.5 rounded-lg text-sm font-medium hover:bg-stone-300 transition-all"
+                >
+                  Manage Billing
+                </button>
+                {subscription?.current_period_end && (
+                  <p className="text-xs text-stone-500 mt-2 text-center">
+                    {status === 'canceled' ? 'Access until: ' : 'Renews on: '}
+                    {formatDate(subscription.current_period_end)}
+                  </p>
+                )}
+              </>
             ) : (
               <button
                 onClick={handleUpgrade}
@@ -316,9 +331,13 @@ const UsageMeter: React.FC<{
     return (
       <div>
         <div className="text-xs text-stone-500 mb-1">{label}</div>
-        <div className={`text-sm font-medium ${enabled ? 'text-green-600' : 'text-stone-400'}`}>
-          {enabled ? 'Enabled' : 'Pro only'}
-        </div>
+        {enabled ? (
+          <div className="text-sm font-medium text-green-600">Enabled</div>
+        ) : (
+          <span className="inline-block text-xs font-medium text-stone-500 bg-stone-100 px-2 py-0.5 rounded-full">
+            Pro only
+          </span>
+        )}
       </div>
     );
   }
@@ -330,14 +349,15 @@ const UsageMeter: React.FC<{
   return (
     <div>
       <div className="text-xs text-stone-500 mb-1">{label}</div>
-      <div className={`text-sm font-medium ${isNearLimit ? 'text-amber-600' : 'text-stone-700'}`}>
-        {isUnlimited
-          ? `${used}${unit} used`
-          : limit === 0
-            ? 'Pro only'
-            : `${used}${unit} / ${limit}${unit}`
-        }
-      </div>
+      {limit === 0 ? (
+        <span className="inline-block text-xs font-medium text-stone-500 bg-stone-100 px-2 py-0.5 rounded-full">
+          Pro only
+        </span>
+      ) : (
+        <div className={`text-sm font-medium ${isNearLimit ? 'text-amber-600' : 'text-stone-700'}`}>
+          {isUnlimited ? `${used}${unit} used` : `${used}${unit} / ${limit}${unit}`}
+        </div>
+      )}
       {!isUnlimited && limit > 0 && (
         <div className="mt-1 h-1.5 bg-stone-200 rounded-full overflow-hidden">
           <div

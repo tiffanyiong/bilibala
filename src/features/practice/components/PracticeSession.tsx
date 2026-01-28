@@ -3,6 +3,7 @@ import { useAuth } from '../../../shared/context/AuthContext';
 import { useSubscription } from '../../../shared/context/SubscriptionContext';
 import { getBackendOrigin } from '../../../shared/services/backend';
 import { savePracticeSession, updateLibraryPracticeStats, uploadPracticeAudio, incrementTopicPracticeCount, incrementQuestionUseCount } from '../../../shared/services/database';
+import { checkAnonymousPracticeLimit, recordAnonymousPractice } from '../../../shared/services/usageTracking';
 import { PracticeTopic, SpeechAnalysisResult } from '../../../shared/types';
 import AudioRecorder from './AudioRecorder';
 import PyramidFeedback from './PyramidFeedback';
@@ -16,6 +17,7 @@ interface PracticeSessionProps {
   targetLang: string;
   analysisId?: string | null;
   onExit: () => void;
+  onRequireAuth?: () => void;
 }
 
 enum SessionState {
@@ -64,7 +66,7 @@ const defaultLabels = {
     scoreKeepGrowing: 'Keep Growing'
 };
 
-const PracticeSession: React.FC<PracticeSessionProps> = ({ topic, allTopics = [], onTopicChange, level, nativeLang, targetLang, analysisId, onExit }) => {
+const PracticeSession: React.FC<PracticeSessionProps> = ({ topic, allTopics = [], onTopicChange, level, nativeLang, targetLang, analysisId, onExit, onRequireAuth }) => {
   const { user } = useAuth();
   const { recordAction } = useSubscription();
   const [state, setState] = useState<SessionState>(SessionState.PREP);
@@ -237,7 +239,9 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({ topic, allTopics = []
           }
         })();
       } else {
-        console.log('[PracticeSession] User not logged in, skipping save');
+        // Record anonymous practice usage (for limit tracking)
+        console.log('[PracticeSession] User not logged in, recording anonymous practice usage');
+        recordAnonymousPractice();
       }
 
       // Finally, show results (User sees everything ready at once)
@@ -251,11 +255,20 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({ topic, allTopics = []
   };
 
   const startRetake = (audioData: string) => {
-      handleRecordingComplete(audioData);
+    // Anonymous limit check happens in PyramidFeedback's handleOpenRetake (before recorder opens)
+    handleRecordingComplete(audioData);
   };
 
-  const handleTopicSwitch = (newTopic: PracticeTopic) => {
+  const handleTopicSwitch = async (newTopic: PracticeTopic) => {
     if (newTopic.topic === topic.topic) return;
+    // Check anonymous practice limit before allowing topic switch
+    if (!user && onRequireAuth) {
+      const practiceStatus = await checkAnonymousPracticeLimit();
+      if (!practiceStatus.allowed) {
+        onRequireAuth();
+        return;
+      }
+    }
     // Reset state for new topic
     setState(SessionState.PREP);
     setAnalysisResult(null);
@@ -398,18 +411,19 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({ topic, allTopics = []
             {/* 4. RESULTS STATE */}
             {state === SessionState.RESULTS && analysisResult && (
                 <div className="space-y-8 animate-in fade-in slide-in-from-bottom-8 duration-500 pb-20">
-                    <PyramidFeedback 
-                        analysis={analysisResult} 
-                        onRetry={() => setState(SessionState.PREP)} 
+                    <PyramidFeedback
+                        analysis={analysisResult}
+                        onRetry={() => setState(SessionState.PREP)}
                         audioUrl={currentAudioUrl}
                         startRetake={startRetake}
                         // PASS THE PRE-FETCHED LABELS HERE
-                        preFetchedLabels={translatedLabels} 
-                        
+                        preFetchedLabels={translatedLabels}
+
                         // We still pass these for safety/future use, but the heavy lifting is done above
                         level={level}
                         nativeLang={nativeLang}
                         targetLang={targetLang}
+                        onRequireAuth={onRequireAuth}
                     />
                 </div>
             )}
