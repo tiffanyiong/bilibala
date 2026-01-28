@@ -223,16 +223,24 @@ const PracticeReportDetailPage: React.FC<PracticeReportDetailPageProps> = ({
   };
 
   // Handle PDF export
-  const handleExportPdf = () => {
-    if (!analysisData || !session) return;
+  const [isExporting, setIsExporting] = useState(false);
 
-    exportPracticeReportToPdf(analysisData, {
-      videoTitle: video.title,
-      topicText: session.topic_text || 'Practice Session',
-      date: formatDate(session.created_at),
-      targetLang: video.targetLang,
-      level: video.level,
-    });
+  const handleExportPdf = async () => {
+    if (!analysisData || !session || isExporting) return;
+
+    setIsExporting(true);
+    try {
+      await exportPracticeReportToPdf(analysisData, {
+        videoTitle: video.title,
+        topicText: session.topic_text || 'Practice Session',
+        questionText: session.question_text || undefined,
+        date: formatDate(session.created_at),
+        targetLang: video.targetLang,
+        level: video.level,
+      });
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (
@@ -256,12 +264,25 @@ const PracticeReportDetailPage: React.FC<PracticeReportDetailPageProps> = ({
           {/* Session Info */}
           <div className="flex items-start gap-4">
             <div className="flex-1 min-w-0">
-              <h1 className="text-lg font-medium text-stone-800 line-clamp-1 leading-snug">
-                {session?.topic_text || 'Practice Session'}
-              </h1>
-              <p className="text-sm text-stone-500 mt-1 line-clamp-1">
-                {video.title}
-              </p>
+              {/* Topic */}
+              <div className="flex items-baseline gap-2 mb-1">
+                <span className="text-xs font-medium text-stone-400 uppercase tracking-wide">Topic:</span>
+                <h1 className="text-lg font-medium text-stone-800 leading-snug">
+                  {session?.topic_text || 'Practice Session'}
+                </h1>
+              </div>
+              {/* Question */}
+              {session?.question_text && (
+                <div className="flex items-baseline gap-2 mb-1">
+                  <span className="text-xs font-medium text-stone-400 uppercase tracking-wide">Question:</span>
+                  <p className="text-sm text-stone-700">{session.question_text}</p>
+                </div>
+              )}
+              {/* Video */}
+              <div className="flex items-baseline gap-2">
+                <span className="text-xs font-medium text-stone-400 uppercase tracking-wide">Video:</span>
+                <p className="text-sm text-stone-500 line-clamp-1">{video.title}</p>
+              </div>
               {session && (
                 <div className="flex items-center gap-3 mt-2">
                   <span className="text-xs text-stone-400">
@@ -274,10 +295,20 @@ const PracticeReportDetailPage: React.FC<PracticeReportDetailPageProps> = ({
             {analysisData && canRenderPyramid && (
               <button
                 onClick={handleExportPdf}
-                className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-stone-600 bg-white border border-stone-200 rounded-lg hover:bg-stone-50 transition-colors"
+                disabled={isExporting}
+                className={`flex items-center gap-2 px-3 py-2 text-sm font-medium bg-white border border-stone-200 rounded-lg transition-colors ${isExporting ? 'text-stone-400 cursor-wait' : 'text-stone-600 hover:bg-stone-50'}`}
               >
-                <DownloadIcon />
-                Export PDF
+                {isExporting ? (
+                  <>
+                    <SpinnerIcon />
+                    Exporting...
+                  </>
+                ) : (
+                  <>
+                    <DownloadIcon />
+                    Export PDF
+                  </>
+                )}
               </button>
             )}
           </div>
@@ -338,6 +369,7 @@ const PracticeReportDetailPage: React.FC<PracticeReportDetailPageProps> = ({
                   nativeLang={session.native_lang || 'English'}
                   targetLang={video.targetLang}
                   preFetchedLabels={DEFAULT_LABELS}
+                  showRetry={false}
                 />
               </ReportErrorBoundary>
             ) : (
@@ -390,6 +422,13 @@ const DownloadIcon = () => (
     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
     <polyline points="7 10 12 15 17 10"></polyline>
     <line x1="12" y1="15" x2="12" y2="3"></line>
+  </svg>
+);
+
+const SpinnerIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin">
+    <circle cx="12" cy="12" r="10" strokeOpacity="0.25"></circle>
+    <path d="M12 2a10 10 0 0 1 10 10" strokeOpacity="1"></path>
   </svg>
 );
 
