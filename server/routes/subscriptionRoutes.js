@@ -186,6 +186,96 @@ router.get('/subscriptions/status', async (req, res) => {
 });
 
 // ============================================
+// POST /api/subscriptions/sync
+// Sync subscription status directly from Stripe
+// (Fallback for missed webhooks)
+// ============================================
+router.post('/subscriptions/sync', async (req, res) => {
+  try {
+    if (!stripe || !supabaseAdmin) {
+      return res.status(500).json({ error: 'Not configured' });
+    }
+
+    const user = await getUserFromToken(req);
+    if (!user) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    // Get user's Stripe customer ID from database
+    const { data: userSub } = await supabaseAdmin
+      .from('user_subscriptions')
+      .select('stripe_customer_id')
+      .eq('user_id', user.id)
+      .single();
+
+    if (!userSub?.stripe_customer_id) {
+      return res.json({ synced: false, message: 'No Stripe customer found' });
+    }
+
+    // Fetch active subscriptions from Stripe
+    const subscriptions = await stripe.subscriptions.list({
+      customer: userSub.stripe_customer_id,
+      status: 'all',
+      limit: 1,
+    });
+
+    if (subscriptions.data.length === 0) {
+      // No subscription found in Stripe - ensure user is on free tier
+      await supabaseAdmin
+        .from('user_subscriptions')
+        .update({
+          tier: 'free',
+          subscription_status: 'none',
+          stripe_subscription_id: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('user_id', user.id);
+
+      return res.json({ synced: true, tier: 'free', status: 'none' });
+    }
+
+    // Get the most recent subscription
+    const subscription = subscriptions.data[0];
+    const isActive = subscription.status === 'active' || subscription.status === 'trialing';
+
+    // Safely convert timestamps (handle null/undefined)
+    const periodStart = subscription.current_period_start
+      ? new Date(subscription.current_period_start * 1000).toISOString()
+      : null;
+    const periodEnd = subscription.current_period_end
+      ? new Date(subscription.current_period_end * 1000).toISOString()
+      : null;
+
+    // Update database with current Stripe status
+    const updateData = {
+      tier: isActive ? 'pro' : 'free',
+      stripe_subscription_id: subscription.id,
+      subscription_status: subscription.status,
+      updated_at: new Date().toISOString(),
+    };
+    if (periodStart) updateData.current_period_start = periodStart;
+    if (periodEnd) updateData.current_period_end = periodEnd;
+
+    await supabaseAdmin
+      .from('user_subscriptions')
+      .update(updateData)
+      .eq('user_id', user.id);
+
+    console.log('[Sync] Updated subscription for user:', user.id, { tier: isActive ? 'pro' : 'free', status: subscription.status });
+
+    res.json({
+      synced: true,
+      tier: isActive ? 'pro' : 'free',
+      status: subscription.status,
+      currentPeriodEnd: periodEnd,
+    });
+  } catch (error) {
+    console.error('Error syncing subscription:', error);
+    res.status(500).json({ error: 'Failed to sync subscription' });
+  }
+});
+
+// ============================================
 // POST /api/subscriptions/webhook
 // Stripe webhook handler
 // ============================================

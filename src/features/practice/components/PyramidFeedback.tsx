@@ -2,6 +2,7 @@ import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
 import ReactFlow, { Background, Controls, Handle, MiniMap, Node, Position, ReactFlowProvider, useEdgesState, useNodesState, useReactFlow } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { SpeechAnalysisResult } from '../../../shared/types';
+import { checkAnonymousPracticeLimit } from '../../../shared/services/usageTracking';
 import { generateFlowData } from '../utils/transformPyramid';
 import AudioRecorder from './AudioRecorder';
 
@@ -61,6 +62,7 @@ interface PyramidFeedbackProps {
     targetLang: string;
     preFetchedLabels: any; // Receive labels from parent
     showRetry?: boolean; // Whether to show retry button (default: true for practice sessions)
+    onRequireAuth?: () => void;
 }
 
 const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
@@ -72,7 +74,8 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
     nativeLang,
     targetLang,
     preFetchedLabels, // Destructure passed labels
-    showRetry = true // Default to true for practice sessions
+    showRetry = true, // Default to true for practice sessions
+    onRequireAuth,
 }) => {
   const { structure, improved_structure, feedback, transcription, detected_framework, improvements } = analysis;
   const [viewMode, setViewMode] = useState<'user' | 'ai'>('user');
@@ -188,7 +191,17 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
   const onNodeClick = (_: React.MouseEvent, node: Node) => { if ((viewMode === 'user' && node.data.critique) || (viewMode === 'ai' && node.data.elaboration)) setSelectedNodeId(node.id); else setSelectedNodeId(null); };
   const selectedNodeData = useMemo(() => { if (!selectedNodeId) return null; return nodes.find(n => n.id === selectedNodeId)?.data; }, [selectedNodeId, nodes]);
   const handleRetakeComplete = (audioData: string) => { startRetake(audioData); setShowRetakeModal(false); };
-  const handleOpenRetake = () => { setShowRetakeModal(true); setIsRecorderMinimized(false); };
+  const handleOpenRetake = async () => {
+    if (onRequireAuth) {
+      const practiceStatus = await checkAnonymousPracticeLimit();
+      if (!practiceStatus.allowed) {
+        onRequireAuth();
+        return;
+      }
+    }
+    setShowRetakeModal(true);
+    setIsRecorderMinimized(false);
+  };
 
   // --- DYNAMIC STYLES HELPER ---
   const getContainerClasses = () => {

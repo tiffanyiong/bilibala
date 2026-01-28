@@ -5,6 +5,7 @@ import VideoLibraryPage from './features/library/components/VideoLibraryPage';
 import PracticeReportsPage from './features/library/components/PracticeReportsPage';
 import PracticeReportDetailPage from './features/library/components/PracticeReportDetailPage';
 import SubscriptionPage from './features/subscription/components/SubscriptionPage';
+import { ProfilePage } from './features/profile';
 import FloatingTutorWindow from './features/live-voice/components/FloatingTutorWindow';
 import PracticeSession from './features/practice/components/PracticeSession';
 import VideoPlayer, { VideoPlayerRef } from './features/video/components/VideoPlayer';
@@ -29,6 +30,7 @@ import {
 } from './shared/services/database';
 import { analyzeVideoContent } from './shared/services/geminiService';
 import {
+  checkAnonymousPracticeLimit,
   checkAnonymousUsageLimit,
   getUsageDisplayInfo,
   recordAnonymousUsage,
@@ -51,8 +53,32 @@ const App: React.FC = () => {
       document.body.style.opacity = '1';
     });
   }, []);
+
   const { user } = useAuth();
-  const { canAddVideo, canStartPractice, canUseAiTutor, canExportPdf, recordAction, tier } = useSubscription();
+  const { canAddVideo, canStartPractice, canUseAiTutor, canExportPdf, recordAction, tier, syncWithStripe } = useSubscription();
+
+  // Sync subscription with Stripe when returning from checkout (handles missed webhooks)
+  // This runs at app level to catch success redirects regardless of which page user lands on
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('success') === 'true' && user) {
+      // Only handle sync here if NOT on subscription page (SubscriptionPage handles its own case)
+      const isSubscriptionPage = window.location.pathname === '/subscription';
+      if (!isSubscriptionPage) {
+        // Clean up URL query params
+        const cleanUrl = window.location.pathname;
+        window.history.replaceState(null, '', cleanUrl);
+      }
+      // Always sync with Stripe
+      syncWithStripe().then((synced) => {
+        if (synced) {
+          console.log('[App] Synced subscription with Stripe after checkout');
+        }
+      });
+    }
+  }, [user, syncWithStripe]);
+
+
   const [appState, setAppState] = useState<AppState>(AppState.LANDING);
   const [videoUrl, setVideoUrl] = useState('');
 
@@ -116,6 +142,9 @@ const App: React.FC = () => {
     if (parts[0] === 'subscription') {
       return { type: 'subscription' as const };
     }
+    if (parts[0] === 'profile') {
+      return { type: 'profile' as const };
+    }
     // Assume first part is video ID (which is actually analysisId for reports)
     const videoId = parts[0];
     if (parts[1] === 'practice') {
@@ -137,6 +166,8 @@ const App: React.FC = () => {
 
       if (route.type === 'subscription') {
         setAppState(AppState.SUBSCRIPTION);
+      } else if (route.type === 'profile') {
+        setAppState(AppState.PROFILE);
       } else if (route.type === 'library') {
         setCurrentReportsVideo(null);
         setCurrentReportSessionId(null);
@@ -199,6 +230,8 @@ const App: React.FC = () => {
       targetPath = `/${videoData.id}/practice`;
     } else if (appState === AppState.SUBSCRIPTION) {
       targetPath = '/subscription';
+    } else if (appState === AppState.PROFILE) {
+      targetPath = '/profile';
     } else if (appState === AppState.VIDEO_LIBRARY) {
       targetPath = '/library';
     } else if (appState === AppState.PRACTICE_REPORTS && currentReportsVideo) {
@@ -228,6 +261,12 @@ const App: React.FC = () => {
     // Handle subscription route directly
     if (route.type === 'subscription') {
       setAppState(AppState.SUBSCRIPTION);
+      return;
+    }
+
+    // Handle profile route directly
+    if (route.type === 'profile') {
+      setAppState(AppState.PROFILE);
       return;
     }
 
@@ -313,9 +352,15 @@ const App: React.FC = () => {
     );
   };
 
-  const handleStartPractice = (topic: PracticeTopic) => {
-    // Check practice session limit for logged-in users
-    if (user && !canStartPractice) {
+  const handleStartPractice = async (topic: PracticeTopic) => {
+    if (!user) {
+      // Check anonymous practice limit (2 sessions)
+      const practiceStatus = await checkAnonymousPracticeLimit();
+      if (!practiceStatus.allowed) {
+        setShowAuthModal(true);
+        return;
+      }
+    } else if (!canStartPractice) {
       setUpgradeFeature('Practice Session');
       setShowUpgradeModal(true);
       return;
@@ -730,7 +775,12 @@ const App: React.FC = () => {
   };
 
   const handleStartTutor = () => {
-    if (user && !canUseAiTutor) {
+    if (!user) {
+      // AI Tutor requires login
+      setShowAuthModal(true);
+      return;
+    }
+    if (!canUseAiTutor) {
       setUpgradeFeature('AI Tutor');
       setShowUpgradeModal(true);
       return;
@@ -758,7 +808,7 @@ const App: React.FC = () => {
   );
 
   const shouldShowHeader = appState === AppState.DASHBOARD || appState === AppState.PRACTICE_SESSION;
-  const isScrollable = appState === AppState.DASHBOARD || appState === AppState.PRACTICE_SESSION || appState === AppState.VIDEO_LIBRARY || appState === AppState.PRACTICE_REPORTS || appState === AppState.PRACTICE_REPORT_DETAIL || appState === AppState.SUBSCRIPTION;
+  const isScrollable = appState === AppState.DASHBOARD || appState === AppState.PRACTICE_SESSION || appState === AppState.VIDEO_LIBRARY || appState === AppState.PRACTICE_REPORTS || appState === AppState.PRACTICE_REPORT_DETAIL || appState === AppState.SUBSCRIPTION || appState === AppState.PROFILE;
 
   return (
     <Layout
@@ -770,6 +820,7 @@ const App: React.FC = () => {
         onAuthModalClose={() => setShowAuthModal(false)}
         onOpenVideoLibrary={() => setAppState(AppState.VIDEO_LIBRARY)}
         onOpenSubscription={() => setAppState(AppState.SUBSCRIPTION)}
+        onOpenProfile={() => setAppState(AppState.PROFILE)}
     >
       {/* 1. LANDING PAGE */}
       {appState === AppState.LANDING && (
@@ -926,16 +977,16 @@ const App: React.FC = () => {
 
            {/* Right Column: Transcript & Vocabulary */}
            <div className="lg:col-span-5 h-[500px] lg:h-[calc(100vh-140px)]"> 
-               <ContentTabs 
+               <ContentTabs
                   summary={summary}
                   translatedSummary={translatedSummary}
-                  topics={topics} 
-                  vocabulary={vocabulary} 
+                  topics={topics}
+                  vocabulary={vocabulary}
                   transcript={transcript}
                   onTimestampClick={handleTimestampClick}
-                  isLoading={isAnalysisLoading} 
+                  isLoading={isAnalysisLoading}
                   targetLang={targetLang}
-                  layoutMode="fixed" 
+                  layoutMode="fixed"
                   currentTime={currentTime}
                 />
            </div>
@@ -970,6 +1021,7 @@ const App: React.FC = () => {
             targetLang={targetLang}
             analysisId={currentAnalysisId}
             onExit={() => setAppState(AppState.DASHBOARD)}
+            onRequireAuth={() => setShowAuthModal(true)}
           />
       )}
 
@@ -1003,8 +1055,14 @@ const App: React.FC = () => {
       {/* 8. SUBSCRIPTION PAGE */}
       {appState === AppState.SUBSCRIPTION && (
         <SubscriptionPage
-          onBack={() => setAppState(AppState.LANDING)}
           onOpenAuthModal={() => setShowAuthModal(true)}
+        />
+      )}
+
+      {/* 9. PROFILE PAGE */}
+      {appState === AppState.PROFILE && (
+        <ProfilePage
+          onOpenSubscription={() => setAppState(AppState.SUBSCRIPTION)}
         />
       )}
 
