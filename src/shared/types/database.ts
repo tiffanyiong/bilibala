@@ -178,6 +178,7 @@ export interface VideoHistoryItem {
   practiceCount: number;
   lastScore: number | null;
   lastAccessedAt: string;
+  addedAt: string;
 
   // From cached_analyses
   analysisId: string;

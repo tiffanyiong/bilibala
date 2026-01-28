@@ -36,7 +36,6 @@ export const PracticeReportCardSkeleton: React.FC = () => (
 );
 
 const PracticeReportCard: React.FC<PracticeReportCardProps> = ({ session, onClick }) => {
-  const hasScore = session.score !== null;
   const transcriptionSnippet = session.transcription
     ? truncateText(session.transcription, 80)
     : 'No transcription available';
@@ -50,23 +49,11 @@ const PracticeReportCard: React.FC<PracticeReportCardProps> = ({ session, onClic
             {session.topic_text || 'Practice Session'}
           </h4>
 
-          {/* Date & Score */}
+          {/* Date */}
           <div className="flex items-center gap-2 mt-1">
             <span className="text-xs text-stone-500">
               {formatDateTime(session.created_at)}
             </span>
-            {hasScore && (
-              <>
-                <span className="text-stone-300">&middot;</span>
-                <span className={`text-xs font-medium ${
-                  session.score! >= 80 ? 'text-green-600' :
-                  session.score! >= 60 ? 'text-amber-600' :
-                  'text-red-600'
-                }`}>
-                  Score: {session.score}
-                </span>
-              </>
-            )}
           </div>
 
           {/* Transcription snippet */}

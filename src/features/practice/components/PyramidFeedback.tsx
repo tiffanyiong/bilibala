@@ -120,13 +120,39 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
     scoreKeepGrowing: 'Keep Growing'
   };
 
-  // Helper to get score label and styling based on score value
+  // Translations for score labels in native languages (used in Easy mode)
+  const scoreTranslations: Record<string, { perfect: string; excellent: string; greatJob: string; goodStart: string; keepGrowing: string }> = {
+    'Chinese (Mandarin - 中文)': { perfect: '完美！', excellent: '优秀', greatJob: '做得好', goodStart: '良好开端', keepGrowing: '继续加油' },
+    'Chinese (Cantonese - 粵語)': { perfect: '完美！', excellent: '優秀', greatJob: '做得好', goodStart: '良好開端', keepGrowing: '繼續加油' },
+    'Spanish': { perfect: '¡Perfecto!', excellent: 'Excelente', greatJob: '¡Buen trabajo!', goodStart: 'Buen comienzo', keepGrowing: 'Sigue así' },
+    'French': { perfect: 'Parfait !', excellent: 'Excellent', greatJob: 'Bon travail !', goodStart: 'Bon début', keepGrowing: 'Continue ainsi' },
+    'German': { perfect: 'Perfekt!', excellent: 'Ausgezeichnet', greatJob: 'Gut gemacht!', goodStart: 'Guter Anfang', keepGrowing: 'Weiter so' },
+    'Japanese': { perfect: '完璧！', excellent: '素晴らしい', greatJob: 'よくできました', goodStart: '良いスタート', keepGrowing: '頑張って' },
+    'Korean': { perfect: '완벽!', excellent: '훌륭해요', greatJob: '잘했어요', goodStart: '좋은 시작', keepGrowing: '계속 힘내세요' },
+    'Portuguese': { perfect: 'Perfeito!', excellent: 'Excelente', greatJob: 'Bom trabalho!', goodStart: 'Bom começo', keepGrowing: 'Continue assim' },
+    'Italian': { perfect: 'Perfetto!', excellent: 'Eccellente', greatJob: 'Ottimo lavoro!', goodStart: 'Buon inizio', keepGrowing: 'Continua così' },
+    'Russian': { perfect: 'Идеально!', excellent: 'Отлично', greatJob: 'Хорошая работа!', goodStart: 'Хорошее начало', keepGrowing: 'Продолжай' },
+    'Arabic': { perfect: '!ممتاز', excellent: 'رائع', greatJob: '!عمل جيد', goodStart: 'بداية جيدة', keepGrowing: 'استمر' },
+    'Hindi': { perfect: 'परफेक्ट!', excellent: 'उत्कृष्ट', greatJob: 'बहुत अच्छा!', goodStart: 'अच्छी शुरुआत', keepGrowing: 'जारी रखो' },
+    'Vietnamese': { perfect: 'Hoàn hảo!', excellent: 'Xuất sắc', greatJob: 'Làm tốt lắm!', goodStart: 'Khởi đầu tốt', keepGrowing: 'Tiếp tục cố gắng' },
+    'Thai': { perfect: 'สมบูรณ์แบบ!', excellent: 'ยอดเยี่ยม', greatJob: 'ทำได้ดี!', goodStart: 'เริ่มต้นดี', keepGrowing: 'สู้ต่อไป' },
+    'Indonesian': { perfect: 'Sempurna!', excellent: 'Luar biasa', greatJob: 'Kerja bagus!', goodStart: 'Awal yang baik', keepGrowing: 'Terus semangat' },
+    'Dutch': { perfect: 'Perfect!', excellent: 'Uitstekend', greatJob: 'Goed gedaan!', goodStart: 'Goede start', keepGrowing: 'Ga zo door' },
+    'Polish': { perfect: 'Perfekcyjnie!', excellent: 'Doskonale', greatJob: 'Dobra robota!', goodStart: 'Dobry początek', keepGrowing: 'Tak trzymaj' },
+    'Turkish': { perfect: 'Mükemmel!', excellent: 'Harika', greatJob: 'İyi iş!', goodStart: 'İyi başlangıç', keepGrowing: 'Devam et' },
+  };
+
+  // Helper to get score label based on score value (no numerical display)
+  // In Easy mode, show label in user's native language
   const getScoreDisplay = (score: number) => {
-    if (score >= 95) return { label: labels.scorePerfect, style: 'bg-emerald-100 text-emerald-800 ring-emerald-200' };
-    if (score >= 85) return { label: labels.scoreExcellent, style: 'bg-green-100 text-green-800 ring-green-200' };
-    if (score >= 75) return { label: labels.scoreGreatJob, style: 'bg-blue-100 text-blue-800 ring-blue-200' };
-    if (score >= 60) return { label: labels.scoreGoodStart, style: 'bg-amber-100 text-amber-800 ring-amber-200' };
-    return { label: labels.scoreKeepGrowing, style: 'bg-stone-100 text-stone-700 ring-stone-200' };
+    const isEasyMode = level?.toLowerCase() === 'easy';
+    const nativeTranslations = isEasyMode ? scoreTranslations[nativeLang] : null;
+
+    if (score >= 95) return { label: nativeTranslations?.perfect || labels.scorePerfect };
+    if (score >= 85) return { label: nativeTranslations?.excellent || labels.scoreExcellent };
+    if (score >= 75) return { label: nativeTranslations?.greatJob || labels.scoreGreatJob };
+    if (score >= 60) return { label: nativeTranslations?.goodStart || labels.scoreGoodStart };
+    return { label: nativeTranslations?.keepGrowing || labels.scoreKeepGrowing };
   };
 
   const scoreDisplay = getScoreDisplay(feedback?.score || 0);
@@ -284,11 +310,10 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
               )}
 
               <p className="text-stone-600 leading-relaxed text-sm bg-stone-50 p-4 rounded-lg">{transcription}</p>
-              {/* Score Stamp - positioned below transcript */}
+              {/* Score Stamp - shows label only, no numerical score */}
               <div className="flex justify-center md:justify-end mt-4">
                   <div className="relative transform -rotate-12 mix-blend-multiply opacity-85">
                       <div className="border-[6px] border-red-900/90 text-red-900/90 px-3 py-3 rounded-lg font-serif font-black text-2xl md:text-4xl uppercase tracking-widest text-center shadow-none relative">
-                          {/* Inner thin border common in rubber stamps */}
                           <div className="border-[3px] border-red-900/90 rounded px-4 py-2">
                               {scoreDisplay.label}
                           </div>
