@@ -82,6 +82,16 @@ const App: React.FC = () => {
   const [appState, setAppState] = useState<AppState>(AppState.LANDING);
   const [videoUrl, setVideoUrl] = useState('');
 
+  // Navigate back to landing when user signs out
+  const prevUserRef = useRef(user);
+  useEffect(() => {
+    if (prevUserRef.current && !user) {
+      setAppState(AppState.LANDING);
+      setShowTutorWindow(false);
+    }
+    prevUserRef.current = user;
+  }, [user]);
+
   // Upgrade modal state
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [upgradeFeature, setUpgradeFeature] = useState('');
