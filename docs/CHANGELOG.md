@@ -1,5 +1,52 @@
 # Changelog
 
+## Subscription & Usage Limits (January 2026)
+
+### Stripe Subscription Integration
+- Added `/api/subscriptions/sync` endpoint to sync subscription status directly from Stripe (fallback for missed webhooks)
+- Smart conditional sync on app load: only calls Stripe API when user has `stripe_customer_id` but is on `free` tier (indicates a potential missed webhook)
+- Auto-sync on `?success=true` checkout redirect
+- Null-safe timestamp handling to prevent `RangeError: Invalid time value`
+
+### Usage Limits for Anonymous Users
+- **AI Tutor**: Blocked entirely for non-logged-in users — shows login modal immediately
+- **Practice Sessions**: 2 free sessions per month for anonymous users, tracked via browser fingerprint (`practice_session_count` in `browser_fingerprints` table)
+- **Video Analysis**: 2 free analyses per month for anonymous users (reduced from 3)
+- Retake/re-record button in practice sessions enforces the anonymous limit — shows login modal when limit is reached
+- No usage carry-over when an anonymous user signs up (fresh free tier limits)
+
+### Database Changes
+- Added `practice_session_count` and `practice_reset_month` columns to `browser_fingerprints` table
+
+### Subscription Page & Profile Page
+- Consistent "Pro only" pill/badge styling across UsageMeter in both SubscriptionPage and ProfilePage
+- Added Stripe sync on subscription page checkout return
+
+### Auth Modal
+- Removed "Sign in with magic link" option
+
+### Usage Limit Modal
+- Reset date now shows one month from today (e.g., "February 28") instead of the first of next month
+
+### Admin Dashboard (Planned)
+- Feature spec documented in `docs/admin-dashboard.md`
+- Includes: admin role, requireAdmin middleware, user list API, per-user Stripe sync, dashboard UI
+
+### Files Changed
+- `server/routes/subscriptionRoutes.js` — sync endpoint
+- `src/shared/context/SubscriptionContext.tsx` — smart sync, refreshSubscription, syncWithStripe
+- `src/shared/services/usageTracking.ts` — anonymous practice limit tracking, reset date fix
+- `src/App.tsx` — AI Tutor and practice session gate for anonymous users
+- `src/features/practice/components/PracticeSession.tsx` — anonymous practice recording, onRequireAuth prop
+- `src/features/practice/components/PyramidFeedback.tsx` — retake button anonymous limit check
+- `src/shared/components/AuthModal.tsx` — removed magic link
+- `src/shared/components/UsageLimitModal.tsx` — usage limit modal for anonymous users
+- `src/features/subscription/components/SubscriptionPage.tsx` — Pro only pill, Stripe sync
+- `src/features/profile/components/ProfilePage.tsx` — Pro only pill
+- `docs/admin-dashboard.md` — admin dashboard spec
+
+---
+
 ## Video Library Feature (January 2026)
 
 ### Overview

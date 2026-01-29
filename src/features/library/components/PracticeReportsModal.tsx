@@ -3,6 +3,7 @@ import { DbPracticeSession } from '../../../shared/types/database';
 import { SpeechAnalysisResult } from '../../../shared/types';
 import { getPracticeSessionsForAnalysis } from '../../../shared/services/database';
 import { useAuth } from '../../../shared/context/AuthContext';
+import { useSubscription } from '../../../shared/context/SubscriptionContext';
 import PracticeReportCard, { PracticeReportCardSkeleton } from './PracticeReportCard';
 import PyramidFeedback from '../../practice/components/PyramidFeedback';
 import { exportPracticeReportToPdf } from '../../../shared/utils/pdfExport';
@@ -186,6 +187,7 @@ const PracticeReportsModal: React.FC<PracticeReportsModalProps> = ({
   onExpand,
 }) => {
   const { user } = useAuth();
+  const { canExportPdf, recordAction } = useSubscription();
   const [sessions, setSessions] = useState<DbPracticeSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -258,14 +260,7 @@ const PracticeReportsModal: React.FC<PracticeReportsModalProps> = ({
   const [isExporting, setIsExporting] = useState(false);
 
   const handleExportPdf = async () => {
-    console.log('[PracticeReportsModal] handleExportPdf called');
-    console.log('[PracticeReportsModal] selectedSession:', selectedSession);
-    console.log('[PracticeReportsModal] isExporting:', isExporting);
-
-    if (!selectedSession || isExporting) {
-      console.log('[PracticeReportsModal] Early return - no session or already exporting');
-      return;
-    }
+    if (!selectedSession || isExporting || !canExportPdf) return;
 
     const analysis: SpeechAnalysisResult | null = selectedSession.feedback_data
       ? {
@@ -292,7 +287,7 @@ const PracticeReportsModal: React.FC<PracticeReportsModalProps> = ({
         targetLang: targetLang,
         level: level,
       });
-      console.log('[PracticeReportsModal] PDF export completed');
+      recordAction('pdf_export');
     } catch (error) {
       console.error('[PracticeReportsModal] PDF export error:', error);
     } finally {
@@ -353,10 +348,14 @@ const PracticeReportsModal: React.FC<PracticeReportsModalProps> = ({
             {viewMode === 'report' && selectedSession && analysisData && (
               <button
                 onClick={handleExportPdf}
-                disabled={isExporting}
-                className={`transition-colors ${isExporting ? 'text-stone-300 cursor-wait' : 'text-stone-400 hover:text-stone-600'}`}
-                aria-label="Export as PDF"
-                title={isExporting ? "Exporting..." : "Export as PDF"}
+                disabled={isExporting || !canExportPdf}
+                className={`transition-colors ${
+                  !canExportPdf
+                    ? 'text-stone-300 cursor-not-allowed'
+                    : isExporting ? 'text-stone-300 cursor-wait' : 'text-stone-400 hover:text-stone-600'
+                }`}
+                aria-label={canExportPdf ? "Export as PDF" : "PDF export requires Pro plan"}
+                title={!canExportPdf ? "Pro feature" : isExporting ? "Exporting..." : "Export as PDF"}
               >
                 {isExporting ? <SpinnerIcon /> : <DownloadIcon />}
               </button>

@@ -3,6 +3,25 @@ import { Supadata } from '@supadata/js';
 import { YoutubeTranscript } from 'youtube-transcript';
 import { config } from '../config/env.js';
 
+// Map app language names to ISO 639-1 codes for Supadata API
+const LANGUAGE_TO_ISO = {
+  'English': 'en',
+  'Spanish': 'es',
+  'French': 'fr',
+  'German': 'de',
+  'Portuguese': 'pt',
+  'Japanese': 'ja',
+  'Korean': 'ko',
+  'Chinese': 'zh',
+  'Hindi': 'hi',
+  'Italian': 'it',
+  'Russian': 'ru',
+  'Arabic': 'ar',
+  'Indonesian': 'id',
+  'Turkish': 'tr',
+  'Vietnamese': 'vi'
+};
+
 /**
  * Fetch transcript using Innertube (Fallback method)
  */
@@ -60,9 +79,12 @@ export async function fetchTranscriptWithYoutubeTranscript(videoId) {
 
 /**
  * Fetch video metadata and transcript using both Innertube and Supadata
+ * @param {string} videoId - YouTube video ID
+ * @param {string} targetLang - Target language for transcript (e.g., 'English', 'Spanish')
  */
-export async function fetchVideoContext(videoId) {
-  console.log(`[server] Fetching context for ${videoId}...`);
+export async function fetchVideoContext(videoId, targetLang = 'English') {
+  const langCode = LANGUAGE_TO_ISO[targetLang] || 'en';
+  console.log(`[server] Fetching context for ${videoId} (lang: ${langCode})...`);
   try {
     // 1. Duration (Innertube)
     const yt = await Innertube.create({ cache: new UniversalCache(false) });
@@ -72,6 +94,7 @@ export async function fetchVideoContext(videoId) {
     // 2. Transcript (Supadata)
     let transcriptText = '';
     let transcriptSegments = [];
+    let transcriptLang = null;
     try {
       console.log('[server] Requesting transcript from Supadata...');
       const supadata = new Supadata({ apiKey: config.supadata.apiKey });
@@ -79,6 +102,7 @@ export async function fetchVideoContext(videoId) {
       // Try native first (faster), then fall back to auto-generated if unavailable
       let result = await supadata.transcript({
         url: `https://www.youtube.com/watch?v=${videoId}`,
+        lang: langCode,
         text: false
       });
 
@@ -149,7 +173,8 @@ export async function fetchVideoContext(videoId) {
         transcriptText = content;
       }
 
-      console.log(`[server] Supadata transcript received. Segments: ${transcriptSegments.length}`);
+      transcriptLang = result?.lang || null;
+      console.log(`[server] Supadata transcript received. Segments: ${transcriptSegments.length}, lang: ${transcriptLang || 'unknown'}`);
     } catch (e) {
       console.warn(`[server] Supadata failed: ${e.message}`);
     }
@@ -172,9 +197,9 @@ export async function fetchVideoContext(videoId) {
       }
     }
 
-    return { duration, transcriptText, transcriptSegments };
+    return { duration, transcriptText, transcriptSegments, transcriptLang };
   } catch (e) {
     console.warn(`[server] Context fetch failed: ${e.message}`);
-    return { duration: 0, transcriptText: '', transcriptSegments: [] };
+    return { duration: 0, transcriptText: '', transcriptSegments: [], transcriptLang: null };
   }
 }

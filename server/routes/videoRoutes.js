@@ -23,7 +23,7 @@ router.post('/analyze-video-content', async (req, res) => {
     // Fetch context (Duration + Transcript if possible) to fix timestamps
     let contextData = { duration: 0, transcriptText: '' };
     if (videoId) {
-      contextData = await fetchVideoContext(videoId);
+      contextData = await fetchVideoContext(videoId, targetLang);
     }
 
     // Dynamic topic count based on duration (approx 1 topic per 3 mins, min 3, max 15)
@@ -214,7 +214,8 @@ router.post('/analyze-video-content', async (req, res) => {
         question: t.question,
         targetWords: t.suggested_target_words || []
       })),
-      transcript: contextData.transcriptSegments || []
+      transcript: contextData.transcriptSegments || [],
+      transcriptLang: contextData.transcriptLang || null
     };
 
     res.json(mappedResponse);
