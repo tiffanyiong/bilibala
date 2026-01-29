@@ -4,6 +4,8 @@ import TopicSelector from './features/content/components/TopicSelector';
 import VideoLibraryPage from './features/library/components/VideoLibraryPage';
 import PracticeReportsPage from './features/library/components/PracticeReportsPage';
 import PracticeReportDetailPage from './features/library/components/PracticeReportDetailPage';
+import SubscriptionPage from './features/subscription/components/SubscriptionPage';
+import { ProfilePage } from './features/profile';
 import FloatingTutorWindow from './features/live-voice/components/FloatingTutorWindow';
 import PracticeSession from './features/practice/components/PracticeSession';
 import VideoPlayer, { VideoPlayerRef } from './features/video/components/VideoPlayer';
@@ -12,6 +14,8 @@ import Layout from './shared/components/Layout';
 import UsageLimitModal from './shared/components/UsageLimitModal';
 import { LANGUAGES, LEVELS } from './shared/constants';
 import { useAuth } from './shared/context/AuthContext';
+import { useSubscription } from './shared/context/SubscriptionContext';
+import UpgradeModal from './features/subscription/components/UpgradeModal';
 import {
   addToUserLibrary,
   dbAnalysisToContentAnalysis,
@@ -26,6 +30,7 @@ import {
 } from './shared/services/database';
 import { analyzeVideoContent } from './shared/services/geminiService';
 import {
+  checkAnonymousPracticeLimit,
   checkAnonymousUsageLimit,
   getUsageDisplayInfo,
   recordAnonymousUsage,
@@ -48,9 +53,48 @@ const App: React.FC = () => {
       document.body.style.opacity = '1';
     });
   }, []);
+
   const { user } = useAuth();
+  const { canAddVideo, canStartPractice, canUseAiTutor, canExportPdf, recordAction, tier, syncWithStripe } = useSubscription();
+
+  // Sync subscription with Stripe when returning from checkout (handles missed webhooks)
+  // This runs at app level to catch success redirects regardless of which page user lands on
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('success') === 'true' && user) {
+      // Only handle sync here if NOT on subscription page (SubscriptionPage handles its own case)
+      const isSubscriptionPage = window.location.pathname === '/subscription';
+      if (!isSubscriptionPage) {
+        // Clean up URL query params
+        const cleanUrl = window.location.pathname;
+        window.history.replaceState(null, '', cleanUrl);
+      }
+      // Always sync with Stripe
+      syncWithStripe().then((synced) => {
+        if (synced) {
+          console.log('[App] Synced subscription with Stripe after checkout');
+        }
+      });
+    }
+  }, [user, syncWithStripe]);
+
+
   const [appState, setAppState] = useState<AppState>(AppState.LANDING);
   const [videoUrl, setVideoUrl] = useState('');
+
+  // Navigate back to landing when user signs out
+  const prevUserRef = useRef(user);
+  useEffect(() => {
+    if (prevUserRef.current && !user) {
+      setAppState(AppState.LANDING);
+      setShowTutorWindow(false);
+    }
+    prevUserRef.current = user;
+  }, [user]);
+
+  // Upgrade modal state
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [upgradeFeature, setUpgradeFeature] = useState('');
 
   // Language & Level State
   const [nativeLang, setNativeLang] = useState('Chinese (Mandarin - 中文)');
@@ -105,6 +149,12 @@ const App: React.FC = () => {
     if (parts[0] === 'library') {
       return { type: 'library' as const };
     }
+    if (parts[0] === 'subscription') {
+      return { type: 'subscription' as const };
+    }
+    if (parts[0] === 'profile') {
+      return { type: 'profile' as const };
+    }
     // Assume first part is video ID (which is actually analysisId for reports)
     const videoId = parts[0];
     if (parts[1] === 'practice') {
@@ -124,7 +174,11 @@ const App: React.FC = () => {
     const handlePopState = () => {
       const route = parsePathRoute(window.location.pathname);
 
-      if (route.type === 'library') {
+      if (route.type === 'subscription') {
+        setAppState(AppState.SUBSCRIPTION);
+      } else if (route.type === 'profile') {
+        setAppState(AppState.PROFILE);
+      } else if (route.type === 'library') {
         setCurrentReportsVideo(null);
         setCurrentReportSessionId(null);
         setAppState(AppState.VIDEO_LIBRARY);
@@ -184,6 +238,10 @@ const App: React.FC = () => {
       targetPath = `/${videoData.id}`;
     } else if (appState === AppState.PRACTICE_SESSION && videoData) {
       targetPath = `/${videoData.id}/practice`;
+    } else if (appState === AppState.SUBSCRIPTION) {
+      targetPath = '/subscription';
+    } else if (appState === AppState.PROFILE) {
+      targetPath = '/profile';
     } else if (appState === AppState.VIDEO_LIBRARY) {
       targetPath = '/library';
     } else if (appState === AppState.PRACTICE_REPORTS && currentReportsVideo) {
@@ -207,6 +265,18 @@ const App: React.FC = () => {
     // Handle library route directly
     if (route.type === 'library') {
       setAppState(AppState.VIDEO_LIBRARY);
+      return;
+    }
+
+    // Handle subscription route directly
+    if (route.type === 'subscription') {
+      setAppState(AppState.SUBSCRIPTION);
+      return;
+    }
+
+    // Handle profile route directly
+    if (route.type === 'profile') {
+      setAppState(AppState.PROFILE);
       return;
     }
 
@@ -292,7 +362,20 @@ const App: React.FC = () => {
     );
   };
 
-  const handleStartPractice = (topic: PracticeTopic) => {
+  const handleStartPractice = async (topic: PracticeTopic) => {
+    if (!user) {
+      // Check anonymous practice limit (2 sessions)
+      const practiceStatus = await checkAnonymousPracticeLimit();
+      if (!practiceStatus.allowed) {
+        setShowAuthModal(true);
+        return;
+      }
+    } else if (!canStartPractice) {
+      setUpgradeFeature('Practice Session');
+      setShowUpgradeModal(true);
+      return;
+    }
+
     console.log('[App] handleStartPractice called. currentAnalysisId:', currentAnalysisId);
     // Get all selected topic objects
     const allTopics = discussionTopics.filter(t => selectedTopics.includes(t.topic));
@@ -322,6 +405,11 @@ const App: React.FC = () => {
         setShowUsageLimitModal(true);
         return; // Don't proceed, don't change app state
       }
+    } else if (!canAddVideo) {
+      // Logged-in user hit their video limit
+      setUpgradeFeature('Video Analysis');
+      setShowUpgradeModal(true);
+      return;
     }
 
     // 2. Now start loading (user has permission)
@@ -500,12 +588,15 @@ const App: React.FC = () => {
               }
             }
 
-            // Record anonymous usage (only for fresh analyses, not cached)
+            // Record usage (only for fresh analyses, not cached)
             if (!user) {
               recordAnonymousUsage();
               // Update local state if needed
               const info = await getUsageDisplayInfo();
               setUsageInfo(info);
+            } else {
+              // Record usage for logged-in user
+              recordAction('video_analysis');
             }
 
             // Done: Cancel timers and show dashboard now
@@ -693,9 +784,23 @@ const App: React.FC = () => {
     setAppState(AppState.VIDEO_LIBRARY);
   };
 
+  const handleStartTutor = () => {
+    if (!user) {
+      // AI Tutor requires login
+      setShowAuthModal(true);
+      return;
+    }
+    if (!canUseAiTutor) {
+      setUpgradeFeature('AI Tutor');
+      setShowUpgradeModal(true);
+      return;
+    }
+    setShowTutorWindow(true);
+  };
+
   const StartCallButton = () => (
     <button
-      onClick={() => setShowTutorWindow(true)}
+      onClick={handleStartTutor}
       className="fixed bottom-8 right-8 z-50 group flex items-center gap-2 bg-zinc-900 text-white border border-zinc-700 p-4 rounded-full shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden max-w-[60px] hover:max-w-[200px]"
       aria-label="Start Chatting"
     >
@@ -713,7 +818,7 @@ const App: React.FC = () => {
   );
 
   const shouldShowHeader = appState === AppState.DASHBOARD || appState === AppState.PRACTICE_SESSION;
-  const isScrollable = appState === AppState.DASHBOARD || appState === AppState.PRACTICE_SESSION || appState === AppState.VIDEO_LIBRARY || appState === AppState.PRACTICE_REPORTS || appState === AppState.PRACTICE_REPORT_DETAIL;
+  const isScrollable = appState === AppState.DASHBOARD || appState === AppState.PRACTICE_SESSION || appState === AppState.VIDEO_LIBRARY || appState === AppState.PRACTICE_REPORTS || appState === AppState.PRACTICE_REPORT_DETAIL || appState === AppState.SUBSCRIPTION || appState === AppState.PROFILE;
 
   return (
     <Layout
@@ -724,6 +829,8 @@ const App: React.FC = () => {
         authModalOpen={showAuthModal}
         onAuthModalClose={() => setShowAuthModal(false)}
         onOpenVideoLibrary={() => setAppState(AppState.VIDEO_LIBRARY)}
+        onOpenSubscription={() => setAppState(AppState.SUBSCRIPTION)}
+        onOpenProfile={() => setAppState(AppState.PROFILE)}
     >
       {/* 1. LANDING PAGE */}
       {appState === AppState.LANDING && (
@@ -880,16 +987,16 @@ const App: React.FC = () => {
 
            {/* Right Column: Transcript & Vocabulary */}
            <div className="lg:col-span-5 h-[500px] lg:h-[calc(100vh-140px)]"> 
-               <ContentTabs 
+               <ContentTabs
                   summary={summary}
                   translatedSummary={translatedSummary}
-                  topics={topics} 
-                  vocabulary={vocabulary} 
+                  topics={topics}
+                  vocabulary={vocabulary}
                   transcript={transcript}
                   onTimestampClick={handleTimestampClick}
-                  isLoading={isAnalysisLoading} 
+                  isLoading={isAnalysisLoading}
                   targetLang={targetLang}
-                  layoutMode="fixed" 
+                  layoutMode="fixed"
                   currentTime={currentTime}
                 />
            </div>
@@ -924,6 +1031,7 @@ const App: React.FC = () => {
             targetLang={targetLang}
             analysisId={currentAnalysisId}
             onExit={() => setAppState(AppState.DASHBOARD)}
+            onRequireAuth={() => setShowAuthModal(true)}
           />
       )}
 
@@ -953,6 +1061,31 @@ const App: React.FC = () => {
           onBackToLibrary={handleBackFromReportsToLibrary}
         />
       )}
+
+      {/* 8. SUBSCRIPTION PAGE */}
+      {appState === AppState.SUBSCRIPTION && (
+        <SubscriptionPage
+          onOpenAuthModal={() => setShowAuthModal(true)}
+        />
+      )}
+
+      {/* 9. PROFILE PAGE */}
+      {appState === AppState.PROFILE && (
+        <ProfilePage
+          onOpenSubscription={() => setAppState(AppState.SUBSCRIPTION)}
+        />
+      )}
+
+      {/* Upgrade Modal (for subscription gating) */}
+      <UpgradeModal
+        isOpen={showUpgradeModal}
+        onClose={() => setShowUpgradeModal(false)}
+        onUpgrade={() => {
+          setShowUpgradeModal(false);
+          setAppState(AppState.SUBSCRIPTION);
+        }}
+        feature={upgradeFeature}
+      />
 
       {/* Usage Limit Modal */}
       <UsageLimitModal

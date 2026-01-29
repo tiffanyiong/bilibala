@@ -30,6 +30,7 @@ export interface ContentAnalysis {
   topics: TopicPoint[];
   vocabulary: VocabularyItem[];
   transcript?: { text: string; duration: number; offset: number }[];
+  transcriptLang?: string;
   discussionTopics?: PracticeTopic[];
 }
 
@@ -108,5 +109,7 @@ export enum AppState {
   VIDEO_LIBRARY,
   PRACTICE_REPORTS,       // Full-page reports list: /{videoId}/reports
   PRACTICE_REPORT_DETAIL, // Full-page single report: /{videoId}/reports/{sessionId}
+  SUBSCRIPTION,           // Subscription management page: /subscription
+  PROFILE,                // Profile page: /profile
   ERROR
 }

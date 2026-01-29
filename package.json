@@ -25,6 +25,7 @@
     "react-markdown": "^10.1.0",
     "react-youtube": "^10.1.0",
     "reactflow": "^11.11.4",
+    "stripe": "^20.2.0",
     "ws": "^8.19.0",
     "youtube-transcript": "^1.2.1",
     "youtubei.js": "^16.0.1"

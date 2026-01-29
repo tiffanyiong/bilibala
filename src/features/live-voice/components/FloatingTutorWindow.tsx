@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { VocabularyItem } from '../../../shared/types';
+import { useSubscription } from '../../../shared/context/SubscriptionContext';
 import { useLiveVoice } from '../hooks/useLiveVoice';
 import ControlBar from '../../../shared/components/ControlBar';
 import StatusPill from '../../../shared/components/StatusPill';
@@ -77,6 +78,8 @@ const FloatingTutorWindow: React.FC<FloatingTutorWindowProps> = ({
   const windowRef = useRef<HTMLDivElement>(null);
   const dragStartRef = useRef({ x: 0, y: 0 });
   const positionRef = useRef({ x: 0, y: 0 });
+
+  const { recordAction } = useSubscription();
 
   const liveVoice = useLiveVoice({
     videoTitle,
@@ -216,7 +219,12 @@ const FloatingTutorWindow: React.FC<FloatingTutorWindowProps> = ({
   }, [isDragging, handleDragMove, handleDragEnd]);
 
   const handleClose = () => {
+    const durationSecs = liveVoice.durationSeconds;
     liveVoice.stopSession();
+    if (durationSecs > 0) {
+      const minutesUsed = Math.max(1, Math.ceil(durationSecs / 60));
+      recordAction('ai_tutor', { minutes_used: minutesUsed });
+    }
     onClose();
   };
 

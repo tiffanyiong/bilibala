@@ -69,7 +69,7 @@ const parseTimestamp = (ts: string): number => {
 const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, topics, vocabulary, transcript, onTimestampClick, isLoading, targetLang, layoutMode = 'fixed', currentTime = 0 }) => {
   const [activeTab, setActiveTab] = useState<'outline' | 'vocab' | 'transcript'>('outline');
   const uiText = UI_TRANSLATIONS[targetLang] || UI_TRANSLATIONS['English'];
-  
+
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const activeTranscriptRef = useRef<HTMLDivElement>(null);
   const [showLocateBtn, setShowLocateBtn] = useState(false);
@@ -306,7 +306,7 @@ const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, t
                                 <span>Locate current</span>
                             </button>
                         )}
-                        
+
                         {transcript && transcript.length > 0 ? transcript.map((seg, i) => {
                             const isActive = i === activeTranscriptIndex;
                             return (
