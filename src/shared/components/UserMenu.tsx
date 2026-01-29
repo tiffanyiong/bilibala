@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useSubscription } from '../context/SubscriptionContext';
 
 interface UserMenuProps {
   onOpenAuthModal: () => void;
@@ -10,6 +11,7 @@ interface UserMenuProps {
 
 const UserMenu: React.FC<UserMenuProps> = ({ onOpenAuthModal, onOpenVideoLibrary, onOpenSubscription, onOpenProfile }) => {
   const { user, userProfile, loading, signOut } = useAuth();
+  const { tier } = useSubscription();
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -121,7 +123,14 @@ const UserMenu: React.FC<UserMenuProps> = ({ onOpenAuthModal, onOpenVideoLibrary
                 className="w-full px-4 py-2 text-left text-sm text-stone-700 hover:bg-stone-100 flex items-center gap-3 transition-colors"
               >
                 <item.icon />
-                {item.label}
+                <span className="flex items-center gap-2">
+                  {item.label}
+                  {item.label === 'Profile' && (
+                    tier === 'pro'
+                      ? <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">Pro</span>
+                      : <span className="text-[10px] font-semibold uppercase tracking-wider text-stone-500 bg-stone-100 px-1.5 py-0.5 rounded-full">Free</span>
+                  )}
+                </span>
               </button>
             ))}
           </div>

@@ -88,7 +88,7 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
             onClick={onUpgrade}
             className="flex-1 py-2.5 rounded-lg text-sm font-medium text-white bg-stone-800 hover:bg-stone-900 transition-all"
           >
-            Upgrade — $9/mo
+            Upgrade to Pro
           </button>
         </div>
       </div>
