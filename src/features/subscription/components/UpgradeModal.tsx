@@ -4,30 +4,42 @@ interface UpgradeModalProps {
   isOpen: boolean;
   onClose: () => void;
   onUpgrade: () => void;
+  onBuyCredits?: () => void;
   feature: string;
   message?: string;
+  tier?: 'free' | 'pro';
 }
 
 const UpgradeModal: React.FC<UpgradeModalProps> = ({
   isOpen,
   onClose,
   onUpgrade,
+  onBuyCredits,
   feature,
   message,
+  tier = 'free',
 }) => {
   if (!isOpen) return null;
 
   const isLimitReached = feature === 'AI Tutor Limit Reached';
+  const isPracticeLimit = feature === 'Practice Session';
+  const isAiTutorFeature = feature === 'AI Tutor';
+  const isProUser = tier === 'pro';
 
   const defaultMessages: Record<string, string> = {
     'Video Analysis': "You've reached your monthly video limit. Upgrade to Pro for unlimited video analyses.",
     'Practice Session': "You've used all your practice sessions this month. Upgrade to Pro for unlimited practice.",
     'AI Tutor': 'AI Tutor is a Pro feature. Upgrade to have live conversations with your AI language tutor.',
-    'AI Tutor Limit Reached': "You've used all your AI Tutor minutes this month. Your allowance resets at the start of next month.",
+    'AI Tutor Limit Reached': "You've used all your AI Tutor minutes this month. Buy more minutes or wait until next month.",
     'PDF Export': 'PDF export is a Pro feature. Upgrade to download practice reports as PDFs.',
   };
 
   const displayMessage = message || defaultMessages[feature] || `${feature} requires a Pro subscription.`;
+
+  // Determine which credit option to show
+  // Only show Starter Pack for Practice Session limit (not for AI Tutor - users can find it on subscription page)
+  const showStarterPackOption = !isProUser && isPracticeLimit;
+  const showTopupOption = isProUser && isLimitReached;
 
   return (
     <div className="fixed inset-0 z-[400] flex items-center justify-center">
@@ -63,8 +75,8 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
           {displayMessage}
         </p>
 
-        {/* Pro benefits (only show for upgrade, not limit reached) */}
-        {!isLimitReached && (
+        {/* Pro benefits (only show for upgrade, not limit reached, and not for pro users) */}
+        {!isLimitReached && !isProUser && (
           <div className="bg-stone-50 rounded-lg p-3 mb-5 space-y-1.5">
             <div className="text-xs font-medium text-stone-600 mb-2">Pro includes:</div>
             {[
@@ -81,20 +93,67 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
           </div>
         )}
 
+        {/* Credit pack info for Pro user limit reached */}
+        {showTopupOption && (
+          <div className="bg-stone-50 rounded-lg p-3 mb-5">
+            <div className="text-xs font-medium text-stone-600 mb-2">AI Tutor Top-up — $3</div>
+            <div className="flex items-center gap-2 text-xs text-stone-600">
+              <span className="text-green-600">✓</span>
+              +30 minutes of AI Tutor
+            </div>
+            <div className="flex items-center gap-2 text-xs text-stone-500 mt-1">
+              <span className="text-stone-400">—</span>
+              Credits never expire
+            </div>
+          </div>
+        )}
+
+        {/* Credit pack info for free user */}
+        {showStarterPackOption && (
+          <div className="bg-stone-50 rounded-lg p-3 mb-3">
+            <div className="text-xs font-medium text-stone-600 mb-2">Or try the Starter Pack — $5</div>
+            <div className="flex items-center gap-2 text-xs text-stone-600">
+              <span className="text-green-600">✓</span>
+              30 min AI Tutor + 30 practice sessions
+            </div>
+          </div>
+        )}
+
         {/* Actions */}
-        <div className="flex gap-3">
-          <button
-            onClick={onClose}
-            className="flex-1 py-2.5 rounded-lg text-sm font-medium text-stone-600 bg-stone-100 hover:bg-stone-200 transition-all"
-          >
-            {isLimitReached ? 'Got It' : 'Not Now'}
-          </button>
-          {!isLimitReached && (
+        <div className="flex flex-col gap-2">
+          {/* Primary action row */}
+          <div className="flex gap-3">
             <button
-              onClick={onUpgrade}
-              className="flex-1 py-2.5 rounded-lg text-sm font-medium text-white bg-stone-800 hover:bg-stone-900 transition-all"
+              onClick={onClose}
+              className="flex-1 py-2.5 rounded-lg text-sm font-medium text-stone-600 bg-stone-100 hover:bg-stone-200 transition-all"
             >
-              Upgrade to Pro
+              {isLimitReached && !showTopupOption ? 'Got It' : 'Not Now'}
+            </button>
+            {!isLimitReached && !isProUser && (
+              <button
+                onClick={onUpgrade}
+                className="flex-1 py-2.5 rounded-lg text-sm font-medium text-white bg-stone-800 hover:bg-stone-900 transition-all"
+              >
+                Upgrade to Pro
+              </button>
+            )}
+            {showTopupOption && onBuyCredits && (
+              <button
+                onClick={onBuyCredits}
+                className="flex-1 py-2.5 rounded-lg text-sm font-medium text-white bg-stone-800 hover:bg-stone-900 transition-all"
+              >
+                Buy Top-up
+              </button>
+            )}
+          </div>
+
+          {/* Secondary action: Buy credits for free users */}
+          {showStarterPackOption && onBuyCredits && (
+            <button
+              onClick={onBuyCredits}
+              className="w-full py-2 rounded-lg text-xs font-medium text-stone-600 bg-stone-50 hover:bg-stone-100 transition-all border border-stone-200"
+            >
+              Buy Starter Pack ($5)
             </button>
           )}
         </div>

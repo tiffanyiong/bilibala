@@ -153,6 +153,36 @@ export async function getCachedAnalysisById(
 }
 
 /**
+ * Get any cached analysis for a YouTube video ID (for direct URL access)
+ * Returns the most recently created analysis if multiple exist
+ */
+export async function getAnyCachedAnalysisForYoutubeId(
+  youtubeId: string
+): Promise<(DbCachedAnalysis & { video_title: string }) | null> {
+  // First get the video from global_videos
+  const video = await getVideoByYoutubeId(youtubeId);
+  if (!video) return null;
+
+  // Get the most recent analysis for this video
+  const { data, error } = await supabase
+    .from('cached_analyses')
+    .select('*')
+    .eq('video_id', video.id)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single();
+
+  if (error) {
+    if (error.code !== 'PGRST116') {
+      console.error('Error fetching any cached analysis:', error);
+    }
+    return null;
+  }
+
+  return { ...data, video_title: video.title } as DbCachedAnalysis & { video_title: string };
+}
+
+/**
  * Save analysis to cache
  */
 export async function saveCachedAnalysis(

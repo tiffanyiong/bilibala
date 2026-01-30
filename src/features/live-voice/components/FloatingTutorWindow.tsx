@@ -82,9 +82,11 @@ const FloatingTutorWindow: React.FC<FloatingTutorWindowProps> = ({
   const positionRef = useRef({ x: 0, y: 0 });
 
   const { user } = useAuth();
-  const { recordAction, refreshUsage, usage, aiTutorMinutesLimit } = useSubscription();
+  const { recordAction, refreshUsage, usage, aiTutorMinutesLimit, aiTutorCreditMinutes } = useSubscription();
 
   const remainingMonthlySeconds = Math.max(0, (aiTutorMinutesLimit - usage.aiTutorMinutesUsed) * 60);
+  // Total remaining includes both monthly allowance and purchased credits
+  const totalRemainingSeconds = remainingMonthlySeconds + (aiTutorCreditMinutes * 60);
 
   const handleLimitReached = useCallback((durationSecs: number, reason: 'session' | 'monthly') => {
     const minutesUsed = Math.max(1, Math.ceil(durationSecs / 60));
@@ -102,20 +104,20 @@ const FloatingTutorWindow: React.FC<FloatingTutorWindowProps> = ({
     level,
     userId: user?.id ?? null,
     maxSessionSeconds: SESSION_MAX_MINUTES * 60,
-    remainingMonthlySeconds,
+    remainingMonthlySeconds: totalRemainingSeconds, // Include credits in available time
     warningBeforeEndSeconds: WARNING_BEFORE_END_SECONDS,
     onLimitReached: handleLimitReached,
   });
 
-  // Guard: prevent starting a new session if monthly minutes are exhausted
+  // Guard: prevent starting a new session if no minutes available (monthly + credits)
   const handleStartSession = useCallback(async () => {
-    if (remainingMonthlySeconds <= 0) {
+    if (totalRemainingSeconds <= 0) {
       // Close the tutor window — App.tsx will show the limit modal on next click
       onClose();
       return;
     }
     await liveVoice.startSession();
-  }, [remainingMonthlySeconds, liveVoice.startSession, onClose]);
+  }, [totalRemainingSeconds, liveVoice.startSession, onClose]);
 
   // Refresh usage from DB after a session ends so the remaining minutes are accurate
   const prevConnectedRef = useRef(false);
