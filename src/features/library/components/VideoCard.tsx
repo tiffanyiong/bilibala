@@ -128,8 +128,8 @@ const VideoCard: React.FC<VideoCardProps> = ({ video, onClick, onViewReports, on
           {formatDate(video.lastAccessedAt)}
         </p>
 
-        {/* Practice Reports Badge */}
-        {video.practiceCount > 0 && (
+        {/* Practice Reports Badge - uses actual report count from practice_sessions */}
+        {video.reportCount > 0 && (
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -138,7 +138,7 @@ const VideoCard: React.FC<VideoCardProps> = ({ video, onClick, onViewReports, on
             className="mt-3 text-xs text-stone-600 hover:text-stone-800 flex items-center gap-1 bg-stone-50 px-2 py-1 rounded-full transition-colors"
           >
             <MicIcon />
-            {video.practiceCount} Report{video.practiceCount > 1 ? 's' : ''}
+            {video.reportCount} Report{video.reportCount > 1 ? 's' : ''}
           </button>
         )}
       </div>

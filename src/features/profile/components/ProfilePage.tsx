@@ -16,6 +16,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenSubscription }) => {
     videosLimit,
     practiceSessionsLimit,
     aiTutorMinutesLimit,
+    aiTutorCreditMinutes,
+    practiceSessionCredits,
     createPortal,
     isLoading,
   } = useSubscription();
@@ -200,12 +202,14 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenSubscription }) => {
                 label="Practice"
                 used={usage.practiceSessionsUsed}
                 limit={practiceSessionsLimit}
+                creditText={practiceSessionCredits > 0 ? `+${practiceSessionCredits} credits` : undefined}
               />
               <UsageMeter
                 label="AI Tutor"
                 used={usage.aiTutorMinutesUsed}
                 limit={aiTutorMinutesLimit}
                 unit="min"
+                creditText={aiTutorCreditMinutes > 0 ? `+${aiTutorCreditMinutes} min credits` : undefined}
               />
               <UsageMeter
                 label="PDF Export"
@@ -285,7 +289,8 @@ const UsageMeter: React.FC<{
   limit: number;
   unit?: string;
   showAsEnabled?: boolean;
-}> = ({ label, used, limit, unit = '', showAsEnabled }) => {
+  creditText?: string;
+}> = ({ label, used, limit, unit = '', showAsEnabled, creditText }) => {
   if (showAsEnabled) {
     const enabled = limit > 0 || limit === Infinity;
     return (
@@ -309,10 +314,13 @@ const UsageMeter: React.FC<{
   return (
     <div>
       <div className="text-xs text-stone-500 mb-1">{label}</div>
-      {limit === 0 ? (
+      {limit === 0 && !creditText ? (
         <span className="inline-block text-xs font-medium text-stone-500 bg-stone-100 px-2 py-0.5 rounded-full">
           Pro only
         </span>
+      ) : limit === 0 && creditText ? (
+        // Free user with credits - show credits only
+        <p className="text-sm font-medium text-green-600">{creditText}</p>
       ) : (
         <div className={`text-sm font-medium ${isNearLimit ? 'text-amber-600' : 'text-stone-700'}`}>
           {isUnlimited ? `${used}${unit} used` : `${used}${unit} / ${limit}${unit}`}
@@ -327,6 +335,9 @@ const UsageMeter: React.FC<{
             style={{ width: `${percentage}%` }}
           />
         </div>
+      )}
+      {limit > 0 && creditText && (
+        <p className="text-xs text-green-600 mt-1">{creditText}</p>
       )}
     </div>
   );

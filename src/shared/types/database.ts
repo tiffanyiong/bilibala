@@ -193,6 +193,9 @@ export interface VideoHistoryItem {
   youtubeId: string;
   title: string;
   thumbnailUrl: string | null;
+
+  // Computed: actual count of practice reports for this video (from practice_sessions)
+  reportCount: number;
 }
 
 // ============================================
@@ -214,6 +217,9 @@ export interface DbUserSubscription {
   current_period_start: string | null;
   current_period_end: string | null;
   credits_balance: number;
+  // Credit pack purchases (never expire, don't reset monthly)
+  ai_tutor_credit_minutes: number;
+  practice_session_credits: number;
   created_at: string;
   updated_at: string;
 }
