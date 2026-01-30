@@ -193,6 +193,9 @@ export interface VideoHistoryItem {
   youtubeId: string;
   title: string;
   thumbnailUrl: string | null;
+
+  // Computed: actual count of practice reports for this video (from practice_sessions)
+  reportCount: number;
 }
 
 // ============================================

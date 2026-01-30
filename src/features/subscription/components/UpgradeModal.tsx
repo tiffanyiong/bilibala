@@ -32,6 +32,7 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
     'AI Tutor': 'AI Tutor is a Pro feature. Upgrade to have live conversations with your AI language tutor.',
     'AI Tutor Limit Reached': "You've used all your AI Tutor minutes this month. Buy more minutes or wait until next month.",
     'PDF Export': 'PDF export is a Pro feature. Upgrade to download practice reports as PDFs.',
+    'Library Storage': "You've reached your library limit of 10 videos. Upgrade to Pro for unlimited video storage.",
   };
 
   const displayMessage = message || defaultMessages[feature] || `${feature} requires a Pro subscription.`;

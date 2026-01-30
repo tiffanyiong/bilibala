@@ -580,13 +580,73 @@ export async function getUserPracticeSessions(
 // ============================================
 
 /**
+ * Get the count of videos in user's library
+ */
+export async function getUserLibraryCount(userId: string): Promise<number> {
+  const { count, error } = await supabase
+    .from('user_library')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId);
+
+  if (error) {
+    console.error('[getUserLibraryCount] Error:', error);
+    return 0;
+  }
+
+  return count || 0;
+}
+
+/**
+ * Check if adding to library is allowed based on tier limits
+ * Returns { allowed: true } or { allowed: false, currentCount, limit }
+ */
+export async function checkLibraryLimit(
+  userId: string,
+  libraryLimit: number
+): Promise<{ allowed: boolean; currentCount: number; limit: number }> {
+  const currentCount = await getUserLibraryCount(userId);
+
+  // Check if this analysis is already in the library (re-adding doesn't count against limit)
+  return {
+    allowed: currentCount < libraryLimit || libraryLimit === Infinity,
+    currentCount,
+    limit: libraryLimit,
+  };
+}
+
+/**
  * Add a video analysis to user's library (upsert - won't duplicate)
  * Called when user analyzes a video or loads from cache
+ *
+ * @param userId - The user's ID
+ * @param analysisId - The analysis ID to add
+ * @param libraryLimit - The user's library limit (from TIER_LIMITS)
+ * @returns The library entry or null if failed/limit reached
  */
 export async function addToUserLibrary(
   userId: string,
-  analysisId: string
+  analysisId: string,
+  libraryLimit?: number
 ): Promise<DbUserLibrary | null> {
+  console.log('[addToUserLibrary] Attempting to add:', { userId, analysisId, libraryLimit });
+
+  // Check if already in library (allow updating existing entries)
+  const { data: existing } = await supabase
+    .from('user_library')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('analysis_id', analysisId)
+    .single();
+
+  // If not already in library and limit is specified, check the limit
+  if (!existing && libraryLimit !== undefined && libraryLimit !== Infinity) {
+    const { allowed, currentCount } = await checkLibraryLimit(userId, libraryLimit);
+    if (!allowed) {
+      console.log('[addToUserLibrary] Library limit reached:', { currentCount, limit: libraryLimit });
+      return null;
+    }
+  }
+
   const { data, error } = await supabase
     .from('user_library')
     .upsert(
@@ -604,10 +664,11 @@ export async function addToUserLibrary(
     .single();
 
   if (error) {
-    console.error('Error adding to user library:', error);
+    console.error('[addToUserLibrary] Error:', error);
     return null;
   }
 
+  console.log('[addToUserLibrary] Success:', data);
   return data as DbUserLibrary;
 }
 
@@ -637,10 +698,12 @@ export async function getLibraryEntry(
 
 /**
  * Get user's video library with full details (joins with cached_analyses and global_videos)
+ * Also includes hasReports flag indicating if user has practice sessions for each video
  */
 export async function getUserVideoLibrary(
   userId: string
 ): Promise<VideoHistoryItem[]> {
+  // First, get the library entries
   const { data, error } = await supabase
     .from('user_library')
     .select(`
@@ -672,6 +735,30 @@ export async function getUserVideoLibrary(
     return [];
   }
 
+  // Get all analysis IDs from the library
+  const analysisIds = (data || [])
+    .filter((item: any) => item.cached_analyses)
+    .map((item: any) => item.cached_analyses.id);
+
+  // Fetch practice session counts for all analysis IDs in one query
+  let reportCounts: Record<string, number> = {};
+  if (analysisIds.length > 0) {
+    const { data: sessions, error: sessionsError } = await supabase
+      .from('practice_sessions')
+      .select('analysis_id')
+      .eq('user_id', userId)
+      .in('analysis_id', analysisIds);
+
+    if (!sessionsError && sessions) {
+      // Count sessions per analysis_id
+      sessions.forEach((session: { analysis_id: string | null }) => {
+        if (session.analysis_id) {
+          reportCounts[session.analysis_id] = (reportCounts[session.analysis_id] || 0) + 1;
+        }
+      });
+    }
+  }
+
   // Transform the nested data into VideoHistoryItem format
   return (data || [])
     .filter((item: any) => item.cached_analyses && item.cached_analyses.global_videos)
@@ -691,6 +778,7 @@ export async function getUserVideoLibrary(
       youtubeId: item.cached_analyses.global_videos.youtube_id,
       title: item.cached_analyses.global_videos.title || 'Untitled Video',
       thumbnailUrl: item.cached_analyses.global_videos.thumbnail_url,
+      reportCount: reportCounts[item.cached_analyses.id] || 0,
     }));
 }
 

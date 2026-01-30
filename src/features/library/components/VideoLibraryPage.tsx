@@ -5,8 +5,9 @@ import { searchVideos } from '../../../shared/services/geminiService';
 import { useAuth } from '../../../shared/context/AuthContext';
 import { useSubscription } from '../../../shared/context/SubscriptionContext';
 import VideoCard, { VideoCardSkeleton } from './VideoCard';
-import FilterBar, { SortOrder } from './FilterBar';
+import FilterBar, { SortOrder, ReportsFilter } from './FilterBar';
 import PracticeReportsModal from './PracticeReportsModal';
+import { TIER_LIMITS } from '../../../shared/types/database';
 
 interface VideoLibraryPageProps {
   onSelectVideo: (video: VideoHistoryItem) => void;
@@ -28,6 +29,10 @@ const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({
   const [levelFilter, setLevelFilter] = useState<string | null>(null);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
+  const [reportsFilter, setReportsFilter] = useState<ReportsFilter>('all');
+
+  // Get library limits for the current tier
+  const libraryLimit = TIER_LIMITS[tier].videoLibraryMax;
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -45,9 +50,8 @@ const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({
       setError(null);
       getUserVideoLibrary(user.id)
         .then((data) => {
-          // Free tier: limit to most recent 10 videos
-          const limited = tier === 'free' ? data.slice(0, 10) : data;
-          setVideos(limited);
+          // Show all videos - no artificial UI limit
+          setVideos(data);
           setLoading(false);
         })
         .catch((err) => {
@@ -133,6 +137,13 @@ const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({
       result = result.filter(v => v.isFavorite);
     }
 
+    // Apply reports filter
+    if (reportsFilter === 'with_reports') {
+      result = result.filter(v => v.reportCount > 0);
+    } else if (reportsFilter === 'without_reports') {
+      result = result.filter(v => v.reportCount === 0);
+    }
+
     // Apply language/level filters
     result = result.filter((v) => {
       if (languageFilter && v.targetLang !== languageFilter) return false;
@@ -157,7 +168,7 @@ const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({
     }
 
     return result;
-  }, [videos, showFavoritesOnly, languageFilter, levelFilter, searchResults, sortOrder]);
+  }, [videos, showFavoritesOnly, reportsFilter, languageFilter, levelFilter, searchResults, sortOrder]);
 
   // Extract unique languages/levels for FilterBar
   const uniqueLanguages = useMemo(
@@ -176,7 +187,16 @@ const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({
         <div className="mb-8">
           <h1 className="text-3xl font-serif text-stone-800 mb-2">My Video Library</h1>
           <p className="text-stone-500">
-            {loading ? 'Loading...' : `${videos.length} video${videos.length !== 1 ? 's' : ''} in your library`}
+            {loading ? 'Loading...' : (
+              <>
+                {videos.length} video{videos.length !== 1 ? 's' : ''} in your library
+                {tier === 'free' && libraryLimit !== Infinity && (
+                  <span className="ml-2 text-stone-400">
+                    ({videos.length}/{libraryLimit} slots used)
+                  </span>
+                )}
+              </>
+            )}
           </p>
         </div>
 
@@ -220,6 +240,8 @@ const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({
               onFavoritesChange={setShowFavoritesOnly}
               sortOrder={sortOrder}
               onSortChange={setSortOrder}
+              reportsFilter={reportsFilter}
+              onReportsFilterChange={setReportsFilter}
             />
           )}
         </div>
