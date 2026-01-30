@@ -145,6 +145,48 @@ export async function getMonthlyUsage(
 }
 
 /**
+ * Deduct AI tutor credits from user's balance.
+ * Called when user uses AI tutor and has credits.
+ * Returns the number of minutes actually deducted.
+ */
+export async function deductAiTutorCredits(
+  userId: string,
+  minutes: number
+): Promise<number> {
+  const { data, error } = await supabase.rpc('deduct_ai_tutor_credits', {
+    p_user_id: userId,
+    p_minutes: minutes,
+  });
+
+  if (error) {
+    console.error('Error deducting AI tutor credits:', error);
+    return 0;
+  }
+
+  return data || 0;
+}
+
+/**
+ * Deduct practice session credits from user's balance.
+ * Called when free user uses a practice session and has credits.
+ * Returns 1 if deducted, 0 if no credits available.
+ */
+export async function deductPracticeCredits(
+  userId: string
+): Promise<number> {
+  const { data, error } = await supabase.rpc('deduct_practice_credits', {
+    p_user_id: userId,
+  });
+
+  if (error) {
+    console.error('Error deducting practice credits:', error);
+    return 0;
+  }
+
+  return data || 0;
+}
+
+/**
  * Check if a specific action is allowed based on tier and usage
  */
 export async function checkActionAllowed(

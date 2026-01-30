@@ -25,6 +25,9 @@ export const config = {
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
     proPriceId: process.env.STRIPE_PRO_PRICE_ID,
     proAnnualPriceId: process.env.STRIPE_PRO_ANNUAL_PRICE_ID,
+    // Credit pack price IDs (one-time payments)
+    starterPackPriceId: process.env.STRIPE_STARTER_PACK_PRICE_ID,
+    topupPriceId: process.env.STRIPE_TOPUP_PRICE_ID,
   },
   supabase: {
     url: process.env.SUPABASE_URL,
