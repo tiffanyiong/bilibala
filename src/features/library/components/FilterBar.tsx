@@ -70,30 +70,17 @@ const FilterBar: React.FC<FilterBarProps> = ({
 
       {/* Reports filter */}
       {onReportsFilterChange && (
-        <>
-          <button
-            onClick={() => onReportsFilterChange(reportsFilter === 'with_reports' ? 'all' : 'with_reports')}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors flex items-center gap-1 ${
-              reportsFilter === 'with_reports'
-                ? 'bg-emerald-600 text-white border-emerald-600'
-                : 'bg-stone-50 text-stone-600 border-stone-200 hover:bg-stone-100'
-            }`}
-          >
-            <ReportIcon />
-            With Reports
-          </button>
-          <button
-            onClick={() => onReportsFilterChange(reportsFilter === 'without_reports' ? 'all' : 'without_reports')}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors flex items-center gap-1 ${
-              reportsFilter === 'without_reports'
-                ? 'bg-stone-600 text-white border-stone-600'
-                : 'bg-stone-50 text-stone-600 border-stone-200 hover:bg-stone-100'
-            }`}
-          >
-            <NoReportIcon />
-            No Reports
-          </button>
-        </>
+        <button
+          onClick={() => onReportsFilterChange(reportsFilter === 'with_reports' ? 'all' : 'with_reports')}
+          className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors flex items-center gap-1 ${
+            reportsFilter === 'with_reports'
+              ? 'bg-emerald-600 text-white border-emerald-600'
+              : 'bg-stone-50 text-stone-600 border-stone-200 hover:bg-stone-100'
+          }`}
+        >
+          <ReportIcon />
+          With Reports
+        </button>
       )}
 
       {/* Divider */}
@@ -172,13 +159,6 @@ const ReportIcon = () => (
     <polyline points="14 2 14 8 20 8"></polyline>
     <line x1="16" y1="13" x2="8" y2="13"></line>
     <line x1="16" y1="17" x2="8" y2="17"></line>
-  </svg>
-);
-
-const NoReportIcon = () => (
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-    <polyline points="14 2 14 8 20 8"></polyline>
   </svg>
 );
 
