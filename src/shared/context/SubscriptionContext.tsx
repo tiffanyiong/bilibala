@@ -13,6 +13,7 @@ import {
   recordUsage,
 } from '../services/subscriptionDatabase';
 import { getBackendOrigin } from '../services/backend';
+import { fetchAppConfig } from '../config/aiTutorConfig';
 
 interface SubscriptionContextType {
   // Subscription info
@@ -33,6 +34,8 @@ interface SubscriptionContextType {
   videosLimit: number;
   practiceSessionsLimit: number;
   aiTutorMinutesLimit: number;
+  /** Minutes remaining in the current month's AI tutor allowance */
+  aiTutorRemainingMinutes: number;
 
   // Actions
   recordAction: (actionType: UsageActionType, metadata?: Record<string, unknown>) => Promise<boolean>;
@@ -74,6 +77,9 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
     const loadData = async () => {
       setIsLoading(true);
       try {
+        // Fetch app config from server (non-blocking, uses defaults if fails)
+        fetchAppConfig();
+
         const [sub, monthlyUsage] = await Promise.all([
           getOrCreateSubscription(user.id),
           getMonthlyUsage(user.id),
@@ -233,6 +239,7 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
   const canStartPractice = usage.practiceSessionsUsed < limits.practiceSessionsPerMonth;
   const canUseAiTutor = limits.aiTutorMinutesPerMonth > 0 && usage.aiTutorMinutesUsed < limits.aiTutorMinutesPerMonth;
   const canExportPdf = limits.pdfExport;
+  const aiTutorRemainingMinutes = Math.max(0, limits.aiTutorMinutesPerMonth - usage.aiTutorMinutesUsed);
 
   return (
     <SubscriptionContext.Provider value={{
@@ -247,6 +254,7 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
       videosLimit: limits.videosPerMonth,
       practiceSessionsLimit: limits.practiceSessionsPerMonth,
       aiTutorMinutesLimit: limits.aiTutorMinutesPerMonth,
+      aiTutorRemainingMinutes,
       recordAction,
       refreshUsage,
       refreshSubscription,
