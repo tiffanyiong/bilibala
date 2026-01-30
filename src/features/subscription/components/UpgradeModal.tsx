@@ -85,6 +85,7 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
               '60 min/month AI Tutor conversations',
               'PDF report export',
               'Full video library access',
+              'Text translator (highlight to translate)',
             ].map(benefit => (
               <div key={benefit} className="flex items-center gap-2 text-xs text-stone-600">
                 <span className="text-green-600">✓</span>
