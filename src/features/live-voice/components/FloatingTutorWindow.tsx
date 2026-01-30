@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { VocabularyItem } from '../../../shared/types';
+import { useAuth } from '../../../shared/context/AuthContext';
 import { useSubscription } from '../../../shared/context/SubscriptionContext';
 import { useLiveVoice } from '../hooks/useLiveVoice';
+import { SESSION_MAX_MINUTES, WARNING_BEFORE_END_SECONDS } from '../../../shared/config/aiTutorConfig';
 import ControlBar from '../../../shared/components/ControlBar';
 import StatusPill from '../../../shared/components/StatusPill';
 import Transcript from '../../chat/components/Transcript';
@@ -79,7 +81,17 @@ const FloatingTutorWindow: React.FC<FloatingTutorWindowProps> = ({
   const dragStartRef = useRef({ x: 0, y: 0 });
   const positionRef = useRef({ x: 0, y: 0 });
 
-  const { recordAction } = useSubscription();
+  const { user } = useAuth();
+  const { recordAction, refreshUsage, usage, aiTutorMinutesLimit } = useSubscription();
+
+  const remainingMonthlySeconds = Math.max(0, (aiTutorMinutesLimit - usage.aiTutorMinutesUsed) * 60);
+
+  const handleLimitReached = useCallback((durationSecs: number, reason: 'session' | 'monthly') => {
+    const minutesUsed = Math.max(1, Math.ceil(durationSecs / 60));
+    recordAction('ai_tutor', { minutes_used: minutesUsed });
+    // End note is already set by stopSession in the hook
+    void reason; // reason is used by the hook for the end note
+  }, [recordAction]);
 
   const liveVoice = useLiveVoice({
     videoTitle,
@@ -88,7 +100,32 @@ const FloatingTutorWindow: React.FC<FloatingTutorWindowProps> = ({
     nativeLang,
     targetLang,
     level,
+    userId: user?.id ?? null,
+    maxSessionSeconds: SESSION_MAX_MINUTES * 60,
+    remainingMonthlySeconds,
+    warningBeforeEndSeconds: WARNING_BEFORE_END_SECONDS,
+    onLimitReached: handleLimitReached,
   });
+
+  // Guard: prevent starting a new session if monthly minutes are exhausted
+  const handleStartSession = useCallback(async () => {
+    if (remainingMonthlySeconds <= 0) {
+      // Close the tutor window — App.tsx will show the limit modal on next click
+      onClose();
+      return;
+    }
+    await liveVoice.startSession();
+  }, [remainingMonthlySeconds, liveVoice.startSession, onClose]);
+
+  // Refresh usage from DB after a session ends so the remaining minutes are accurate
+  const prevConnectedRef = useRef(false);
+  useEffect(() => {
+    if (prevConnectedRef.current && !liveVoice.isConnected) {
+      // Session just ended — refresh usage from DB (server already recorded it)
+      refreshUsage();
+    }
+    prevConnectedRef.current = liveVoice.isConnected;
+  }, [liveVoice.isConnected, refreshUsage]);
 
   // Calculate responsive window size
   const calculateWindowSize = useCallback(() => {
@@ -313,6 +350,11 @@ const FloatingTutorWindow: React.FC<FloatingTutorWindowProps> = ({
           <span className="text-xs text-stone-500 tabular-nums">
             {liveVoice.formatDuration(liveVoice.durationSeconds)}
           </span>
+          {liveVoice.timeWarning && (
+            <span className="text-xs font-medium text-amber-600 tabular-nums">
+              {liveVoice.timeWarning}
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-1">
@@ -397,7 +439,7 @@ const FloatingTutorWindow: React.FC<FloatingTutorWindowProps> = ({
             isMuted={liveVoice.isMuted}
             isHintsLoading={liveVoice.isHintsLoading}
             onToggleMute={liveVoice.toggleMute}
-            onStartSession={liveVoice.startSession}
+            onStartSession={handleStartSession}
             onStopSession={liveVoice.stopSession}
             onManualHint={liveVoice.requestHint}
           />

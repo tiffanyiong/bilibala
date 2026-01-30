@@ -55,7 +55,7 @@ const App: React.FC = () => {
   }, []);
 
   const { user } = useAuth();
-  const { canAddVideo, canStartPractice, canUseAiTutor, canExportPdf, recordAction, tier, syncWithStripe } = useSubscription();
+  const { canAddVideo, canStartPractice, canUseAiTutor, canExportPdf, recordAction, tier, syncWithStripe, aiTutorRemainingMinutes } = useSubscription();
 
   // Sync subscription with Stripe when returning from checkout (handles missed webhooks)
   // This runs at app level to catch success redirects regardless of which page user lands on
@@ -791,8 +791,15 @@ const App: React.FC = () => {
       return;
     }
     if (!canUseAiTutor) {
-      setUpgradeFeature('AI Tutor');
-      setShowUpgradeModal(true);
+      if (aiTutorRemainingMinutes <= 0) {
+        // Pro user who exhausted monthly limit — don't show upgrade modal
+        setUpgradeFeature('AI Tutor Limit Reached');
+        setShowUpgradeModal(true);
+      } else {
+        // Free user — show upgrade to pro
+        setUpgradeFeature('AI Tutor');
+        setShowUpgradeModal(true);
+      }
       return;
     }
     setShowTutorWindow(true);

@@ -24,6 +24,16 @@ export interface UseLiveVoiceConfig {
   nativeLang: string;
   targetLang: string;
   level: string;
+  /** User ID for server-side usage tracking */
+  userId: string | null;
+  /** Max seconds allowed for this session (e.g. 40 min = 2400) */
+  maxSessionSeconds: number;
+  /** Seconds remaining in monthly allowance */
+  remainingMonthlySeconds: number;
+  /** Seconds before the limit to show a warning */
+  warningBeforeEndSeconds: number;
+  /** Called when the session is auto-stopped due to a limit */
+  onLimitReached?: (durationSeconds: number, reason: 'session' | 'monthly') => void;
 }
 
 export interface UseLiveVoiceReturn {
@@ -35,6 +45,8 @@ export interface UseLiveVoiceReturn {
   error: string | null;
   callEndedNote: string | null;
   durationSeconds: number;
+  /** Warning text shown when approaching a time limit, e.g. "1:00 remaining" */
+  timeWarning: string | null;
 
   // Transcript
   history: HistoryItem[];
@@ -63,7 +75,14 @@ export interface UseLiveVoiceReturn {
 }
 
 export function useLiveVoice(config: UseLiveVoiceConfig): UseLiveVoiceReturn {
-  const { videoTitle, summary, vocabulary, nativeLang, targetLang, level } = config;
+  const {
+    videoTitle, summary, vocabulary, nativeLang, targetLang, level, userId,
+    maxSessionSeconds, remainingMonthlySeconds, warningBeforeEndSeconds,
+    onLimitReached,
+  } = config;
+
+  // Effective time cap: whichever limit is lower
+  const effectiveMaxSeconds = Math.min(maxSessionSeconds, remainingMonthlySeconds);
 
   const debug = import.meta.env.DEV;
   const dlog = (...args: unknown[]) => {
@@ -79,6 +98,7 @@ export function useLiveVoice(config: UseLiveVoiceConfig): UseLiveVoiceReturn {
   const [error, setError] = useState<string | null>(null);
   const [callEndedNote, setCallEndedNote] = useState<string | null>(null);
   const [durationSeconds, setDurationSeconds] = useState(0);
+  const [timeWarning, setTimeWarning] = useState<string | null>(null);
 
   // --- Transcript States ---
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -112,6 +132,9 @@ export function useLiveVoice(config: UseLiveVoiceConfig): UseLiveVoiceReturn {
   const hasSetupCompleteRef = useRef(false);
   const mountedRef = useRef(true);
   const lastDurationRef = useRef(0);
+  const stopSessionRef = useRef<() => void>(() => {});
+  const onLimitReachedRef = useRef(onLimitReached);
+  onLimitReachedRef.current = onLimitReached;
 
   const currentInputRef = useRef('');
   const currentOutputRef = useRef('');
@@ -137,7 +160,7 @@ export function useLiveVoice(config: UseLiveVoiceConfig): UseLiveVoiceReturn {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }, [history, realtimeInput, realtimeOutput]);
 
-  // Duration timer
+  // Duration timer with limit enforcement
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
     if (isConnected) {
@@ -145,17 +168,47 @@ export function useLiveVoice(config: UseLiveVoiceConfig): UseLiveVoiceReturn {
         setDurationSeconds(prev => {
           const next = prev + 1;
           lastDurationRef.current = next;
+
+          const secondsLeft = effectiveMaxSeconds - next;
+
+          // Auto-stop when limit reached (only if there's a valid cap)
+          if (effectiveMaxSeconds > 0 && next >= effectiveMaxSeconds) {
+            const reason: 'session' | 'monthly' = remainingMonthlySeconds <= maxSessionSeconds ? 'monthly' : 'session';
+            // Defer stop to avoid state update during render
+            setTimeout(() => {
+              stopSessionRef.current();
+              const durLabel = ` • ${formatDuration(next)}`;
+              const reasonLabel = reason === 'monthly'
+                ? 'Monthly limit reached'
+                : `Session limit reached — ${Math.floor(maxSessionSeconds / 60)} min max`;
+              setCallEndedNote(`${reasonLabel}${durLabel}`);
+              onLimitReachedRef.current?.(next, reason);
+            }, 0);
+            setTimeWarning(null);
+            return next;
+          }
+
+          // Show warning when approaching limit
+          if (effectiveMaxSeconds > 0 && secondsLeft <= warningBeforeEndSeconds && secondsLeft > 0) {
+            const m = Math.floor(secondsLeft / 60);
+            const s = secondsLeft % 60;
+            setTimeWarning(`${m}:${s.toString().padStart(2, '0')} remaining`);
+          } else {
+            setTimeWarning(null);
+          }
+
           return next;
         });
       }, 1000);
     } else {
       setDurationSeconds(0);
+      setTimeWarning(null);
       if (durationSeconds > 0) {
         lastDurationRef.current = durationSeconds;
       }
     }
     return () => clearInterval(interval);
-  }, [isConnected, durationSeconds]);
+  }, [isConnected, durationSeconds, effectiveMaxSeconds, maxSessionSeconds, remainingMonthlySeconds, warningBeforeEndSeconds]);
 
   // Mount tracking
   mountedRef.current = true;
@@ -226,6 +279,9 @@ export function useLiveVoice(config: UseLiveVoiceConfig): UseLiveVoiceReturn {
     }, 0);
   }, [showEndNote, durationSeconds]);
 
+  // Keep ref in sync so the duration timer can call stopSession without forward-reference issues
+  stopSessionRef.current = stopSession;
+
   const startSession = useCallback(async () => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       console.warn("⚠️ Session already active. Ignoring start request.");
@@ -286,7 +342,7 @@ export function useLiveVoice(config: UseLiveVoiceConfig): UseLiveVoiceReturn {
       ws.onopen = () => {
         const startMsg = {
           type: 'start',
-          payload: { videoTitle, summary, vocabulary, nativeLang, targetLang, level },
+          payload: { videoTitle, summary, vocabulary, nativeLang, targetLang, level, userId },
         };
         try {
           ws.send(JSON.stringify(startMsg));
@@ -298,7 +354,7 @@ export function useLiveVoice(config: UseLiveVoiceConfig): UseLiveVoiceReturn {
       ws.onmessage = async (ev) => {
         if (!mountedRef.current) return;
 
-        let msg: { type: string; status?: string; code?: number; error?: string; serverContent?: {
+        let msg: { type: string; status?: string; code?: number; error?: string; secondsLeft?: number; reason?: string; durationSeconds?: number; serverContent?: {
           interrupted?: boolean;
           modelTurn?: { parts?: Array<{ inlineData?: { data?: string } }> };
           inputTranscription?: { text: string };
@@ -342,6 +398,37 @@ export function useLiveVoice(config: UseLiveVoiceConfig): UseLiveVoiceReturn {
         if (msg.type === 'error') {
           console.error("Server Error:", msg.error);
           if (!isStoppingRef.current) setError(String(msg.error || 'Live error'));
+          return;
+        }
+
+        // Server-side time warning (countdown before limit)
+        if (msg.type === 'time_warning') {
+          const secs = msg.secondsLeft ?? 0;
+          const m = Math.floor(secs / 60);
+          const s = secs % 60;
+          setTimeWarning(`${m}:${s.toString().padStart(2, '0')} remaining`);
+          return;
+        }
+
+        // Server-side session limit reached — server will disconnect
+        if (msg.type === 'session_limit') {
+          const dur = msg.durationSeconds ?? lastDurationRef.current;
+          const reason = msg.reason as 'session' | 'monthly' ?? 'session';
+          const durLabel = ` • ${formatDuration(dur)}`;
+          const reasonLabel = reason === 'monthly'
+            ? 'Monthly limit reached'
+            : `Session limit reached — ${Math.floor(maxSessionSeconds / 60)} min max`;
+          setCallEndedNote(`${reasonLabel}${durLabel}`);
+          setTimeWarning(null);
+          // Immediately stop any playing audio
+          activeSourcesRef.current.forEach(source => {
+            try { source.stop(); } catch {}
+          });
+          activeSourcesRef.current.clear();
+          audioQueueRef.current = Promise.resolve();
+          setIsAiSpeaking(false);
+          onLimitReachedRef.current?.(dur, reason);
+          // Server will close the connection — ws.onclose handles cleanup
           return;
         }
 
@@ -478,7 +565,17 @@ export function useLiveVoice(config: UseLiveVoiceConfig): UseLiveVoiceReturn {
 
       ws.onclose = (e) => {
         if (!mountedRef.current) return;
+
+        // Stop any audio still playing (covers server-initiated close)
+        activeSourcesRef.current.forEach(source => {
+          try { source.stop(); } catch {}
+        });
+        activeSourcesRef.current.clear();
+        audioQueueRef.current = Promise.resolve();
+        nextStartTimeRef.current = 0;
+
         setIsConnected(false);
+        setIsAiSpeaking(false);
         if (isStoppingRef.current || e.code === 1000) {
           showEndNote({ durationSecs: lastDurationRef.current || durationSeconds });
         } else if (!isStoppingRef.current) {
@@ -506,6 +603,7 @@ export function useLiveVoice(config: UseLiveVoiceConfig): UseLiveVoiceReturn {
         processor.onaudioprocess = (e) => {
           if (isMutedRef.current) return;
           const inputData = e.inputBuffer.getChannelData(0);
+
           const pcmBytes = createPcm16kArrayBuffer(inputData, actualSampleRate);
           const sock = wsRef.current;
           if (!sock || sock.readyState !== WebSocket.OPEN || !liveReadyRef.current) {
@@ -603,6 +701,7 @@ export function useLiveVoice(config: UseLiveVoiceConfig): UseLiveVoiceReturn {
     error,
     callEndedNote,
     durationSeconds,
+    timeWarning,
 
     // Transcript
     history,
