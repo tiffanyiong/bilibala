@@ -135,6 +135,11 @@ const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ onOpenAuthModal }) 
       free: `Last ${freeLimits.videoLibraryMax}`,
       pro: 'Unlimited',
     },
+    {
+      name: 'Text translator',
+      free: '—',
+      pro: '✓',
+    },
   ];
 
   return (

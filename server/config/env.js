@@ -33,6 +33,9 @@ export const config = {
     url: process.env.SUPABASE_URL,
     serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
   },
+  deepl: {
+    apiKey: process.env.DEEPL_API_KEY,
+  },
 };
 
 // Validate required environment variables

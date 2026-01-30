@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { UI_TRANSLATIONS } from '../../../shared/constants';
 import { TopicPoint, VocabularyItem } from '../../../shared/types';
 
@@ -101,38 +101,55 @@ const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, t
     });
   }, [transcript, currentTime]);
 
-  // Auto-scroll logic
+  // Scroll the active transcript element to the center of the container only
+  const isProgrammaticScroll = useRef(false);
+
+  const scrollToActive = useCallback(() => {
+    const container = scrollContainerRef.current;
+    const activeEl = activeTranscriptRef.current;
+    if (!container || !activeEl) return;
+
+    const containerRect = container.getBoundingClientRect();
+    const activeRect = activeEl.getBoundingClientRect();
+    // Calculate offset to center the active element within the container
+    const offset = activeRect.top - containerRect.top - (containerRect.height / 2) + (activeRect.height / 2);
+
+    isProgrammaticScroll.current = true;
+    container.scrollBy({ top: offset, behavior: 'smooth' });
+    setTimeout(() => {
+        isProgrammaticScroll.current = false;
+    }, 500);
+  }, []);
+
+  // Auto-scroll when active transcript changes
   useEffect(() => {
     if (activeTab === 'transcript' && activeTranscriptRef.current && !isUserScrolling.current) {
-        activeTranscriptRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        scrollToActive();
     }
-  }, [activeTranscriptIndex, activeTab]);
+  }, [activeTranscriptIndex, activeTab, scrollToActive]);
 
   const handleScroll = () => {
+    // Ignore scroll events triggered by programmatic scrollIntoView
+    if (isProgrammaticScroll.current) return;
+
     if (!scrollContainerRef.current || !activeTranscriptRef.current) return;
 
     const container = scrollContainerRef.current;
     const activeEl = activeTranscriptRef.current;
-    
+
     const containerRect = container.getBoundingClientRect();
     const activeRect = activeEl.getBoundingClientRect();
-    
+
     // Check if active element is outside the visible area
     const isOutside = activeRect.bottom < containerRect.top || activeRect.top > containerRect.bottom;
-    
+
     if (isOutside) {
         setShowLocateBtn(true);
         isUserScrolling.current = true;
     } else {
         setShowLocateBtn(false);
-        // We don't automatically set isUserScrolling to false here, 
-        // because we want to wait for user to explicitly click "Locate" 
-        // to resume auto-scrolling if they were just scrolling around.
-        // Or we can reset it if they scroll BACK to the element manually.
-        if (!isOutside) {
-             // If they manually scrolled back, re-enable auto-scroll? 
-             // Let's keep it simple: once detached, stay detached until button click.
-        }
+        // User scrolled back to the active element, re-enable auto-scroll
+        isUserScrolling.current = false;
     }
   };
 
@@ -140,7 +157,7 @@ const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, t
       if (activeTranscriptRef.current) {
           isUserScrolling.current = false;
           setShowLocateBtn(false);
-          activeTranscriptRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          scrollToActive();
       }
   };
 
