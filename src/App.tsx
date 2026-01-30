@@ -19,10 +19,12 @@ import UpgradeModal from './features/subscription/components/UpgradeModal';
 import {
   addToUserLibrary,
   dbAnalysisToContentAnalysis,
+  getAnyCachedAnalysisForYoutubeId,
   getCachedAnalysis,
   getCachedAnalysisById,
   getOrCreateVideo,
   getPracticeTopicsForAnalysis,
+  getUserVideoLibrary,
   saveCachedAnalysis,
   savePracticeTopicsFromAnalysis,
   toggleLibraryFavorite,
@@ -54,8 +56,8 @@ const App: React.FC = () => {
     });
   }, []);
 
-  const { user } = useAuth();
-  const { canAddVideo, canStartPractice, canUseAiTutor, canExportPdf, recordAction, tier, syncWithStripe, aiTutorRemainingMinutes } = useSubscription();
+  const { user, loading: authLoading } = useAuth();
+  const { canAddVideo, canStartPractice, canUseAiTutor, canExportPdf, recordAction, tier, syncWithStripe, aiTutorRemainingMinutes, createCreditCheckout } = useSubscription();
 
   // Sync subscription with Stripe when returning from checkout (handles missed webhooks)
   // This runs at app level to catch success redirects regardless of which page user lands on
@@ -81,6 +83,8 @@ const App: React.FC = () => {
 
   const [appState, setAppState] = useState<AppState>(AppState.LANDING);
   const [videoUrl, setVideoUrl] = useState('');
+  // Video ID to load from URL (when visiting a direct video link)
+  const [pendingVideoIdFromUrl, setPendingVideoIdFromUrl] = useState<string | null>(null);
 
   // Navigate back to landing when user signs out
   const prevUserRef = useRef(user);
@@ -227,8 +231,13 @@ const App: React.FC = () => {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [videoData, activePracticeTopic, currentReportsVideo]);
 
+  // Track if app has been initialized (to prevent URL sync on first render)
+  const isInitializedRef = useRef(false);
+
   // Sync State -> URL path
   useEffect(() => {
+    // Skip on initial render - let the initialization effect handle routing first
+    if (!isInitializedRef.current) return;
     if (appState === AppState.LOADING) return;
 
     const currentPath = window.location.pathname;
@@ -265,18 +274,21 @@ const App: React.FC = () => {
     // Handle library route directly
     if (route.type === 'library') {
       setAppState(AppState.VIDEO_LIBRARY);
+      isInitializedRef.current = true;
       return;
     }
 
     // Handle subscription route directly
     if (route.type === 'subscription') {
       setAppState(AppState.SUBSCRIPTION);
+      isInitializedRef.current = true;
       return;
     }
 
     // Handle profile route directly
     if (route.type === 'profile') {
       setAppState(AppState.PROFILE);
+      isInitializedRef.current = true;
       return;
     }
 
@@ -284,6 +296,7 @@ const App: React.FC = () => {
     if (route.type === 'reports' || route.type === 'report-detail') {
       setAppState(AppState.VIDEO_LIBRARY);
       window.history.replaceState(null, '', '/library');
+      isInitializedRef.current = true;
       return;
     }
 
@@ -292,47 +305,193 @@ const App: React.FC = () => {
       try {
         const p = JSON.parse(saved);
         if (p.videoData) {
-            setVideoUrl(p.videoUrl || '');
-            setNativeLang(p.nativeLang || 'Chinese (Mandarin - 中文)');
-            setTargetLang(p.targetLang || 'English');
-            setLevel(p.level || 'Easy');
-            setVideoData(p.videoData);
-            setSummary(p.summary || '');
-            setTranslatedSummary(p.translatedSummary || '');
-            setTopics(p.topics || []);
-            setVocabulary(p.vocabulary || []);
-            setTranscript(p.transcript || []);
-            setDiscussionTopics(p.discussionTopics || []);
-            setSelectedTopics(p.selectedTopics || []);
-            setCurrentAnalysisId(p.currentAnalysisId || null);
+            // Check if URL contains a video ID that matches saved data BEFORE loading state
+            const shouldRestoreSavedState =
+              (route.type === 'dashboard' && route.videoId === p.videoData.id) ||
+              (route.type === 'practice' && route.videoId === p.videoData.id) ||
+              (route.type === 'landing'); // No video in URL, restore saved video
 
-            // Check if URL contains a video ID that matches saved data
-            if (route.type === 'dashboard' && route.videoId === p.videoData.id) {
-              setAppState(AppState.DASHBOARD);
-            } else if (route.type === 'practice' && route.videoId === p.videoData.id) {
-              // Can't restore practice without active topic, go to dashboard
-              setAppState(AppState.DASHBOARD);
-              window.history.replaceState(null, '', `/${p.videoData.id}`);
-            } else if (route.type === 'landing') {
-              // No video ID in URL, restore to dashboard with saved video
-              setAppState(AppState.DASHBOARD);
+            if (shouldRestoreSavedState) {
+              // URL matches saved data OR no video in URL - restore state
+              setVideoUrl(p.videoUrl || '');
+              setNativeLang(p.nativeLang || 'Chinese (Mandarin - 中文)');
+              setTargetLang(p.targetLang || 'English');
+              setLevel(p.level || 'Easy');
+              setVideoData(p.videoData);
+              setSummary(p.summary || '');
+              setTranslatedSummary(p.translatedSummary || '');
+              setTopics(p.topics || []);
+              setVocabulary(p.vocabulary || []);
+              setTranscript(p.transcript || []);
+              setDiscussionTopics(p.discussionTopics || []);
+              setSelectedTopics(p.selectedTopics || []);
+              setCurrentAnalysisId(p.currentAnalysisId || null);
+
+              if (route.type === 'dashboard' && route.videoId === p.videoData.id) {
+                setAppState(AppState.DASHBOARD);
+              } else if (route.type === 'practice' && route.videoId === p.videoData.id) {
+                // Can't restore practice without active topic, go to dashboard
+                setAppState(AppState.DASHBOARD);
+                window.history.replaceState(null, '', `/${p.videoData.id}`);
+              } else {
+                // No video ID in URL (landing), restore to dashboard with saved video
+                setAppState(AppState.DASHBOARD);
+              }
+              isInitializedRef.current = true;
+              return;
             } else {
-              // URL video ID doesn't match saved data - go to landing
-              setAppState(AppState.LANDING);
-              window.history.replaceState(null, '', '/');
+              // URL video ID doesn't match saved data - try to load from library
+              // Don't load the old video data
+              localStorage.removeItem(STORAGE_KEY);
+              setPendingVideoIdFromUrl(route.videoId);
+              setAppState(AppState.LOADING);
+              setLoadingText('Loading video...');
+              isInitializedRef.current = true;
+              return;
             }
-            return;
         }
       } catch (e) {
           console.error("Failed to hydrate state", e);
       }
     }
 
-    // No saved state - if URL has a video ID, redirect to landing
+    // No saved state - if URL has a video ID, try to load from library
     if (route.type === 'dashboard' || route.type === 'practice') {
-      window.history.replaceState(null, '', '/');
+      setPendingVideoIdFromUrl(route.videoId);
+      setAppState(AppState.LOADING);
+      setLoadingText('Loading video...');
+      isInitializedRef.current = true;
+      return;
     }
+
+    // Mark as initialized so URL sync effect can start working
+    isInitializedRef.current = true;
   }, []);
+
+  // Effect to load video from URL when visiting a direct link
+  useEffect(() => {
+    if (!pendingVideoIdFromUrl) return;
+
+    // Wait for auth to finish loading before making decisions
+    if (authLoading) return;
+
+    const loadVideoFromUrl = async () => {
+      // If user is logged in, try to find video in their library
+      if (user) {
+        try {
+          const library = await getUserVideoLibrary(user.id);
+          const videoInLibrary = library.find(v => v.youtubeId === pendingVideoIdFromUrl);
+
+          if (videoInLibrary) {
+            // Found in library - load it
+            const videoUrl = `https://www.youtube.com/watch?v=${videoInLibrary.youtubeId}`;
+            setVideoUrl(videoUrl);
+            setNativeLang(videoInLibrary.nativeLang);
+            setTargetLang(videoInLibrary.targetLang);
+            setLevel(videoInLibrary.level);
+            setVideoData({
+              id: videoInLibrary.youtubeId,
+              url: videoUrl,
+              title: videoInLibrary.title,
+            });
+
+            const cachedAnalysis = await getCachedAnalysisById(videoInLibrary.analysisId);
+            if (cachedAnalysis) {
+              const analysis = dbAnalysisToContentAnalysis(cachedAnalysis);
+              setSummary(analysis.summary);
+              setTranslatedSummary(analysis.translatedSummary || '');
+              setTopics(analysis.topics);
+              setVocabulary(analysis.vocabulary);
+              setTranscript(analysis.transcript || []);
+              setCurrentAnalysisId(videoInLibrary.analysisId);
+
+              const dbTopics = await getPracticeTopicsForAnalysis(videoInLibrary.analysisId);
+              if (dbTopics.length > 0 && analysis.discussionTopics) {
+                const topicsWithIds = analysis.discussionTopics.map(topic => {
+                  const dbTopic = dbTopics.find(dt => dt.topic === topic.topic);
+                  if (dbTopic) {
+                    return { ...topic, topicId: dbTopic.id, questionId: dbTopic.questionId };
+                  }
+                  return topic;
+                });
+                setDiscussionTopics(topicsWithIds);
+              } else {
+                setDiscussionTopics(analysis.discussionTopics || []);
+              }
+
+              setLibraryEntry({
+                libraryId: videoInLibrary.libraryId,
+                isFavorite: videoInLibrary.isFavorite,
+              });
+
+              setPendingVideoIdFromUrl(null);
+              setAppState(AppState.DASHBOARD);
+              return;
+            }
+          }
+        } catch (err) {
+          console.error('Error loading video from library:', err);
+        }
+      }
+
+      // Not found in user's library - check if video exists globally (analyzed by anyone)
+      try {
+        const globalAnalysis = await getAnyCachedAnalysisForYoutubeId(pendingVideoIdFromUrl);
+        if (globalAnalysis) {
+          // Found a cached analysis - load it
+          const videoUrl = `https://www.youtube.com/watch?v=${pendingVideoIdFromUrl}`;
+          setVideoUrl(videoUrl);
+          setNativeLang(globalAnalysis.native_lang);
+          setTargetLang(globalAnalysis.target_lang);
+          setLevel(globalAnalysis.level);
+          setVideoData({
+            id: pendingVideoIdFromUrl,
+            url: videoUrl,
+            title: globalAnalysis.video_title,
+          });
+
+          const analysis = dbAnalysisToContentAnalysis(globalAnalysis);
+          setSummary(analysis.summary);
+          setTranslatedSummary(analysis.translatedSummary || '');
+          setTopics(analysis.topics);
+          setVocabulary(analysis.vocabulary);
+          setTranscript(analysis.transcript || []);
+          setCurrentAnalysisId(globalAnalysis.id);
+
+          const dbTopics = await getPracticeTopicsForAnalysis(globalAnalysis.id);
+          if (dbTopics.length > 0 && analysis.discussionTopics) {
+            const topicsWithIds = analysis.discussionTopics.map(topic => {
+              const dbTopic = dbTopics.find(dt => dt.topic === topic.topic);
+              if (dbTopic) {
+                return { ...topic, topicId: dbTopic.id, questionId: dbTopic.questionId };
+              }
+              return topic;
+            });
+            setDiscussionTopics(topicsWithIds);
+          } else {
+            setDiscussionTopics(analysis.discussionTopics || []);
+          }
+
+          // Don't auto-add to library - let user choose to save it
+          // This shows "Save to Library" button instead of "Favorite"
+          setLibraryEntry(null);
+
+          setPendingVideoIdFromUrl(null);
+          setAppState(AppState.DASHBOARD);
+          return;
+        }
+      } catch (err) {
+        console.error('Error checking global analysis:', err);
+      }
+
+      // Video has never been analyzed - go to landing
+      setPendingVideoIdFromUrl(null);
+      setAppState(AppState.LANDING);
+      window.history.replaceState(null, '', '/');
+    };
+
+    loadVideoFromUrl();
+  }, [pendingVideoIdFromUrl, user, authLoading]);
 
   useEffect(() => {
     if (videoData) {
@@ -791,12 +950,14 @@ const App: React.FC = () => {
       return;
     }
     if (!canUseAiTutor) {
-      if (aiTutorRemainingMinutes <= 0) {
-        // Pro user who exhausted monthly limit — don't show upgrade modal
+      // Check if this is a Pro user who exhausted their monthly limit + credits
+      // vs a Free user who has no access or exhausted their credits
+      if (tier === 'pro' && aiTutorRemainingMinutes <= 0) {
+        // Pro user who exhausted monthly limit + credits — show top-up option
         setUpgradeFeature('AI Tutor Limit Reached');
         setShowUpgradeModal(true);
       } else {
-        // Free user — show upgrade to pro
+        // Free user (with or without exhausted credits) — show upgrade to Pro with Starter Pack option
         setUpgradeFeature('AI Tutor');
         setShowUpgradeModal(true);
       }
@@ -1091,7 +1252,16 @@ const App: React.FC = () => {
           setShowUpgradeModal(false);
           setAppState(AppState.SUBSCRIPTION);
         }}
+        onBuyCredits={async () => {
+          setShowUpgradeModal(false);
+          const packType = tier === 'pro' ? 'topup' : 'starter';
+          const url = await createCreditCheckout(packType);
+          if (url) {
+            window.location.href = url;
+          }
+        }}
         feature={upgradeFeature}
+        tier={tier}
       />
 
       {/* Usage Limit Modal */}

@@ -65,7 +65,13 @@ router.post('/subscriptions/create-checkout', async (req, res) => {
     }
 
     // Create checkout session
-    const origin = req.body?.origin || req.headers.origin || 'http://localhost:5173';
+    const origin = req.body?.origin || req.headers.origin || 'http://localhost:3000';
+    console.log('[Pro Checkout] Origin detection:', {
+      bodyOrigin: req.body?.origin,
+      headerOrigin: req.headers.origin,
+      finalOrigin: origin,
+      successUrl: `${origin}/subscription?success=true`,
+    });
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       mode: 'subscription',
@@ -81,6 +87,104 @@ router.post('/subscriptions/create-checkout', async (req, res) => {
   } catch (error) {
     console.error('Error creating checkout session:', error);
     res.status(500).json({ error: 'Failed to create checkout session' });
+  }
+});
+
+// ============================================
+// POST /api/subscriptions/create-credit-checkout
+// Create a Stripe Checkout session for credit pack purchase (one-time payment)
+// ============================================
+router.post('/subscriptions/create-credit-checkout', async (req, res) => {
+  try {
+    if (!stripe) {
+      return res.status(500).json({ error: 'Stripe not configured' });
+    }
+
+    const user = await getUserFromToken(req);
+    if (!user) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { packType = 'starter' } = req.body; // 'starter' or 'topup'
+
+    // Determine price ID based on pack type
+    let priceId;
+    if (packType === 'topup') {
+      priceId = config.stripe.topupPriceId;
+    } else {
+      priceId = config.stripe.starterPackPriceId;
+    }
+
+    if (!priceId) {
+      return res.status(500).json({ error: `Stripe price ID for ${packType} not configured` });
+    }
+
+    // For topup, verify user is Pro (optional: you can allow anyone to buy credits)
+    if (packType === 'topup') {
+      const { data: subscription } = await supabaseAdmin
+        .from('user_subscriptions')
+        .select('tier')
+        .eq('user_id', user.id)
+        .single();
+
+      if (subscription?.tier !== 'pro') {
+        return res.status(400).json({ error: 'Top-up is only available for Pro users. Use Starter Pack instead.' });
+      }
+    }
+
+    // Check if user already has a Stripe customer ID
+    const { data: subscription } = await supabaseAdmin
+      .from('user_subscriptions')
+      .select('stripe_customer_id')
+      .eq('user_id', user.id)
+      .single();
+
+    let customerId = subscription?.stripe_customer_id;
+
+    // Create or retrieve Stripe customer
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email: user.email,
+        metadata: {
+          supabase_user_id: user.id,
+        },
+      });
+      customerId = customer.id;
+
+      // Save customer ID
+      await supabaseAdmin
+        .from('user_subscriptions')
+        .upsert({
+          user_id: user.id,
+          stripe_customer_id: customerId,
+          tier: 'free',
+        }, { onConflict: 'user_id' });
+    }
+
+    // Create checkout session for one-time payment
+    const origin = req.body?.origin || req.headers.origin || 'http://localhost:3000';
+    console.log('[Credit Checkout] Origin detection:', {
+      bodyOrigin: req.body?.origin,
+      headerOrigin: req.headers.origin,
+      finalOrigin: origin,
+      successUrl: `${origin}/subscription?credit_success=true&pack=${packType}`,
+    });
+    const session = await stripe.checkout.sessions.create({
+      customer: customerId,
+      mode: 'payment', // One-time payment, not subscription
+      line_items: [{ price: priceId, quantity: 1 }],
+      success_url: `${origin}/subscription?credit_success=true&pack=${packType}`,
+      cancel_url: `${origin}/subscription?canceled=true`,
+      metadata: {
+        supabase_user_id: user.id,
+        pack_type: packType, // 'starter' or 'topup'
+      },
+    });
+
+    res.json({ url: session.url });
+  } catch (error) {
+    console.error('Error creating credit checkout session:', error);
+    res.status(500).json({ error: 'Failed to create credit checkout session' });
   }
 });
 
@@ -149,6 +253,8 @@ router.get('/subscriptions/status', async (req, res) => {
         tier: 'free',
         status: 'active',
         currentPeriodEnd: null,
+        aiTutorCreditMinutes: 0,
+        practiceSessionCredits: 0,
       });
     }
 
@@ -161,6 +267,8 @@ router.get('/subscriptions/status', async (req, res) => {
       status: subscription.subscription_status || 'active',
       currentPeriodEnd: subscription.current_period_end,
       stripeCustomerId: subscription.stripe_customer_id,
+      aiTutorCreditMinutes: subscription.ai_tutor_credit_minutes || 0,
+      practiceSessionCredits: subscription.practice_session_credits || 0,
     });
   } catch (error) {
     console.error('Error fetching subscription status:', error);
@@ -300,9 +408,57 @@ router.post('/subscriptions/webhook', async (req, res) => {
         const customerId = typeof session.customer === 'string'
           ? session.customer
           : session.customer?.id;
+        const packType = session.metadata?.pack_type; // 'starter' or 'topup' for credit purchases
 
-        console.log('[Webhook] checkout.session.completed', { userId, subscriptionId, customerId });
+        console.log('[Webhook] checkout.session.completed', { userId, subscriptionId, customerId, mode: session.mode, packType });
 
+        // Handle one-time credit pack purchase
+        if (session.mode === 'payment' && userId && packType) {
+          try {
+            // Determine credits to add based on pack type
+            let aiTutorMinutesToAdd = 0;
+            let practiceSessionsToAdd = 0;
+
+            if (packType === 'starter') {
+              aiTutorMinutesToAdd = 30;
+              practiceSessionsToAdd = 30;
+            } else if (packType === 'topup') {
+              aiTutorMinutesToAdd = 30;
+            }
+
+            // Add credits using the database function
+            const { error: rpcError } = await supabaseAdmin.rpc('add_credits', {
+              p_user_id: userId,
+              p_ai_tutor_minutes: aiTutorMinutesToAdd,
+              p_practice_sessions: practiceSessionsToAdd,
+            });
+
+            if (rpcError) {
+              console.error('[Webhook] Error adding credits via RPC:', rpcError);
+              // Fallback: direct update
+              await supabaseAdmin
+                .from('user_subscriptions')
+                .upsert({
+                  user_id: userId,
+                  stripe_customer_id: customerId,
+                  tier: 'free', // Don't change tier for credit purchase
+                  ai_tutor_credit_minutes: aiTutorMinutesToAdd,
+                  practice_session_credits: practiceSessionsToAdd,
+                  updated_at: new Date().toISOString(),
+                }, {
+                  onConflict: 'user_id',
+                  // Use raw SQL for incrementing
+                });
+            } else {
+              console.log('[Webhook] Successfully added credits:', { userId, packType, aiTutorMinutesToAdd, practiceSessionsToAdd });
+            }
+          } catch (err) {
+            console.error('[Webhook] Error processing credit purchase:', err.message);
+          }
+          break;
+        }
+
+        // Handle subscription checkout (existing logic)
         if (userId && subscriptionId) {
           try {
             const stripeSubscription = await stripe.subscriptions.retrieve(subscriptionId);

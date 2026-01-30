@@ -11,6 +11,8 @@ import {
   getOrCreateSubscription,
   getMonthlyUsage,
   recordUsage,
+  deductAiTutorCredits,
+  deductPracticeCredits,
 } from '../services/subscriptionDatabase';
 import { getBackendOrigin } from '../services/backend';
 import { fetchAppConfig } from '../config/aiTutorConfig';
@@ -24,6 +26,10 @@ interface SubscriptionContextType {
   // Usage data
   usage: MonthlyUsage;
 
+  // Credit balances (purchased, never expire)
+  aiTutorCreditMinutes: number;
+  practiceSessionCredits: number;
+
   // Computed permissions
   canAddVideo: boolean;
   canStartPractice: boolean;
@@ -34,8 +40,10 @@ interface SubscriptionContextType {
   videosLimit: number;
   practiceSessionsLimit: number;
   aiTutorMinutesLimit: number;
-  /** Minutes remaining in the current month's AI tutor allowance */
+  /** Minutes remaining in the current month's AI tutor allowance (monthly + credits) */
   aiTutorRemainingMinutes: number;
+  /** Monthly minutes remaining (not including credits) */
+  aiTutorMonthlyRemaining: number;
 
   // Actions
   recordAction: (actionType: UsageActionType, metadata?: Record<string, unknown>) => Promise<boolean>;
@@ -43,6 +51,7 @@ interface SubscriptionContextType {
   refreshSubscription: () => Promise<void>;
   syncWithStripe: () => Promise<boolean>;
   createCheckout: (priceType?: 'monthly' | 'annual') => Promise<string | null>;
+  createCreditCheckout: (packType: 'starter' | 'topup') => Promise<string | null>;
   createPortal: () => Promise<string | null>;
 
   // Loading state
@@ -88,9 +97,16 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
         setUsage(monthlyUsage);
 
         // Smart sync: Only sync with Stripe if there's a potential mismatch
-        // (user has stripe_customer_id but is on free tier - indicates missed webhook)
-        if (sub?.stripe_customer_id && sub?.tier === 'free' && session?.access_token) {
-          console.log('[SubscriptionContext] Potential mismatch detected, syncing with Stripe...');
+        // (user has active subscription_id but tier is free - indicates missed webhook)
+        // Note: We check stripe_subscription_id (not customer_id) because:
+        // - One-time purchases (Starter Pack) only create customer_id, not subscription_id
+        // - Canceled subscriptions have subscription_id but status is 'canceled'
+        const shouldSync = sub?.stripe_subscription_id &&
+                          sub?.subscription_status === 'active' &&
+                          sub?.tier === 'free' &&
+                          session?.access_token;
+        if (shouldSync) {
+          console.log('[SubscriptionContext] Potential mismatch detected (active subscription but free tier), syncing with Stripe...');
           try {
             const res = await fetch(`${getBackendOrigin()}/api/subscriptions/sync`, {
               method: 'POST',
@@ -174,6 +190,44 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
     if (!user) return false;
     const success = await recordUsage(user.id, actionType, metadata);
     if (success) {
+      // Handle credit deduction for AI tutor
+      if (actionType === 'ai_tutor') {
+        const minutesUsed = (metadata.minutes_used as number) || 0;
+        const currentMonthlyRemaining = limits.aiTutorMinutesPerMonth - usage.aiTutorMinutesUsed;
+
+        // If usage exceeds monthly allowance, deduct the overflow from credits
+        if (minutesUsed > currentMonthlyRemaining && currentMonthlyRemaining >= 0) {
+          const minutesFromCredits = minutesUsed - Math.max(0, currentMonthlyRemaining);
+          if (minutesFromCredits > 0) {
+            const deducted = await deductAiTutorCredits(user.id, minutesFromCredits);
+            if (deducted > 0) {
+              // Update local subscription state to reflect credit deduction
+              setSubscription(prev => prev ? {
+                ...prev,
+                ai_tutor_credit_minutes: Math.max(0, (prev.ai_tutor_credit_minutes || 0) - deducted),
+              } : null);
+            }
+          }
+        }
+      }
+
+      // Handle credit deduction for practice sessions (free tier only)
+      if (actionType === 'practice_session' && tier === 'free') {
+        const currentMonthlyRemaining = limits.practiceSessionsPerMonth - usage.practiceSessionsUsed;
+
+        // If usage exceeds monthly allowance, deduct from credits
+        if (currentMonthlyRemaining <= 0) {
+          const deducted = await deductPracticeCredits(user.id);
+          if (deducted > 0) {
+            // Update local subscription state to reflect credit deduction
+            setSubscription(prev => prev ? {
+              ...prev,
+              practice_session_credits: Math.max(0, (prev.practice_session_credits || 0) - 1),
+            } : null);
+          }
+        }
+      }
+
       // Optimistically update local usage
       setUsage(prev => {
         const updated = { ...prev };
@@ -195,7 +249,7 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
       });
     }
     return success;
-  }, [user]);
+  }, [user, tier, limits, usage]);
 
   const createCheckout = useCallback(async (priceType: 'monthly' | 'annual' = 'monthly'): Promise<string | null> => {
     if (!session?.access_token) return null;
@@ -234,12 +288,39 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
     }
   }, [session]);
 
-  // Computed permissions
+  const createCreditCheckout = useCallback(async (packType: 'starter' | 'topup'): Promise<string | null> => {
+    if (!session?.access_token) return null;
+    try {
+      const res = await fetch(`${getBackendOrigin()}/api/subscriptions/create-credit-checkout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ packType, origin: window.location.origin }),
+      });
+      const data = await res.json();
+      return data.url || null;
+    } catch (err) {
+      console.error('Error creating credit checkout:', err);
+      return null;
+    }
+  }, [session]);
+
+  // Credit balances from subscription
+  const aiTutorCreditMinutes = subscription?.ai_tutor_credit_minutes || 0;
+  const practiceSessionCredits = subscription?.practice_session_credits || 0;
+
+  // Computed permissions (now credit-aware)
   const canAddVideo = usage.videosUsed < limits.videosPerMonth;
-  const canStartPractice = usage.practiceSessionsUsed < limits.practiceSessionsPerMonth;
-  const canUseAiTutor = limits.aiTutorMinutesPerMonth > 0 && usage.aiTutorMinutesUsed < limits.aiTutorMinutesPerMonth;
+  // Free users can use credits for practice; Pro users have unlimited
+  const canStartPractice = usage.practiceSessionsUsed < limits.practiceSessionsPerMonth || practiceSessionCredits > 0;
+  // Users can use AI tutor if they have monthly allowance remaining OR have credits
+  const aiTutorMonthlyRemaining = Math.max(0, limits.aiTutorMinutesPerMonth - usage.aiTutorMinutesUsed);
+  const canUseAiTutor = aiTutorMonthlyRemaining > 0 || aiTutorCreditMinutes > 0;
   const canExportPdf = limits.pdfExport;
-  const aiTutorRemainingMinutes = Math.max(0, limits.aiTutorMinutesPerMonth - usage.aiTutorMinutesUsed);
+  // Total remaining = monthly remaining + credits
+  const aiTutorRemainingMinutes = aiTutorMonthlyRemaining + aiTutorCreditMinutes;
 
   return (
     <SubscriptionContext.Provider value={{
@@ -247,6 +328,8 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
       status: subscription?.subscription_status || 'active',
       subscription,
       usage,
+      aiTutorCreditMinutes,
+      practiceSessionCredits,
       canAddVideo,
       canStartPractice,
       canUseAiTutor,
@@ -255,11 +338,13 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
       practiceSessionsLimit: limits.practiceSessionsPerMonth,
       aiTutorMinutesLimit: limits.aiTutorMinutesPerMonth,
       aiTutorRemainingMinutes,
+      aiTutorMonthlyRemaining,
       recordAction,
       refreshUsage,
       refreshSubscription,
       syncWithStripe,
       createCheckout,
+      createCreditCheckout,
       createPortal,
       isLoading,
     }}>
