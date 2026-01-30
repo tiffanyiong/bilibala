@@ -39,7 +39,7 @@ import {
   UsageDisplayInfo
 } from './shared/services/usageTracking';
 import { AppState, PracticeTopic, TopicPoint, VideoData, VocabularyItem } from './shared/types';
-import { VideoHistoryItem } from './shared/types/database';
+import { VideoHistoryItem, TIER_LIMITS } from './shared/types/database';
 
 // Custom Chevron for Dropdowns
 const ChevronDownIcon = () => (
@@ -640,13 +640,18 @@ const App: React.FC = () => {
         // Add to user's library (even if it's someone else's cached analysis)
         // This ensures the video appears in their library for future access
         if (user) {
-          addToUserLibrary(user.id, cachedAnalysis.id)
+          const libraryLimit = TIER_LIMITS[tier].videoLibraryMax;
+          addToUserLibrary(user.id, cachedAnalysis.id, libraryLimit)
             .then((entry) => {
               if (entry) {
                 setLibraryEntry({
                   libraryId: entry.id,
                   isFavorite: entry.is_favorite,
                 });
+              } else {
+                // Library limit reached - show upgrade modal
+                setUpgradeFeature('Library Storage');
+                setShowUpgradeModal(true);
               }
             })
             .catch((err) => {
@@ -716,13 +721,18 @@ const App: React.FC = () => {
 
                 // Add to user's library (for logged-in users)
                 if (user) {
-                  addToUserLibrary(user.id, savedAnalysis.id)
+                  const libraryLimit = TIER_LIMITS[tier].videoLibraryMax;
+                  addToUserLibrary(user.id, savedAnalysis.id, libraryLimit)
                     .then((entry) => {
                       if (entry) {
                         setLibraryEntry({
                           libraryId: entry.id,
                           isFavorite: entry.is_favorite,
                         });
+                      } else {
+                        // Library limit reached - show upgrade modal
+                        setUpgradeFeature('Library Storage');
+                        setShowUpgradeModal(true);
                       }
                     })
                     .catch((err) => {
@@ -885,14 +895,25 @@ const App: React.FC = () => {
 
   // Handle saving current video to library (for users viewing someone else's analysis)
   const handleSaveToLibrary = async () => {
-    if (!user || !currentAnalysisId) return;
+    if (!user || !currentAnalysisId) {
+      console.error('[handleSaveToLibrary] Cannot save: user=', !!user, 'currentAnalysisId=', currentAnalysisId);
+      return;
+    }
 
-    const entry = await addToUserLibrary(user.id, currentAnalysisId);
+    console.log('[handleSaveToLibrary] Saving to library:', { userId: user.id, analysisId: currentAnalysisId });
+    const libraryLimit = TIER_LIMITS[tier].videoLibraryMax;
+    const entry = await addToUserLibrary(user.id, currentAnalysisId, libraryLimit);
     if (entry) {
+      console.log('[handleSaveToLibrary] Success:', entry);
       setLibraryEntry({
         libraryId: entry.id,
         isFavorite: entry.is_favorite,
       });
+    } else {
+      // Library limit reached - show upgrade modal
+      console.log('[handleSaveToLibrary] Library limit reached');
+      setUpgradeFeature('Library Storage');
+      setShowUpgradeModal(true);
     }
   };
 
