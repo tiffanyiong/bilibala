@@ -6,6 +6,8 @@ import PracticeReportsPage from './features/library/components/PracticeReportsPa
 import PracticeReportDetailPage from './features/library/components/PracticeReportDetailPage';
 import SubscriptionPage from './features/subscription/components/SubscriptionPage';
 import { ProfilePage } from './features/profile';
+import SettingsPage from './features/settings/components/SettingsPage';
+import TranslationPopup from './features/translation/components/TranslationPopup';
 import FloatingTutorWindow from './features/live-voice/components/FloatingTutorWindow';
 import PracticeSession from './features/practice/components/PracticeSession';
 import VideoPlayer, { VideoPlayerRef } from './features/video/components/VideoPlayer';
@@ -105,6 +107,11 @@ const App: React.FC = () => {
   const [targetLang, setTargetLang] = useState('English');
   const [level, setLevel] = useState('Easy');
 
+  // Translator setting: null = use video's native language, string = always translate to this
+  const [translatorTargetLang, setTranslatorTargetLang] = useState<string | null>(null);
+
+
+
   // Usage limit modal state
   const [showUsageLimitModal, setShowUsageLimitModal] = useState(false);
   const [usageInfo, setUsageInfo] = useState<UsageDisplayInfo | null>(null);
@@ -159,6 +166,9 @@ const App: React.FC = () => {
     if (parts[0] === 'profile') {
       return { type: 'profile' as const };
     }
+    if (parts[0] === 'settings') {
+      return { type: 'settings' as const };
+    }
     // Assume first part is video ID (which is actually analysisId for reports)
     const videoId = parts[0];
     if (parts[1] === 'practice') {
@@ -182,6 +192,8 @@ const App: React.FC = () => {
         setAppState(AppState.SUBSCRIPTION);
       } else if (route.type === 'profile') {
         setAppState(AppState.PROFILE);
+      } else if (route.type === 'settings') {
+        setAppState(AppState.SETTINGS);
       } else if (route.type === 'library') {
         setCurrentReportsVideo(null);
         setCurrentReportSessionId(null);
@@ -251,6 +263,8 @@ const App: React.FC = () => {
       targetPath = '/subscription';
     } else if (appState === AppState.PROFILE) {
       targetPath = '/profile';
+    } else if (appState === AppState.SETTINGS) {
+      targetPath = '/settings';
     } else if (appState === AppState.VIDEO_LIBRARY) {
       targetPath = '/library';
     } else if (appState === AppState.PRACTICE_REPORTS && currentReportsVideo) {
@@ -292,6 +306,13 @@ const App: React.FC = () => {
       return;
     }
 
+    // Handle settings route directly
+    if (route.type === 'settings') {
+      setAppState(AppState.SETTINGS);
+      isInitializedRef.current = true;
+      return;
+    }
+
     // Handle reports routes - redirect to library (need context to view reports)
     if (route.type === 'reports' || route.type === 'report-detail') {
       setAppState(AppState.VIDEO_LIBRARY);
@@ -326,6 +347,7 @@ const App: React.FC = () => {
               setDiscussionTopics(p.discussionTopics || []);
               setSelectedTopics(p.selectedTopics || []);
               setCurrentAnalysisId(p.currentAnalysisId || null);
+              setLibraryEntry(p.libraryEntry || null);
 
               if (route.type === 'dashboard' && route.videoId === p.videoData.id) {
                 setAppState(AppState.DASHBOARD);
@@ -498,12 +520,12 @@ const App: React.FC = () => {
         localStorage.setItem(STORAGE_KEY, JSON.stringify({
             videoUrl, nativeLang, targetLang, level, videoData,
             summary, translatedSummary, topics, vocabulary, transcript, discussionTopics, selectedTopics,
-            currentAnalysisId
+            currentAnalysisId, libraryEntry
         }));
     } else {
         localStorage.removeItem(STORAGE_KEY);
     }
-  }, [videoData, videoUrl, nativeLang, targetLang, level, summary, translatedSummary, topics, vocabulary, transcript, discussionTopics, selectedTopics, currentAnalysisId]);
+  }, [videoData, videoUrl, nativeLang, targetLang, level, summary, translatedSummary, topics, vocabulary, transcript, discussionTopics, selectedTopics, currentAnalysisId, libraryEntry]);
 
   const playerRef = useRef<VideoPlayerRef>(null);
 
@@ -1006,8 +1028,12 @@ const App: React.FC = () => {
     </button>
   );
 
+  // Compute the actual translation target language for the popup
+  // If user has a custom setting, use that; otherwise use video's native language
+  const translationPopupTargetLang = translatorTargetLang || nativeLang;
+
   const shouldShowHeader = appState === AppState.DASHBOARD || appState === AppState.PRACTICE_SESSION;
-  const isScrollable = appState === AppState.DASHBOARD || appState === AppState.PRACTICE_SESSION || appState === AppState.VIDEO_LIBRARY || appState === AppState.PRACTICE_REPORTS || appState === AppState.PRACTICE_REPORT_DETAIL || appState === AppState.SUBSCRIPTION || appState === AppState.PROFILE;
+  const isScrollable = appState === AppState.DASHBOARD || appState === AppState.PRACTICE_SESSION || appState === AppState.VIDEO_LIBRARY || appState === AppState.PRACTICE_REPORTS || appState === AppState.PRACTICE_REPORT_DETAIL || appState === AppState.SUBSCRIPTION || appState === AppState.PROFILE || appState === AppState.SETTINGS;
 
   return (
     <Layout
@@ -1020,6 +1046,9 @@ const App: React.FC = () => {
         onOpenVideoLibrary={() => setAppState(AppState.VIDEO_LIBRARY)}
         onOpenSubscription={() => setAppState(AppState.SUBSCRIPTION)}
         onOpenProfile={() => setAppState(AppState.PROFILE)}
+        onOpenSettings={() => setAppState(AppState.SETTINGS)}
+        translatorLang={shouldShowHeader && tier === 'pro' ? translationPopupTargetLang : undefined}
+        onTranslatorLangChange={shouldShowHeader && tier === 'pro' ? setTranslatorTargetLang : undefined}
     >
       {/* 1. LANDING PAGE */}
       {appState === AppState.LANDING && (
@@ -1262,6 +1291,23 @@ const App: React.FC = () => {
       {appState === AppState.PROFILE && (
         <ProfilePage
           onOpenSubscription={() => setAppState(AppState.SUBSCRIPTION)}
+        />
+      )}
+
+      {/* 10. SETTINGS PAGE */}
+      {appState === AppState.SETTINGS && (
+        <SettingsPage />
+      )}
+
+      {/* Translation Popup - Pro only, active on all content pages */}
+      {tier === 'pro' &&
+        (appState === AppState.DASHBOARD ||
+        appState === AppState.PRACTICE_SESSION ||
+        appState === AppState.PRACTICE_REPORTS ||
+        appState === AppState.PRACTICE_REPORT_DETAIL) && (
+        <TranslationPopup
+          sourceLang={targetLang}
+          targetLang={translationPopupTargetLang}
         />
       )}
 

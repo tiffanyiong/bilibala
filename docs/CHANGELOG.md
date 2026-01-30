@@ -1,5 +1,72 @@
 # Changelog
 
+## Text Translator Feature (January 2026)
+
+### Overview
+Added a highlight-to-translate feature powered by DeepL Free API. Pro users can select any text on content pages and see an instant translation popup. A translator language selector in the header bar lets users choose their preferred translation language.
+
+### How It Works
+- **Select text** on any content page (Dashboard, Practice Session, Practice Reports, Report Detail)
+- A **floating popup** appears above the selection showing the translation
+- Works on **desktop** (mouseup), **mobile**, and **tablet** (touchend with 300ms delay for OS text selection)
+- Positions using `range.getBoundingClientRect()` for cross-device accuracy
+- Auto-adjusts to stay within viewport bounds
+- Dismisses on outside click/tap or Escape key
+- **150 character limit** per selection
+
+### Backend: DeepL API + LRU Cache
+- **DeepL Free tier**: 500,000 characters/month, text translation only
+- **LRU cache** (`lru-cache` npm package): 3,000 entries, keyed by `text:sourceLang:targetLang`
+- Shared cache across all users — common translations served from memory
+- Cache key uses lowercased/trimmed text for better hit rate
+- API key stored server-side (never exposed to frontend)
+- Quota exceeded (HTTP 456) mapped to `QUOTA_EXCEEDED` error code
+
+### Supported Languages (DeepL Free Tier)
+English, Spanish, French, German, Portuguese, Japanese, Korean, Chinese (Mandarin), Italian, Russian
+
+**Not supported** (removed from translator dropdown): Arabic, Hindi, Indonesian, Turkish, Vietnamese
+
+### Header Translator Selector
+- Dropdown badge in the header bar (next to target language and level badges)
+- Shows a translate icon + short language label (e.g., "中文") + chevron
+- Clicking opens a dropdown with all supported languages
+- **Ephemeral setting**: resets when browser is closed (no database persistence)
+- Defaults to the video's native language ("I Speak" language)
+- Only visible on Dashboard and Practice Session pages
+
+### Pro-Only Gating
+- Both the translator dropdown and the translation popup are **Pro-only features**
+- Free users see no translator UI
+- Listed in Subscription Page feature comparison (Free: "—", Pro: "✓")
+- Listed in Upgrade Modal benefits ("Text translator (highlight to translate)")
+
+### Localized Error Messages
+Error messages (quota exceeded, selection too long) are shown in the user's translator language:
+- Chinese (Mandarin/Cantonese), Japanese, Korean, Spanish, French, German, Portuguese, Russian, Italian
+- English fallback for any unmapped language
+
+### Files Added
+- `server/services/deeplService.js` — DeepL API service with LRU cache
+- `server/routes/deeplRoutes.js` — `/api/translate/deepl` POST endpoint, `/api/translate/deepl/stats` GET endpoint
+- `src/features/translation/components/TranslationPopup.tsx` — Selection popup component
+
+### Files Changed
+- `server/config/env.js` — Added `DEEPL_API_KEY` config
+- `server/index.js` — Mounted `/api` deeplRoutes
+- `src/shared/constants.ts` — Added `DEEPL_SUPPORTED_LANGUAGES` filtered list
+- `src/shared/components/Layout.tsx` — Added translator dropdown badge with language selector
+- `src/App.tsx` — Wired translator props to Layout, renders TranslationPopup (Pro only)
+- `src/features/subscription/components/SubscriptionPage.tsx` — Added "Text translator" to features table
+- `src/features/subscription/components/UpgradeModal.tsx` — Added translator to Pro benefits list
+- `src/features/settings/components/SettingsPage.tsx` — Simplified (translator section removed, placeholder for future settings)
+
+### Settings Page
+- Translator language setting was initially on the Settings page but was moved to the header bar for a cleaner, more direct UX
+- Settings page now shows "More settings coming soon" placeholder
+
+---
+
 ## Subscription & Usage Limits (January 2026)
 
 ### Stripe Subscription Integration

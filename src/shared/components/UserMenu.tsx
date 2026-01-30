@@ -7,9 +7,10 @@ interface UserMenuProps {
   onOpenVideoLibrary?: () => void;
   onOpenSubscription?: () => void;
   onOpenProfile?: () => void;
+  onOpenSettings?: () => void;
 }
 
-const UserMenu: React.FC<UserMenuProps> = ({ onOpenAuthModal, onOpenVideoLibrary, onOpenSubscription, onOpenProfile }) => {
+const UserMenu: React.FC<UserMenuProps> = ({ onOpenAuthModal, onOpenVideoLibrary, onOpenSubscription, onOpenProfile, onOpenSettings }) => {
   const { user, userProfile, loading, signOut } = useAuth();
   const { tier } = useSubscription();
   const [isOpen, setIsOpen] = useState(false);
@@ -50,7 +51,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ onOpenAuthModal, onOpenVideoLibrary
     { label: 'Video Library', icon: VideoIcon, onClick: () => onOpenVideoLibrary?.() },
     // { label: 'Vocabulary', icon: VocabularyIcon, onClick: () => console.log('Vocabulary clicked') }, // Hidden for now
     { label: 'Subscription Plan', icon: SubscriptionIcon, onClick: () => onOpenSubscription?.() },
-    { label: 'Settings', icon: SettingsIcon, onClick: () => console.log('Settings clicked') },
+    { label: 'Settings', icon: SettingsIcon, onClick: () => onOpenSettings?.() },
   ];
 
   if (loading) {

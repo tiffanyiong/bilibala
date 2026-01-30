@@ -111,5 +111,6 @@ export enum AppState {
   PRACTICE_REPORT_DETAIL, // Full-page single report: /{videoId}/reports/{sessionId}
   SUBSCRIPTION,           // Subscription management page: /subscription
   PROFILE,                // Profile page: /profile
+  SETTINGS,               // Settings page: /settings
   ERROR
 }

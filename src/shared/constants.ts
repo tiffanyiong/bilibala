@@ -19,6 +19,22 @@ export const LANGUAGES = [
   { code: 'Vietnamese', name: 'Vietnamese (Tiếng Việt)' }
 ];
 
+// Languages supported by DeepL Free tier (used for translator dropdown only)
+const DEEPL_SUPPORTED_NAMES = new Set([
+  'English',
+  'Spanish (Español)',
+  'French (Français)',
+  'German (Deutsch)',
+  'Portuguese (Português)',
+  'Japanese (日本語)',
+  'Korean (한국어)',
+  'Chinese (Mandarin - 中文)',
+  'Italian (Italiano)',
+  'Russian (Русский)',
+]);
+
+export const DEEPL_SUPPORTED_LANGUAGES = LANGUAGES.filter(l => DEEPL_SUPPORTED_NAMES.has(l.name));
+
 export const LEVELS = [
   { id: 'Easy', label: 'Beginner' },
   { id: 'Medium', label: 'Intermediate' },
