@@ -1,4 +1,5 @@
 import { TopicPoint, VocabularyItem, PracticeTopic } from './index';
+import { MONTHLY_MAX_MINUTES } from '../config/aiTutorConfig';
 
 // ============================================
 // DATABASE ROW TYPES (matching Supabase schema)
@@ -246,7 +247,7 @@ export const TIER_LIMITS = {
   pro: {
     videosPerMonth: Infinity,
     practiceSessionsPerMonth: Infinity,
-    aiTutorMinutesPerMonth: 60,
+    aiTutorMinutesPerMonth: MONTHLY_MAX_MINUTES,
     pdfExport: true,
     videoLibraryMax: Infinity,
   },

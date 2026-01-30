@@ -1,7 +1,8 @@
 import express from 'express';
 import Stripe from 'stripe';
-import { createClient } from '@supabase/supabase-js';
 import { config } from '../config/env.js';
+import { supabaseAdmin, getUserFromToken } from '../services/supabaseAdmin.js';
+import { getAllConfig } from '../services/configService.js';
 
 const router = express.Router();
 
@@ -9,24 +10,6 @@ const router = express.Router();
 const stripe = config.stripe.secretKey
   ? new Stripe(config.stripe.secretKey)
   : null;
-
-// Initialize Supabase admin client (service role for webhook updates)
-const supabaseAdmin = config.supabase.url && config.supabase.serviceRoleKey
-  ? createClient(config.supabase.url, config.supabase.serviceRoleKey)
-  : null;
-
-// Helper: Get user from Supabase auth token
-async function getUserFromToken(req) {
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith('Bearer ')) return null;
-
-  const token = authHeader.slice(7);
-  if (!supabaseAdmin) return null;
-
-  const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
-  if (error || !user) return null;
-  return user;
-}
 
 // ============================================
 // POST /api/subscriptions/create-checkout
@@ -273,6 +256,14 @@ router.post('/subscriptions/sync', async (req, res) => {
     console.error('Error syncing subscription:', error);
     res.status(500).json({ error: 'Failed to sync subscription' });
   }
+});
+
+// ============================================
+// GET /api/config/app
+// Return public app configuration (no auth required)
+// ============================================
+router.get('/config/app', (_req, res) => {
+  res.json(getAllConfig());
 });
 
 // ============================================

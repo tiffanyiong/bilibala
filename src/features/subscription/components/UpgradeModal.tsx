@@ -17,10 +17,13 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
 }) => {
   if (!isOpen) return null;
 
+  const isLimitReached = feature === 'AI Tutor Limit Reached';
+
   const defaultMessages: Record<string, string> = {
     'Video Analysis': "You've reached your monthly video limit. Upgrade to Pro for unlimited video analyses.",
     'Practice Session': "You've used all your practice sessions this month. Upgrade to Pro for unlimited practice.",
     'AI Tutor': 'AI Tutor is a Pro feature. Upgrade to have live conversations with your AI language tutor.',
+    'AI Tutor Limit Reached': "You've used all your AI Tutor minutes this month. Your allowance resets at the start of next month.",
     'PDF Export': 'PDF export is a Pro feature. Upgrade to download practice reports as PDFs.',
   };
 
@@ -54,27 +57,29 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
 
         {/* Content */}
         <h3 className="text-lg font-medium text-stone-800 text-center mb-2">
-          Upgrade to Pro
+          {isLimitReached ? 'Monthly Limit Reached' : 'Upgrade to Pro'}
         </h3>
         <p className="text-sm text-stone-500 text-center mb-5 leading-relaxed">
           {displayMessage}
         </p>
 
-        {/* Pro benefits */}
-        <div className="bg-stone-50 rounded-lg p-3 mb-5 space-y-1.5">
-          <div className="text-xs font-medium text-stone-600 mb-2">Pro includes:</div>
-          {[
-            'Unlimited videos & practice sessions',
-            '60 min/month AI Tutor conversations',
-            'PDF report export',
-            'Full video library access',
-          ].map(benefit => (
-            <div key={benefit} className="flex items-center gap-2 text-xs text-stone-600">
-              <span className="text-green-600">✓</span>
-              {benefit}
-            </div>
-          ))}
-        </div>
+        {/* Pro benefits (only show for upgrade, not limit reached) */}
+        {!isLimitReached && (
+          <div className="bg-stone-50 rounded-lg p-3 mb-5 space-y-1.5">
+            <div className="text-xs font-medium text-stone-600 mb-2">Pro includes:</div>
+            {[
+              'Unlimited videos & practice sessions',
+              '60 min/month AI Tutor conversations',
+              'PDF report export',
+              'Full video library access',
+            ].map(benefit => (
+              <div key={benefit} className="flex items-center gap-2 text-xs text-stone-600">
+                <span className="text-green-600">✓</span>
+                {benefit}
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Actions */}
         <div className="flex gap-3">
@@ -82,14 +87,16 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
             onClick={onClose}
             className="flex-1 py-2.5 rounded-lg text-sm font-medium text-stone-600 bg-stone-100 hover:bg-stone-200 transition-all"
           >
-            Not Now
+            {isLimitReached ? 'Got It' : 'Not Now'}
           </button>
-          <button
-            onClick={onUpgrade}
-            className="flex-1 py-2.5 rounded-lg text-sm font-medium text-white bg-stone-800 hover:bg-stone-900 transition-all"
-          >
-            Upgrade to Pro
-          </button>
+          {!isLimitReached && (
+            <button
+              onClick={onUpgrade}
+              className="flex-1 py-2.5 rounded-lg text-sm font-medium text-white bg-stone-800 hover:bg-stone-900 transition-all"
+            >
+              Upgrade to Pro
+            </button>
+          )}
         </div>
       </div>
     </div>
