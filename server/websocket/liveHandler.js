@@ -2,6 +2,42 @@ import { Modality } from '@google/genai';
 import { createAi } from '../services/geminiService.js';
 import { buildSystemInstruction } from '../utils/helpers.js';
 import { config } from '../config/env.js';
+import { supabaseAdmin } from '../services/supabaseAdmin.js';
+import { getConfigNumber } from '../services/configService.js';
+
+/**
+ * Record AI tutor usage in usage_history table.
+ */
+async function recordTutorUsage(userId, minutesUsed) {
+  if (!supabaseAdmin || !userId) return;
+  try {
+    await supabaseAdmin.from('usage_history').insert({
+      user_id: userId,
+      action_type: 'ai_tutor',
+      metadata: { minutes_used: minutesUsed },
+    });
+    console.log(`[server] Recorded ${minutesUsed} min AI tutor usage for user ${userId}`);
+  } catch (err) {
+    console.error('[server] Failed to record tutor usage:', err.message);
+  }
+}
+
+/**
+ * Get user's AI tutor minutes used this month.
+ */
+async function getMonthlyMinutesUsed(userId) {
+  if (!supabaseAdmin || !userId) return 0;
+  try {
+    const { data, error } = await supabaseAdmin.rpc('get_all_monthly_usage', {
+      p_user_id: userId,
+    });
+    if (error) throw error;
+    return data?.ai_tutor_minutes_used ?? 0;
+  } catch (err) {
+    console.error('[server] Failed to get monthly usage:', err.message);
+    return 0;
+  }
+}
 
 /**
  * Sets up WebSocket connection handler for Gemini Live sessions
@@ -16,14 +52,49 @@ export function setupLiveWebSocket(wss) {
     const pendingAudio = [];
     let lastStartPayload = null;
 
+    // Session timing
+    let sessionStartTime = null;
+    let sessionUserId = null;
+    let warningTimer = null;
+    let limitTimer = null;
+
     const send = (obj) => {
       if (ws.readyState !== ws.OPEN) return;
       ws.send(JSON.stringify(obj));
     };
 
-    const closeWith = (code, message) => {
+    const clearTimers = () => {
+      if (warningTimer) { clearTimeout(warningTimer); warningTimer = null; }
+      if (limitTimer) { clearTimeout(limitTimer); limitTimer = null; }
+    };
+
+    let usageRecorded = false;
+
+    const endSession = async (reason) => {
+      clearTimers();
+      const durationSeconds = sessionStartTime
+        ? Math.floor((Date.now() - sessionStartTime) / 1000)
+        : 0;
+      const minutesUsed = Math.max(1, Math.ceil(durationSeconds / 60));
+
+      // Record usage server-side (only once per session)
+      if (sessionUserId && durationSeconds > 0 && !usageRecorded) {
+        usageRecorded = true;
+        await recordTutorUsage(sessionUserId, minutesUsed);
+      }
+
+      // Close Gemini session
+      try { session?.close(); } catch {}
+      session = null;
+      sessionStartTime = null;
+
+      return { durationSeconds, minutesUsed };
+    };
+
+    const closeWith = async (code, message) => {
       if (isClosed) return;
       isClosed = true;
+      await endSession('close');
       try {
         ws.close(code, message);
       } catch {}
@@ -31,9 +102,6 @@ export function setupLiveWebSocket(wss) {
 
     ws.on('message', async (raw, isBinary) => {
       try {
-        // Protocol:
-        // - JSON text frames: {type:'start'|'stop'|'text', ...}
-        // - Binary frames (Buffer/ArrayBuffer): raw PCM16LE audio @ 16kHz
         console.log('[server] WS message received', {
           isBinary: !!isBinary,
           type: typeof raw,
@@ -42,7 +110,6 @@ export function setupLiveWebSocket(wss) {
 
         if (isBinary) {
           const buf = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
-          // Client may send audio before session is fully connected; buffer briefly.
           if (!session) {
             if (isStarting) {
               pendingAudio.push(buf);
@@ -51,7 +118,6 @@ export function setupLiveWebSocket(wss) {
             }
             return send({ type: 'error', error: 'Need start payload before audio (no session). Click Start again after refresh.' });
           }
-          // Send as base64 to Gemini SDK.
           session.sendRealtimeInput({
             audio: { data: buf.toString('base64'), mimeType: 'audio/pcm;rate=16000' },
           });
@@ -64,14 +130,18 @@ export function setupLiveWebSocket(wss) {
 
         if (msg.type === 'start') {
           if (session || isStarting) {
-            // Ignore duplicate start requests.
             send({ type: 'status', status: 'connected' });
             return;
           }
           console.log('[server] starting Gemini Live session');
           isStarting = true;
           lastStartPayload = msg.payload || null;
+
+          // Extract userId from payload
+          sessionUserId = lastStartPayload?.userId || null;
+
           console.log('[server] start payload received', {
+            userId: sessionUserId,
             hasTitle: !!lastStartPayload?.videoTitle,
             hasSummary: !!lastStartPayload?.summary,
             vocabCount: Array.isArray(lastStartPayload?.vocabulary) ? lastStartPayload.vocabulary.length : 0,
@@ -79,15 +149,39 @@ export function setupLiveWebSocket(wss) {
             targetLang: lastStartPayload?.targetLang,
             level: lastStartPayload?.level,
           });
+
           if (!config.gemini.apiKey) {
             send({ type: 'error', error: 'Server missing GEMINI_API_KEY' });
             return closeWith(1011, 'server missing api key');
           }
 
+          // --- Server-side limit enforcement ---
+          const sessionMaxMinutes = getConfigNumber('ai_tutor_session_max_minutes', 40);
+          const monthlyMaxMinutes = getConfigNumber('ai_tutor_monthly_max_minutes', 60);
+          const warningBeforeEnd = getConfigNumber('ai_tutor_warning_before_end_seconds', 60);
+
+          let effectiveMaxSeconds = sessionMaxMinutes * 60;
+
+          if (sessionUserId) {
+            const minutesUsed = await getMonthlyMinutesUsed(sessionUserId);
+            const remainingSeconds = Math.max(0, (monthlyMaxMinutes - minutesUsed) * 60);
+
+            console.log(`[server] User ${sessionUserId}: ${minutesUsed} min used, ${Math.floor(remainingSeconds / 60)} min remaining`);
+
+            if (remainingSeconds <= 0) {
+              send({ type: 'error', error: 'Monthly AI tutor limit reached' });
+              isStarting = false;
+              return closeWith(1000, 'monthly limit reached');
+            }
+
+            effectiveMaxSeconds = Math.min(effectiveMaxSeconds, remainingSeconds);
+          }
+
+          console.log(`[server] Session cap: ${effectiveMaxSeconds} seconds`);
+
           const ai = createAi();
           const systemInstruction = buildSystemInstruction(msg.payload || {});
 
-          // Let the client know we're working (useful for debugging).
           send({ type: 'status', status: 'connecting' });
 
           session = await ai.live.connect({
@@ -105,9 +199,7 @@ export function setupLiveWebSocket(wss) {
                 send({ type: 'status', status: 'connected' });
               },
               onmessage: (m) => {
-                // Don't spam huge logs; just mark receipt.
                 if (m?.setupComplete) console.log('[server] Gemini setupComplete');
-                // Only forward serializable parts (avoid class methods).
                 send({
                   type: 'live',
                   setupComplete: m.setupComplete ?? null,
@@ -133,8 +225,32 @@ export function setupLiveWebSocket(wss) {
             },
           });
           isStarting = false;
+          sessionStartTime = Date.now();
 
-          // Flush any audio chunks that arrived while we were connecting.
+          // --- Set enforcement timers ---
+          // Warning timer
+          const warningDelay = (effectiveMaxSeconds - warningBeforeEnd) * 1000;
+          if (warningDelay > 0) {
+            warningTimer = setTimeout(() => {
+              send({ type: 'time_warning', secondsLeft: warningBeforeEnd });
+              console.log(`[server] Sent time_warning: ${warningBeforeEnd}s remaining`);
+            }, warningDelay);
+          }
+
+          // Limit timer — forcefully end session
+          limitTimer = setTimeout(async () => {
+            const reason = sessionUserId
+              ? (effectiveMaxSeconds < sessionMaxMinutes * 60 ? 'monthly' : 'session')
+              : 'session';
+            const durationSeconds = Math.floor((Date.now() - sessionStartTime) / 1000);
+
+            send({ type: 'session_limit', reason, durationSeconds });
+            console.log(`[server] Session limit reached (${reason}) after ${durationSeconds}s`);
+
+            await closeWith(1000, `${reason} limit reached`);
+          }, effectiveMaxSeconds * 1000);
+
+          // Flush queued audio
           if (pendingAudio.length) {
             console.log('[server] flushing queued audio', pendingAudio.length);
             while (pendingAudio.length) {
@@ -178,11 +294,10 @@ export function setupLiveWebSocket(wss) {
         }
 
         if (msg.type === 'stop') {
-          try {
-            session.close();
-          } catch {}
-          session = null;
-          return closeWith(1000, 'stopped');
+          isClosed = true;
+          await endSession('manual_stop');
+          try { ws.close(1000, 'stopped'); } catch {}
+          return;
         }
       } catch (err) {
         console.error('ws message error', err);
@@ -194,13 +309,12 @@ export function setupLiveWebSocket(wss) {
       console.log('[server] WS client error', e?.message || e);
     });
 
-    ws.on('close', () => {
+    ws.on('close', async () => {
       console.log('[server] WS /live closed');
-      isClosed = true;
-      try {
-        session?.close();
-      } catch {}
-      session = null;
+      if (!isClosed) {
+        isClosed = true;
+        await endSession('disconnect');
+      }
     });
   });
 }

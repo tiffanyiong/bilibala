@@ -306,7 +306,7 @@ const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ onOpenAuthModal }) 
             />
             <FaqItem
               q="How does the AI Tutor limit work?"
-              a="Pro users get 60 minutes of AI Tutor conversation per month, with a 15-minute maximum per session. Minutes reset monthly."
+              a="Pro users get 60 minutes of AI Tutor conversation per month, with a 40-minute maximum per session. Minutes reset monthly."
             />
           </div>
         </div>

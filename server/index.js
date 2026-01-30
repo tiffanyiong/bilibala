@@ -16,6 +16,9 @@ import subscriptionRoutes from './routes/subscriptionRoutes.js';
 // Import WebSocket handler
 import { setupLiveWebSocket } from './websocket/liveHandler.js';
 
+// Import config service
+import { startConfigRefresh } from './services/configService.js';
+
 // Create Express app
 const app = express();
 
@@ -51,6 +54,9 @@ wss.on('error', (err) => {
 
 // Setup WebSocket connection handler
 setupLiveWebSocket(wss);
+
+// Start config refresh (loads from DB, refreshes every 5 min)
+startConfigRefresh();
 
 // Start server
 server.listen(config.server.port, config.server.host, () => {
