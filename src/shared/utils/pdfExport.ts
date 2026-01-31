@@ -475,30 +475,29 @@ export async function exportPracticeReportToPdf(
       const graphWidth = maxX - minX;
       const graphHeight = maxY - minY;
 
-      // Minimum scale to keep text readable (don't shrink below 50%)
-      const MIN_SCALE = 0.5;
       const headerSpace = 15;
       const legendSpace = 20;
       const bottomMargin = 25;
 
-      // Calculate scale for width
+      // Calculate scale to fit width (MUST fit within page width)
       const widthScale = (contentWidth - 10) / graphWidth;
 
       // Calculate available height on current page
       let availableHeight = pageHeight - yPos - headerSpace - legendSpace - bottomMargin;
       let heightScale = availableHeight / graphHeight;
 
-      // If graph won't fit at minimum readable scale, start a new page
-      if (heightScale < MIN_SCALE) {
+      // If graph won't fit on current page, start a new page
+      const minRequiredScale = Math.min(widthScale, 0.3); // At least 30% or width-constrained
+      if (heightScale < minRequiredScale) {
         doc.addPage();
         yPos = margin;
-        // Recalculate with full page height
         availableHeight = pageHeight - yPos - headerSpace - legendSpace - bottomMargin;
         heightScale = availableHeight / graphHeight;
       }
 
-      // Scale to fit both width and height, but never below minimum
-      const scale = Math.max(MIN_SCALE, Math.min(1, widthScale, heightScale));
+      // Scale to fit both width and height - width is mandatory, height is preferred
+      // Always respect width constraint to prevent overflow
+      const scale = Math.min(1, widthScale, heightScale);
       const scaledHeight = graphHeight * scale;
 
       // Section header
@@ -530,39 +529,32 @@ export async function exportPracticeReportToPdf(
       });
       doc.setLineDashPattern([], 0);
 
-      // Draw nodes - use responsive font sizes based on actual rendered size
+      // Draw nodes - use fixed font sizes that match the calculation
+      const LABEL_FONT_SIZE = 8 * scale;
+      const ELAB_FONT_SIZE = 7 * scale;
+      const TYPE_FONT_SIZE = 6 * scale;
+
       nodes.forEach(node => {
         const x = offsetX + node.x * scale;
         const y = offsetY + node.y * scale;
         const w = node.width * scale;
         const h = node.height * scale;
-        const r = Math.max(2, 3 * scale);
-        const pad = Math.max(3, 5 * scale);
-
-        // Minimum text width to prevent character-by-character wrapping
-        const MIN_TEXT_WIDTH = 25;
-        const textWidth = Math.max(MIN_TEXT_WIDTH, w - pad * 2);
-
-        // Calculate responsive font sizes based on rendered width
-        const baseFontSize = Math.max(6, Math.min(9, w / 9));
-        const smallFontSize = Math.max(5, baseFontSize - 1);
-        const tinyFontSize = Math.max(4, baseFontSize - 2);
-
-        // Line height that matches the calculation (scaled)
-        const lineHeight = 3 * scale;
+        const r = Math.max(1.5, 2.5 * scale);
+        const pad = 4 * scale;
+        const textWidth = w - pad * 2;
 
         if (node.isRoot) {
           // Root node - dark background
           doc.setFillColor(...colors.rootNode);
           doc.roundedRect(x, y, w, h, r, r, 'F');
 
-          setFont('bold', baseFontSize);
+          setFont('bold', LABEL_FONT_SIZE);
           doc.setTextColor(255, 255, 255);
           const lines = doc.splitTextToSize(node.label, textWidth);
+          const lineHeight = LABEL_FONT_SIZE * 0.45;
           const totalTextHeight = lines.length * lineHeight;
           const startY = y + (h - totalTextHeight) / 2 + lineHeight * 0.8;
-          // Show all lines, no truncation
-          doc.text(lines, x + pad, startY, { maxWidth: textWidth, lineHeightFactor: 1.2 });
+          doc.text(lines, x + pad, startY, { maxWidth: textWidth, lineHeightFactor: 1.15 });
         } else {
           // Child nodes
           let bgColor = colors.grayCallout;
@@ -587,40 +579,36 @@ export async function exportPracticeReportToPdf(
           // Type badge at top
           let currentY = y + pad;
           if (node.type) {
-            setFont('bold', tinyFontSize);
+            setFont('bold', TYPE_FONT_SIZE);
             doc.setTextColor(...colors.mediumGray);
-            doc.text(node.type.toUpperCase(), x + pad, currentY + tinyFontSize * 0.3);
-            currentY += tinyFontSize * 0.8 + 2 * scale;
+            doc.text(node.type.toUpperCase(), x + pad, currentY + TYPE_FONT_SIZE * 0.35);
+            currentY += TYPE_FONT_SIZE * 0.5 + 2 * scale;
           }
 
-          // Label (headline) - bold - show full text
-          setFont('bold', smallFontSize);
+          // Label (headline) - bold
+          setFont('bold', LABEL_FONT_SIZE);
           doc.setTextColor(...colors.black);
           const labelLines = doc.splitTextToSize(node.label, textWidth);
-          // Show all label lines, no truncation
-          doc.text(labelLines, x + pad, currentY + smallFontSize * 0.35, { maxWidth: textWidth, lineHeightFactor: 1.3 });
-          currentY += labelLines.length * lineHeight * 1.1 + 2 * scale;
+          const labelLineHeight = LABEL_FONT_SIZE * 0.45;
+          doc.text(labelLines, x + pad, currentY + labelLineHeight * 0.8, { maxWidth: textWidth, lineHeightFactor: 1.15 });
+          currentY += labelLines.length * labelLineHeight + 2 * scale;
 
           // Elaboration text (italic quote in light box) - for improved structure
           if (node.elaboration && isImproved) {
             const elabBoxTop = currentY;
-            const elabTextWidth = Math.max(MIN_TEXT_WIDTH, w - pad * 1.5);
 
-            // Calculate actual height needed for elaboration text
-            setFont('italic', tinyFontSize);
-            const elabLines = doc.splitTextToSize(node.elaboration, elabTextWidth);
-            const elabTextHeight = elabLines.length * tinyFontSize * 0.5 + pad;
-            const elabBoxH = Math.min(elabTextHeight, h - (elabBoxTop - y) - 2);
+            setFont('italic', ELAB_FONT_SIZE);
+            const elabLines = doc.splitTextToSize(node.elaboration, textWidth);
+            const elabLineHeight = ELAB_FONT_SIZE * 0.45;
+            const elabBoxH = elabLines.length * elabLineHeight + pad;
 
-            if (elabBoxH > 3 * scale) {
-              // Light blue background - sized to fit text tightly
-              doc.setFillColor(235, 245, 255);
-              doc.roundedRect(x + pad * 0.5, elabBoxTop, w - pad, elabBoxH, 2 * scale, 2 * scale, 'F');
+            // Light blue background - sized to fit text
+            doc.setFillColor(235, 245, 255);
+            doc.roundedRect(x + pad * 0.5, elabBoxTop, w - pad, elabBoxH, 1.5 * scale, 1.5 * scale, 'F');
 
-              // Italic elaboration text
-              doc.setTextColor(80, 80, 80);
-              doc.text(elabLines, x + pad, elabBoxTop + tinyFontSize * 0.5, { maxWidth: elabTextWidth, lineHeightFactor: 1.2 });
-            }
+            // Italic elaboration text
+            doc.setTextColor(80, 80, 80);
+            doc.text(elabLines, x + pad, elabBoxTop + elabLineHeight * 0.8, { maxWidth: textWidth, lineHeightFactor: 1.15 });
           }
         }
       });
