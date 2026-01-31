@@ -1,9 +1,16 @@
 import { Router } from 'express';
+import { LRUCache } from 'lru-cache';
 import { createAi } from '../services/geminiService.js';
 import { safeJsonParse } from '../utils/helpers.js';
 import { config } from '../config/env.js';
 
 const router = Router();
+
+// Cache for translated UI labels (keyed by language)
+// Labels rarely change, so cache indefinitely (until server restart)
+const labelCache = new LRUCache({
+  max: 50, // Max 50 languages cached
+});
 
 /**
  * POST /api/translate-ui-labels
@@ -20,6 +27,15 @@ router.post('/translate-ui-labels', async (req, res) => {
       return res.status(400).json({ error: 'Language is required' });
     }
 
+    // Check cache first
+    const cachedLabels = labelCache.get(language);
+    if (cachedLabels) {
+      console.log(`[translate-ui-labels] Cache hit for ${language}`);
+      return res.json({ labels: cachedLabels, cached: true });
+    }
+
+    console.log(`[translate-ui-labels] Cache miss for ${language}, calling Gemini...`);
+    const startTime = Date.now();
     const ai = createAi();
 
     // FIX 2: Use the sourceLabels provided by frontend, or fallback to a default list if missing
@@ -64,12 +80,14 @@ ${JSON.stringify(labelsToTranslate, null, 2)}
 Return the same JSON structure with values translated to ${language}.`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview', // Ensure consistent model usage
+      model: 'gemini-2.5-flash',
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       config: {
         responseMimeType: 'application/json',
       }
     });
+
+    console.log(`[translate-ui-labels] Gemini call completed in ${Date.now() - startTime}ms`);
 
     let candidates = response.candidates;
     if (!candidates && response.data) candidates = response.data.candidates;
@@ -81,7 +99,11 @@ Return the same JSON structure with values translated to ${language}.`;
     // Use safeJsonParse helper you already defined
     const labels = safeJsonParse(candidates[0].content.parts[0].text);
 
-    res.json({ labels });
+    // Cache the result for future requests
+    labelCache.set(language, labels);
+    console.log(`[translate-ui-labels] Cached labels for ${language}`);
+
+    res.json({ labels, cached: false });
   } catch (err) {
     console.error('translate-ui-labels failed', err);
     res.status(500).json({ error: 'Failed to translate labels' });

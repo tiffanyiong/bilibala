@@ -41,17 +41,19 @@ export interface DbCachedAnalysis {
   summary: string | null;
   translated_summary: string | null;
   content: AnalysisContent;
+  transcript_lang_mismatch: boolean;
   created_at: string;
 }
 
 export interface DbPracticeTopic {
   id: string;
   topic: string;
+  normalized_topic: string;
+  target_lang: string;
   category: string | null;
   difficulty_level: string | null;
   target_words: string[] | null;
   source_type: string;
-  analysis_id: string | null;
   practice_count: number;
   is_active: boolean;
   created_at: string;
@@ -61,7 +63,9 @@ export interface DbTopicQuestion {
   id: string;
   topic_id: string;
   question: string;
+  analysis_id: string | null;
   source_type: string;
+  difficulty_level: string | null;
   created_by: string | null;
   is_public: boolean;
   use_count: number;
@@ -89,21 +93,25 @@ export type InsertCachedAnalysis = {
   summary?: string | null;
   translated_summary?: string | null;
   content: AnalysisContent;
+  transcript_lang_mismatch?: boolean;
 };
 
 export type InsertPracticeTopic = {
   topic: string;
+  normalized_topic: string;
+  target_lang: string;
   category?: string | null;
   difficulty_level?: string | null;
   target_words?: string[] | null;
   source_type: string;
-  analysis_id?: string | null;
 };
 
 export type InsertTopicQuestion = {
   topic_id: string;
   question: string;
+  analysis_id?: string | null;
   source_type: string;
+  difficulty_level?: string | null;
   created_by?: string | null;
   is_public?: boolean;
 };

@@ -28,14 +28,19 @@ import {
   getOrCreateVideo,
   getVideoByYoutubeId,
   getPracticeTopicsForAnalysis,
+  getQuestionsForTopic,
   getUserVideoLibrary,
   incrementVideoView,
   saveCachedAnalysis,
   savePracticeTopicsFromAnalysis,
+  saveGeneratedQuestion,
+  countAiGeneratedQuestions,
+  updateVideoCategory,
   getLibraryEntry,
   toggleLibraryFavorite,
   updateLibraryAccess,
 } from './shared/services/database';
+import { getBackendOrigin } from './shared/services/backend';
 import { analyzeVideoContent } from './shared/services/geminiService';
 import {
   checkAnonymousPracticeLimit,
@@ -44,7 +49,7 @@ import {
   recordAnonymousUsage,
   UsageDisplayInfo
 } from './shared/services/usageTracking';
-import { AppState, PracticeTopic, TopicPoint, VideoData, VocabularyItem } from './shared/types';
+import { AppState, PracticeTopic, TopicQuestion, TopicPoint, VideoData, VocabularyItem } from './shared/types';
 import { VideoHistoryItem, TIER_LIMITS } from './shared/types/database';
 
 const App: React.FC = () => {
@@ -79,6 +84,22 @@ const App: React.FC = () => {
     }
   }, [user, syncWithStripe]);
 
+
+  // Filter out questions that don't match the target language script
+  // (e.g., English questions when target is Chinese — from old cached data)
+  const LANG_SCRIPT_PATTERNS: Record<string, RegExp> = {
+    'Chinese (Mandarin - 中文)': /[\u4e00-\u9fff]/,
+    'Japanese (日本語)': /[\u3040-\u309f\u30a0-\u30ff\u4e00-\u9fff]/,
+    'Korean (한국어)': /[\uac00-\ud7af\u1100-\u11ff]/,
+    'Hindi (हिन्दी)': /[\u0900-\u097f]/,
+    'Arabic (العربية)': /[\u0600-\u06ff]/,
+    'Russian (Русский)': /[\u0400-\u04ff]/,
+  };
+  const filterQuestionsByLang = (questions: TopicQuestion[], lang: string): TopicQuestion[] => {
+    const pattern = LANG_SCRIPT_PATTERNS[lang];
+    if (!pattern) return questions; // Latin-script languages — no filtering needed
+    return questions.filter(q => pattern.test(q.question));
+  };
 
   const [appState, setAppState] = useState<AppState>(AppState.LANDING);
   const [videoUrl, setVideoUrl] = useState('');
@@ -127,10 +148,13 @@ const App: React.FC = () => {
   const [topics, setTopics] = useState<TopicPoint[]>([]);
   const [vocabulary, setVocabulary] = useState<VocabularyItem[]>([]);
   const [transcript, setTranscript] = useState<{ text: string; duration: number; offset: number }[]>([]);
+  const [transcriptLangMismatch, setTranscriptLangMismatch] = useState(false);
   const [discussionTopics, setDiscussionTopics] = useState<PracticeTopic[]>([]);
   const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
   const [activePracticeTopic, setActivePracticeTopic] = useState<PracticeTopic | null>(null);
   const [allSelectedPracticeTopics, setAllSelectedPracticeTopics] = useState<PracticeTopic[]>([]);
+  const [allQuestionsForTopic, setAllQuestionsForTopic] = useState<TopicQuestion[]>([]);
+  const [aiGeneratedQuestionCount, setAiGeneratedQuestionCount] = useState(0);
   const [currentAnalysisId, setCurrentAnalysisId] = useState<string | null>(null);
   const [isAnalysisLoading, setIsAnalysisLoading] = useState(false);
   const [loadingText, setLoadingText] = useState("Preparing your lesson...");
@@ -365,6 +389,7 @@ const App: React.FC = () => {
               setPendingVideoIdFromUrl(route.videoId);
               setAppState(AppState.LOADING);
               setLoadingText('Loading video...');
+              setTranscriptLangMismatch(false);
               isInitializedRef.current = true;
               return;
             }
@@ -379,6 +404,7 @@ const App: React.FC = () => {
       setPendingVideoIdFromUrl(route.videoId);
       setAppState(AppState.LOADING);
       setLoadingText('Loading video...');
+      setTranscriptLangMismatch(false);
       isInitializedRef.current = true;
       return;
     }
@@ -422,6 +448,7 @@ const App: React.FC = () => {
               setTopics(analysis.topics);
               setVocabulary(analysis.vocabulary);
               setTranscript(analysis.transcript || []);
+              setTranscriptLangMismatch(analysis.transcriptLangMismatch || false);
               setCurrentAnalysisId(videoInLibrary.analysisId);
 
               const dbTopics = await getPracticeTopicsForAnalysis(videoInLibrary.analysisId);
@@ -475,6 +502,7 @@ const App: React.FC = () => {
           setTopics(analysis.topics);
           setVocabulary(analysis.vocabulary);
           setTranscript(analysis.transcript || []);
+          setTranscriptLangMismatch(analysis.transcriptLangMismatch || false);
           setCurrentAnalysisId(globalAnalysis.id);
 
           const dbTopics = await getPracticeTopicsForAnalysis(globalAnalysis.id);
@@ -540,7 +568,7 @@ const App: React.FC = () => {
     );
   };
 
-  const handleStartPractice = async (topic: PracticeTopic) => {
+  const handleStartPractice = async (topic: PracticeTopic, question: TopicQuestion) => {
     if (!user) {
       // Check anonymous practice limit (2 sessions)
       const practiceStatus = await checkAnonymousPracticeLimit();
@@ -554,12 +582,157 @@ const App: React.FC = () => {
       return;
     }
 
-    console.log('[App] handleStartPractice called. currentAnalysisId:', currentAnalysisId);
+    console.log('[App] handleStartPractice called. currentAnalysisId:', currentAnalysisId, 'topic:', topic.topic, 'question:', question.question);
+
     // Get all selected topic objects
     const allTopics = discussionTopics.filter(t => selectedTopics.includes(t.topic));
     setAllSelectedPracticeTopics(allTopics);
-    setActivePracticeTopic(topic);
+
+    // Update the topic with the selected question
+    const topicWithQuestion: PracticeTopic = {
+      ...topic,
+      question: question.question,
+      questionId: question.questionId,
+    };
+    setActivePracticeTopic(topicWithQuestion);
+
+    // Fetch all questions for this topic (filtered by user's level)
+    if (topic.topicId) {
+      try {
+        const questions = filterQuestionsByLang(await getQuestionsForTopic(topic.topicId, level), targetLang);
+        setAllQuestionsForTopic(questions);
+
+        // If the selected question has no real ID, use the first fetched question's ID
+        if (!question.questionId && questions.length > 0) {
+          const matched = questions.find(q => q.question === question.question);
+          if (matched) {
+            topicWithQuestion.questionId = matched.questionId;
+            setActivePracticeTopic({ ...topicWithQuestion, questionId: matched.questionId });
+          }
+        }
+
+        // Count AI-generated questions for the limit (per-user)
+        const aiCount = await countAiGeneratedQuestions(topic.topicId, user?.id);
+        setAiGeneratedQuestionCount(aiCount);
+      } catch (err) {
+        console.error('Failed to fetch questions for topic:', err);
+        setAllQuestionsForTopic([]);
+        setAiGeneratedQuestionCount(0);
+      }
+    } else {
+      setAllQuestionsForTopic([]);
+      setAiGeneratedQuestionCount(0);
+    }
+
     setAppState(AppState.PRACTICE_SESSION);
+  };
+
+  // Handle topic change in PracticeSession (fetch questions for new topic)
+  const handleTopicChange = async (newTopic: PracticeTopic) => {
+    setActivePracticeTopic(newTopic);
+
+    // Fetch questions and AI count for the new topic
+    if (newTopic.topicId) {
+      try {
+        const questions = filterQuestionsByLang(await getQuestionsForTopic(newTopic.topicId, level), targetLang);
+        setAllQuestionsForTopic(questions);
+        const aiCount = await countAiGeneratedQuestions(newTopic.topicId, user?.id);
+        setAiGeneratedQuestionCount(aiCount);
+      } catch (err) {
+        console.error('Failed to fetch questions for new topic:', err);
+        setAllQuestionsForTopic([]);
+        setAiGeneratedQuestionCount(0);
+      }
+    } else {
+      setAllQuestionsForTopic([]);
+      setAiGeneratedQuestionCount(0);
+    }
+  };
+
+  // Handle question change in PracticeSession
+  const handleQuestionChange = (question: TopicQuestion) => {
+    if (!activePracticeTopic) return;
+
+    // Update active topic with new question
+    setActivePracticeTopic({
+      ...activePracticeTopic,
+      question: question.question,
+      questionId: question.questionId,
+    });
+  };
+
+  // Handle generating a new question for the current topic
+  const handleGenerateQuestion = async (): Promise<TopicQuestion | null> => {
+    if (!activePracticeTopic?.topicId || !currentAnalysisId) {
+      console.error('Cannot generate question: missing topic or analysis ID');
+      return null;
+    }
+
+    try {
+      // Call the backend to generate a new question
+      // Pass video summary and existing questions for better context
+      const response = await fetch(`${getBackendOrigin()}/api/generate-question`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topicName: activePracticeTopic.topic,
+          targetLang,
+          nativeLang,
+          level,
+          analysisId: currentAnalysisId,
+          videoSummary: summary, // Pass video summary for context
+          existingQuestions: allQuestionsForTopic.map(q => q.question), // Avoid duplicates
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to generate question');
+      }
+
+      const { question, targetWords, difficultyLevel } = await response.json();
+
+      // Save the generated question to the database with the difficulty level
+      const savedQuestion = await saveGeneratedQuestion(
+        activePracticeTopic.topicId,
+        question,
+        currentAnalysisId,
+        user?.id,
+        difficultyLevel || level // Use the level from response, fallback to current user level
+      );
+
+      if (!savedQuestion) {
+        throw new Error('Failed to save generated question');
+      }
+
+      // Create TopicQuestion object
+      const newQuestion: TopicQuestion = {
+        questionId: savedQuestion.id,
+        question: savedQuestion.question,
+        sourceType: 'ai_generated',
+        difficultyLevel: (difficultyLevel || level)?.toLowerCase(),
+        useCount: 0,
+        videoTitle: null,
+        analysisId: currentAnalysisId,
+      };
+
+      // Update state
+      setAllQuestionsForTopic(prev => [...prev, newQuestion]);
+      setAiGeneratedQuestionCount(prev => prev + 1);
+
+      // Merge target words into topic if provided
+      if (targetWords && targetWords.length > 0 && activePracticeTopic.topicId) {
+        // This is handled server-side, but we could update local state if needed
+      }
+
+      // Switch to the new question
+      handleQuestionChange(newQuestion);
+
+      return newQuestion;
+    } catch (err) {
+      console.error('Failed to generate question:', err);
+      return null;
+    }
   };
 
   const handleStart = async () => {
@@ -593,6 +766,7 @@ const App: React.FC = () => {
     // 2. Now start loading (user has permission)
     setAppState(AppState.LOADING);
     setLoadingText("Preparing your lesson...");
+    setTranscriptLangMismatch(false); // Reset warning for new video
 
     try {
       // 3. Fetch Video Metadata (Fast)
@@ -629,6 +803,7 @@ const App: React.FC = () => {
         setTopics(analysis.topics);
         setVocabulary(analysis.vocabulary);
         setTranscript(analysis.transcript || []);
+        setTranscriptLangMismatch(analysis.transcriptLangMismatch || false);
         setSelectedTopics([]);
         setCurrentAnalysisId(cachedAnalysis.id);
         console.log('[App] setCurrentAnalysisId called with:', cachedAnalysis.id);
@@ -720,6 +895,7 @@ const App: React.FC = () => {
             setTopics(analysis.topics);
             setVocabulary(analysis.vocabulary);
             setTranscript(analysis.transcript || []);
+            setTranscriptLangMismatch(analysis.transcriptLangMismatch || false);
             setDiscussionTopics(analysis.discussionTopics || []);
             setSelectedTopics([]);
 
@@ -769,12 +945,18 @@ const App: React.FC = () => {
                   const topicsWithIds = await savePracticeTopicsFromAnalysis(
                     savedAnalysis.id,
                     analysis.discussionTopics,
+                    targetLang,
                     level
                   );
                   // Update discussion topics with database IDs
                   if (topicsWithIds.length > 0) {
                     setDiscussionTopics(topicsWithIds);
                   }
+                }
+
+                // Save video category from AI analysis
+                if (analysis.videoCategory && dbVideo) {
+                  updateVideoCategory(dbVideo.id, analysis.videoCategory);
                 }
               }
             }
@@ -843,6 +1025,7 @@ const App: React.FC = () => {
     // Set loading state
     setAppState(AppState.LOADING);
     setLoadingText('Loading your video...');
+    setTranscriptLangMismatch(false); // Reset warning for new video
 
     try {
       // Reconstruct video URL from youtubeId
@@ -871,6 +1054,7 @@ const App: React.FC = () => {
         setTopics(analysis.topics);
         setVocabulary(analysis.vocabulary);
         setTranscript(analysis.transcript || []);
+        setTranscriptLangMismatch(analysis.transcriptLangMismatch || false);
         setCurrentAnalysisId(video.analysisId);
 
         // Fetch practice topics with database IDs and merge with discussion topics
@@ -921,6 +1105,7 @@ const App: React.FC = () => {
   const handleExploreVideoSelect = async (analysisId: string) => {
     setAppState(AppState.LOADING);
     setLoadingText('Loading video...');
+    setTranscriptLangMismatch(false); // Reset warning for new video
 
     try {
       const cachedAnalysis = await getCachedAnalysisWithVideoById(analysisId);
@@ -957,6 +1142,7 @@ const App: React.FC = () => {
       setTopics(analysis.topics);
       setVocabulary(analysis.vocabulary);
       setTranscript(analysis.transcript || []);
+      setTranscriptLangMismatch(analysis.transcriptLangMismatch || false);
       setCurrentAnalysisId(analysisId);
 
       // Fetch practice topics with database IDs
@@ -1213,7 +1399,7 @@ const App: React.FC = () => {
                  )}
                </div>
 
-               <TopicSelector 
+               <TopicSelector
                   topics={discussionTopics}
                   selectedTopics={selectedTopics}
                   onTopicToggle={handleTopicToggle}
@@ -1233,8 +1419,10 @@ const App: React.FC = () => {
                   onTimestampClick={handleTimestampClick}
                   isLoading={isAnalysisLoading}
                   targetLang={targetLang}
+                  nativeLang={nativeLang}
                   layoutMode="fixed"
                   currentTime={currentTime}
+                  transcriptLangMismatch={transcriptLangMismatch}
                 />
            </div>
 
@@ -1262,7 +1450,11 @@ const App: React.FC = () => {
           <PracticeSession
             topic={activePracticeTopic}
             allTopics={allSelectedPracticeTopics}
-            onTopicChange={setActivePracticeTopic}
+            onTopicChange={handleTopicChange}
+            allQuestions={allQuestionsForTopic}
+            onQuestionChange={handleQuestionChange}
+            onGenerateQuestion={user ? handleGenerateQuestion : undefined}
+            aiGeneratedCount={aiGeneratedQuestionCount}
             level={level}
             nativeLang={nativeLang}
             targetLang={targetLang}
@@ -1319,13 +1511,13 @@ const App: React.FC = () => {
       )}
 
       {/* Translation Popup - Pro only, active on all content pages */}
+      {/* Note: sourceLang is omitted so DeepL auto-detects the source language */}
       {tier === 'pro' &&
         (appState === AppState.DASHBOARD ||
         appState === AppState.PRACTICE_SESSION ||
         appState === AppState.PRACTICE_REPORTS ||
         appState === AppState.PRACTICE_REPORT_DETAIL) && (
         <TranslationPopup
-          sourceLang={targetLang}
           targetLang={translationPopupTargetLang}
         />
       )}

@@ -1,33 +1,45 @@
 import React from 'react';
-import { PracticeTopic } from '../../../shared/types';
+import { PracticeTopic, TopicQuestion } from '../../../shared/types';
 
 interface TopicSelectorProps {
   topics: PracticeTopic[];
   selectedTopics: string[];
   onTopicToggle: (topic: string) => void;
   isLoading?: boolean;
-  onStartPractice?: (topic: PracticeTopic) => void;
+  onStartPractice?: (topic: PracticeTopic, question: TopicQuestion) => void;
 }
 
-const TopicSelector: React.FC<TopicSelectorProps> = ({ 
-  topics, 
-  selectedTopics, 
-  onTopicToggle, 
+const TopicSelector: React.FC<TopicSelectorProps> = ({
+  topics,
+  selectedTopics,
+  onTopicToggle,
   isLoading = false,
-  onStartPractice 
+  onStartPractice
 }) => {
   // Render if loading OR if there are topics
   if (!isLoading && (!topics || topics.length === 0)) return null;
 
+  // Get the currently selected topic object
+  const selectedTopic = selectedTopics.length > 0
+    ? topics.find(t => t.topic === selectedTopics[0])
+    : null;
+
   const handleStartClick = () => {
-    if (selectedTopics.length > 0 && onStartPractice) {
-      const selectedTopicObj = topics.find(t => t.topic === selectedTopics[0]);
-      if (selectedTopicObj) {
-        onStartPractice(selectedTopicObj);
-      }
-    } else {
-        alert("Please select a topic first.");
+    if (!selectedTopic || !onStartPractice) {
+      alert("Please select a topic first.");
+      return;
     }
+
+    // Use the topic's default question
+    const defaultQuestion: TopicQuestion = {
+      questionId: selectedTopic.questionId || '',
+      question: selectedTopic.question,
+      sourceType: 'video_generated',
+      useCount: 0,
+      videoTitle: null,
+      analysisId: null
+    };
+    onStartPractice(selectedTopic, defaultQuestion);
   };
 
   return (
@@ -40,7 +52,7 @@ const TopicSelector: React.FC<TopicSelectorProps> = ({
             Select a topic to start speaking practice with your AI tutor.
         </p>
       </div>
-      
+
       {isLoading ? (
         <div className="flex flex-wrap gap-2 animate-pulse mb-6">
             {[1, 2, 3].map(i => (
@@ -57,8 +69,8 @@ const TopicSelector: React.FC<TopicSelectorProps> = ({
                 onClick={() => onTopicToggle(item.topic)}
                 className={`
                     px-3 py-1.5 rounded-full text-xs font-medium transition-all border text-left
-                    ${isSelected 
-                    ? 'bg-stone-800 text-white border-stone-800 shadow-sm' 
+                    ${isSelected
+                    ? 'bg-stone-800 text-white border-stone-800 shadow-sm'
                     : 'bg-stone-50 text-stone-600 border-stone-200 hover:bg-stone-100 hover:border-stone-300'
                     }
                 `}
