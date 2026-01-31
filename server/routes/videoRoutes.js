@@ -221,7 +221,9 @@ router.post('/analyze-video-content', async (req, res) => {
     res.json(mappedResponse);
   } catch (err) {
     console.error('analyze-video-content failed', err);
-    res.status(500).json({ error: 'Failed to analyze video content' });
+    // Pass through specific error messages (e.g., transcript errors)
+    const errorMessage = err.message || 'Failed to analyze video content';
+    res.status(500).json({ error: errorMessage });
   }
 });
 
