@@ -75,10 +75,12 @@ router.post('/analyze-video-content', async (req, res) => {
         - Translation of the word itself (in ${nativeLang})
         - Translation of the definition (in ${nativeLang})
         - Translation of the context sentence (in ${nativeLang})
-    3.  **Practice Topics (Mission Data):** Generate ${targetTopicCount} specific discussion cards. For EACH card, you must provide:
-        - **Topic Name:** A short tag (e.g., "Work-Life Balance")
-        - **Question:** A specific question for the user to answer.
-        - **Target Words:** Select 3 words (from the video or relevant to the topic) that the user MUST try to use in their answer.
+    3.  **Practice Topics (Mission Data):** Generate ${targetTopicCount} specific discussion cards. ALL topic names, questions, and target words MUST be written in ${targetLang}. For EACH card, you must provide:
+        - **Topic Name:** A short tag in ${targetLang} (e.g., if target is Chinese: "工作与生活平衡", if English: "Work-Life Balance")
+        - **Category:** A broad category for the topic (e.g., "Career", "Travel", "Daily Life", "Technology", "Culture", "Health", "Education", "Relationships", "Entertainment", "Society")
+        - **Question:** A specific question in ${targetLang} for the user to answer.
+        - **Target Words:** Select 3 words in ${targetLang} (from the video or relevant to the topic) that the user MUST try to use in their answer.
+    5.  **Video Category:** Pick the single most fitting category for this video overall (e.g., "Career", "Travel", "Daily Life", "Technology", "Culture", "Health", "Education", "Relationships", "Entertainment", "Society").
     4.  **Outline:** A chronological breakdown with timestamps. TIMESTAMPS MUST BE ACCURATE and within the video duration (${contextData.duration}s).
 
     # Output Format
@@ -101,6 +103,7 @@ router.post('/analyze-video-content', async (req, res) => {
       "practice_topics": [
         {
           "topic_name": "...",
+          "category": "...",
           "question": "...",
           "suggested_target_words": ["word1", "word2", "word3"]
         }
@@ -111,7 +114,8 @@ router.post('/analyze-video-content', async (req, res) => {
           "title": "...",
           "description": "..."
         }
-      ]
+      ],
+      "video_category": "..."
     }
 
     # Input Transcript
@@ -119,7 +123,7 @@ router.post('/analyze-video-content', async (req, res) => {
     `.trim();
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-2.5-flash',
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       config: {
         responseMimeType: 'application/json',
@@ -155,10 +159,11 @@ router.post('/analyze-video-content', async (req, res) => {
                 type: Type.OBJECT,
                 properties: {
                   topic_name: { type: Type.STRING },
+                  category: { type: Type.STRING },
                   question: { type: Type.STRING },
                   suggested_target_words: { type: Type.ARRAY, items: { type: Type.STRING } }
                 },
-                required: ['topic_name', 'question', 'suggested_target_words']
+                required: ['topic_name', 'category', 'question', 'suggested_target_words']
               }
             },
             outline: {
@@ -172,9 +177,10 @@ router.post('/analyze-video-content', async (req, res) => {
                 },
                 required: ['time', 'title', 'description']
               }
-            }
+            },
+            video_category: { type: Type.STRING }
           },
-          required: ['summary', 'vocabulary', 'practice_topics', 'outline'],
+          required: ['summary', 'vocabulary', 'practice_topics', 'outline', 'video_category'],
         },
       },
     });
@@ -211,11 +217,14 @@ router.post('/analyze-video-content', async (req, res) => {
       })),
       discussionTopics: (json.practice_topics || []).map(t => ({
         topic: t.topic_name,
+        category: t.category || null,
         question: t.question,
         targetWords: t.suggested_target_words || []
       })),
+      videoCategory: json.video_category || null,
       transcript: contextData.transcriptSegments || [],
-      transcriptLang: contextData.transcriptLang || null
+      transcriptLang: contextData.transcriptLang || null,
+      transcriptLangMismatch: contextData.transcriptLangMismatch || false
     };
 
     res.json(mappedResponse);
@@ -289,7 +298,7 @@ router.post('/search-videos', async (req, res) => {
     `.trim();
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-2.5-flash',
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       config: {
         responseMimeType: 'application/json',
@@ -327,6 +336,185 @@ router.post('/search-videos', async (req, res) => {
     console.error('search-videos failed', err);
     // On error, don't block the user - return all videos
     res.json({ matchedVideoIds: req.body?.videos?.map(v => v.libraryId) || [] });
+  }
+});
+
+/**
+ * POST /api/match-topics
+ * AI-powered semantic matching of new topics against existing canonical topics.
+ * Used during video analysis to deduplicate similar topics (e.g., "jobs" ≈ "work & career").
+ */
+router.post('/match-topics', async (req, res) => {
+  try {
+    const { newTopics, existingTopics, targetLang } = req.body || {};
+
+    if (!newTopics || !Array.isArray(newTopics)) {
+      return res.status(400).json({ error: 'Missing newTopics array' });
+    }
+
+    // If no existing topics to match against, everything is new
+    if (!existingTopics || existingTopics.length === 0) {
+      return res.json({
+        matches: newTopics.map(t => ({ new_topic: t, match: null, confidence: 0 }))
+      });
+    }
+
+    if (!config.gemini.apiKey) return res.status(500).json({ error: 'Server missing GEMINI_API_KEY' });
+    const ai = createAi();
+
+    const prompt = `
+    You are a topic-matching assistant for a language learning app.
+
+    Given a list of NEW topics from a video analysis and a list of EXISTING canonical topics (all in ${targetLang || 'the same language'}),
+    determine which new topics match existing ones (semantically the same discussion theme).
+
+    Rules:
+    - Match only if the topics would lead to the same type of discussion
+    - "jobs" and "work & career" = MATCH
+    - "travel fears" and "adventure anxiety" = MATCH
+    - "city life" and "food culture" = NO MATCH (too different)
+    - If no existing topic matches, set match to null
+
+    NEW TOPICS: ${JSON.stringify(newTopics)}
+    EXISTING TOPICS: ${JSON.stringify(existingTopics.map(t => ({ id: t.id, topic: t.topic })))}
+
+    For each new topic, return whether it matches an existing topic and your confidence level.
+    Only match if confidence >= 0.8.
+    `.trim();
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            results: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  new_topic: { type: Type.STRING },
+                  matched_id: { type: Type.STRING, nullable: true },
+                  confidence: { type: Type.NUMBER }
+                },
+                required: ['new_topic', 'confidence']
+              }
+            }
+          },
+          required: ['results']
+        }
+      }
+    });
+
+    let candidates = response.candidates;
+    if (!candidates && response.data) candidates = response.data.candidates;
+
+    if (!candidates || !candidates[0]?.content?.parts) {
+      throw new Error('Gemini response missing candidates');
+    }
+
+    const json = safeJsonParse(candidates[0].content.parts[0].text);
+
+    // Filter: only accept matches with confidence >= 0.8
+    const matches = (json.results || []).map(m => ({
+      new_topic: m.new_topic,
+      match: m.confidence >= 0.8 ? (m.matched_id || null) : null,
+      confidence: m.confidence
+    }));
+
+    res.json({ matches });
+  } catch (err) {
+    console.error('match-topics failed:', err);
+    // Graceful degradation: treat all as new
+    res.json({
+      matches: (req.body?.newTopics || []).map(t => ({
+        new_topic: t, match: null, confidence: 0
+      }))
+    });
+  }
+});
+
+/**
+ * POST /api/generate-question
+ * AI-generates a new practice question for a given topic based on video content + user level.
+ * Limited to 3 AI-generated questions per topic (enforced by frontend).
+ */
+router.post('/generate-question', async (req, res) => {
+  try {
+    if (!config.gemini.apiKey) return res.status(500).json({ error: 'Server missing GEMINI_API_KEY' });
+
+    const { topicName, targetLang, nativeLang, level, videoSummary, existingQuestions } = req.body || {};
+
+    if (!topicName || !targetLang || !level) {
+      return res.status(400).json({ error: 'Missing topicName, targetLang, or level' });
+    }
+
+    const ai = createAi();
+
+    const prompt = `
+    You are a language learning question generator.
+
+    Generate ONE new practice question for a speaking exercise.
+
+    # Context
+    - **Topic:** "${topicName}"
+    - **Target Language:** ${targetLang}
+    - **User's Native Language:** ${nativeLang || 'English'}
+    - **Proficiency Level:** ${level.toUpperCase()}
+    ${videoSummary ? `- **Video Summary:** ${videoSummary}` : ''}
+
+    # Existing Questions (DO NOT repeat these)
+    ${existingQuestions && existingQuestions.length > 0 ? existingQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n') : 'None yet.'}
+
+    # Level Guidelines
+    - EASY: Personal preferences, simple descriptions (e.g., "Do you like...?", "What is...?")
+    - MEDIUM: Storytelling, experiences (e.g., "Describe a time when...", "Why do you think...?")
+    - HARD: Debate, critical thinking (e.g., "What is your stance on...?", "Critique the idea that...")
+
+    # Requirements
+    - The question MUST be in ${targetLang}
+    - It must be different from existing questions
+    - It must be relevant to the topic "${topicName}"
+    - Select 3 target words the user should try to use in their answer (in ${targetLang})
+
+    Return a JSON object with the question and target words.
+    `.trim();
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            question: { type: Type.STRING },
+            target_words: { type: Type.ARRAY, items: { type: Type.STRING } }
+          },
+          required: ['question', 'target_words']
+        }
+      }
+    });
+
+    let candidates = response.candidates;
+    if (!candidates && response.data) candidates = response.data.candidates;
+
+    if (!candidates || !candidates[0]?.content?.parts) {
+      throw new Error('Gemini response missing candidates');
+    }
+
+    const json = safeJsonParse(candidates[0].content.parts[0].text);
+
+    res.json({
+      question: json.question,
+      targetWords: json.target_words || [],
+      difficultyLevel: level // Return the level the question was generated for
+    });
+  } catch (err) {
+    console.error('generate-question failed:', err);
+    res.status(500).json({ error: 'Failed to generate question' });
   }
 });
 

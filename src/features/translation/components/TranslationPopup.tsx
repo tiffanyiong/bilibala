@@ -20,7 +20,7 @@ const ERROR_MESSAGES: Record<string, { notAvailable: string; tooLong: string }> 
 const DEFAULT_ERRORS = { notAvailable: 'Translation is currently not available', tooLong: 'Selection too long' };
 
 interface TranslationPopupProps {
-  sourceLang: string; // e.g., "English" - the language of the content
+  sourceLang?: string; // e.g., "English" - optional, DeepL auto-detects if not provided
   targetLang: string; // e.g., "Chinese (Mandarin - 中文)" - translate TO this language
   containerRef?: React.RefObject<HTMLElement | null>; // Optional container to scope selection
 }
@@ -67,14 +67,19 @@ const TranslationPopup: React.FC<TranslationPopupProps> = ({
     setPopup(prev => ({ ...prev, loading: true, error: null }));
 
     try {
+      // Build request body - only include sourceLang if explicitly provided
+      const requestBody: { text: string; targetLang: string; sourceLang?: string } = {
+        text,
+        targetLang,
+      };
+      if (sourceLang) {
+        requestBody.sourceLang = sourceLang;
+      }
+
       const response = await fetch(`${getBackendOrigin()}/api/translate/deepl`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text,
-          sourceLang,
-          targetLang,
-        }),
+        body: JSON.stringify(requestBody),
         signal: abortControllerRef.current.signal,
       });
 
@@ -156,8 +161,9 @@ const TranslationPopup: React.FC<TranslationPopupProps> = ({
       return;
     }
 
-    // Same language - no need to translate
-    if (sourceLang === targetLang) {
+    // Only skip translation if BOTH sourceLang is explicitly provided AND it matches targetLang
+    // If sourceLang is undefined, let DeepL auto-detect the source language
+    if (sourceLang && sourceLang === targetLang) {
       return;
     }
 

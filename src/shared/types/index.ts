@@ -17,11 +17,32 @@ export interface VocabularyItem {
 
 export interface PracticeTopic {
   topic: string;
+  category?: string | null;
   question: string;
   targetWords: string[];
   // Optional database IDs (populated when loaded from DB)
   topicId?: string;
   questionId?: string;
+}
+
+// For browsing all questions under a topic
+export interface TopicWithQuestions {
+  topicId: string;
+  topic: string;
+  category: string | null;
+  targetWords: string[];
+  practiceCount: number;
+  questions: TopicQuestion[];
+}
+
+export interface TopicQuestion {
+  questionId: string;
+  question: string;
+  sourceType: string; // 'video_generated' | 'ai_generated' | 'user_created'
+  difficultyLevel?: string | null; // 'easy' | 'medium' | 'hard'
+  useCount: number;
+  videoTitle?: string | null;
+  analysisId?: string | null;
 }
 
 export interface ContentAnalysis {
@@ -31,7 +52,9 @@ export interface ContentAnalysis {
   vocabulary: VocabularyItem[];
   transcript?: { text: string; duration: number; offset: number }[];
   transcriptLang?: string;
+  transcriptLangMismatch?: boolean;
   discussionTopics?: PracticeTopic[];
+  videoCategory?: string | null;
 }
 
 // --- NEW: Recursive Interfaces for Graph Nodes ---
@@ -53,33 +76,53 @@ export interface ImprovedArgumentNode {
   sub_points?: ImprovedArgumentNode[]; // Recursive for nested stories
 }
 
+// --- POC: Pronunciation Analysis ---
+export interface PronunciationWord {
+  word: string;
+  status: 'good' | 'needs-work' | 'unclear';
+  feedback?: string; // e.g., "Try stressing the second syllable"
+}
+
+export interface PronunciationAnalysis {
+  overall: 'native-like' | 'clear' | 'accented' | 'needs-work';
+  words: PronunciationWord[];
+  intonation: {
+    pattern: 'natural' | 'flat' | 'monotone' | 'overly-expressive';
+    feedback: string; // e.g., "Try rising intonation on questions"
+  };
+  summary: string; // Brief overall pronunciation feedback
+}
+
 export interface SpeechAnalysisResult {
   transcription: string;
   detected_framework?: string; // <--- ADDED THIS (Fixes your error)
-  
+
   structure: {
     conclusion: string;
     arguments: ArgumentNode[]; // Updated to use recursive type
   };
-  
+
   improved_structure?: {
     recommended_framework?: string;
     conclusion: string;
     arguments: ImprovedArgumentNode[]; // Updated to use recursive type
   };
-  
+
   feedback: {
     score: number;
     strengths: string[];
     weaknesses: string[];
     suggestions: string[];
   };
-  
+
   improvements: Array<{
     original: string;
     improved: string;
     explanation: string;
   }>;
+
+  // POC: Pronunciation Analysis (optional - may not be present in older data)
+  pronunciation?: PronunciationAnalysis;
 }
 
 export interface Message {
