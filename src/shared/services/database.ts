@@ -20,13 +20,29 @@ import {
 // ============================================
 
 /**
+ * Check if a string is a valid YouTube video ID (11 characters, alphanumeric with - and _)
+ */
+function isValidYoutubeId(id: string): boolean {
+  if (!id || typeof id !== 'string') return false;
+  // YouTube IDs are exactly 11 characters: alphanumeric, dash, underscore
+  return /^[a-zA-Z0-9_-]{11}$/.test(id);
+}
+
+/**
  * Get a video by YouTube ID, or create it if it doesn't exist
+ * Returns null if the YouTube ID is invalid
  */
 export async function getOrCreateVideo(
   youtubeId: string,
   title: string,
   thumbnailUrl?: string
 ): Promise<DbGlobalVideo | null> {
+  // Validate YouTube ID format before saving
+  if (!isValidYoutubeId(youtubeId)) {
+    console.error('Invalid YouTube ID format:', youtubeId);
+    return null;
+  }
+
   // First, try to find existing video
   const { data: existing, error: fetchError } = await supabase
     .from('global_videos')
@@ -150,6 +166,44 @@ export async function getCachedAnalysisById(
   }
 
   return data as DbCachedAnalysis;
+}
+
+// Type for analysis with video info (for explore feature)
+export interface CachedAnalysisWithVideo extends DbCachedAnalysis {
+  global_videos: {
+    id: string;
+    youtube_id: string;
+    title: string | null;
+    thumbnail_url: string | null;
+  };
+}
+
+/**
+ * Get cached analysis by its ID with video info (for explore feature)
+ */
+export async function getCachedAnalysisWithVideoById(
+  analysisId: string
+): Promise<CachedAnalysisWithVideo | null> {
+  const { data, error } = await supabase
+    .from('cached_analyses')
+    .select(`
+      *,
+      global_videos (
+        id,
+        youtube_id,
+        title,
+        thumbnail_url
+      )
+    `)
+    .eq('id', analysisId)
+    .single();
+
+  if (error) {
+    console.error('Error fetching cached analysis with video:', error);
+    return null;
+  }
+
+  return data as CachedAnalysisWithVideo;
 }
 
 /**

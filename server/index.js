@@ -13,6 +13,7 @@ import speechRoutes from './routes/speechRoutes.js';
 import translationRoutes from './routes/translationRoutes.js';
 import subscriptionRoutes from './routes/subscriptionRoutes.js';
 import deeplRoutes from './routes/deeplRoutes.js';
+import exploreRoutes from './routes/exploreRoutes.js';
 
 // Import WebSocket handler
 import { setupLiveWebSocket } from './websocket/liveHandler.js';
@@ -40,6 +41,7 @@ app.use('/api', speechRoutes);
 app.use('/api', translationRoutes);
 app.use('/api', subscriptionRoutes);
 app.use('/api', deeplRoutes);
+app.use('/api', exploreRoutes);
 
 // Create HTTP server and WebSocket server
 const server = http.createServer(app);
