@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { getBackendOrigin } from '../../../shared/services/backend';
 
 const MAX_CHARS = 150;
