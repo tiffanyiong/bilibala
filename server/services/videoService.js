@@ -1,24 +1,26 @@
 import { Innertube, UniversalCache } from 'youtubei.js';
-import { Supadata } from '@supadata/js';
+import { Supadata, SupadataError } from '@supadata/js';
 import { config } from '../config/env.js';
 
-// Map app language names to ISO 639-1 codes for Supadata API
-const LANGUAGE_TO_ISO = {
+// Map app display language names to Supadata-compatible language codes
+// Supadata accepts ISO 639-1 codes and BCP 47 tags (e.g., zh-CN, zh-TW)
+// Keys must match the `name` field from LANGUAGES in src/shared/constants.ts
+const LANGUAGE_TO_SUPADATA = {
   'English': 'en',
-  'Spanish': 'es',
-  'French': 'fr',
-  'German': 'de',
-  'Portuguese': 'pt',
-  'Japanese': 'ja',
-  'Korean': 'ko',
-  'Chinese': 'zh',
-  'Hindi': 'hi',
-  'Italian': 'it',
-  'Russian': 'ru',
-  'Arabic': 'ar',
-  'Indonesian': 'id',
-  'Turkish': 'tr',
-  'Vietnamese': 'vi'
+  'Spanish (Español)': 'es',
+  'French (Français)': 'fr',
+  'German (Deutsch)': 'de',
+  'Portuguese (Português)': 'pt',
+  'Japanese (日本語)': 'ja',
+  'Korean (한국어)': 'ko',
+  'Chinese (Mandarin - 中文)': 'zh-Hans',
+  'Hindi (हिन्दी)': 'hi',
+  'Italian (Italiano)': 'it',
+  'Russian (Русский)': 'ru',
+  'Arabic (العربية)': 'ar',
+  'Indonesian (Bahasa Indonesia)': 'id',
+  'Turkish (Türkçe)': 'tr',
+  'Vietnamese (Tiếng Việt)': 'vi'
 };
 
 /**
@@ -28,7 +30,7 @@ const LANGUAGE_TO_ISO = {
  * @throws {Error} If transcript cannot be fetched
  */
 export async function fetchVideoContext(videoId, targetLang = 'English') {
-  const langCode = LANGUAGE_TO_ISO[targetLang] || 'en';
+  const langCode = LANGUAGE_TO_SUPADATA[targetLang] || 'en';
   console.log(`[server] Fetching context for ${videoId} (lang: ${langCode})...`);
 
   // 1. Duration (Innertube)
@@ -37,54 +39,51 @@ export async function fetchVideoContext(videoId, targetLang = 'English') {
     const yt = await Innertube.create({ cache: new UniversalCache(false) });
     const info = await yt.getInfo(videoId);
     duration = info.basic_info.duration || 0;
+    console.log(`[server] Video duration: ${duration}s`);
   } catch (e) {
     console.warn(`[server] Failed to get video duration: ${e.message}`);
   }
 
-  // 2. Transcript (Supadata only - no fallback)
+  // 2. Transcript (Supadata native mode: only fetches existing captions, no AI generation)
   let transcriptText = '';
   let transcriptSegments = [];
   let transcriptLang = null;
 
-  console.log('[server] Requesting transcript from Supadata...');
   const supadata = new Supadata({ apiKey: config.supadata.apiKey });
+  const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
-  let result = await supadata.transcript({
-    url: `https://www.youtube.com/watch?v=${videoId}`,
-    lang: langCode,
-    text: false
-  });
+  console.log(`[server] Requesting transcript from Supadata (mode=native, lang=${langCode})...`);
 
-  // Check if Supadata returned an error response
-  if (result.error) {
-    console.error(`[server] Supadata error: ${result.error} - ${result.message}`);
-    throw new Error('Unable to get transcript for this video. Please try a different video.');
-  }
-
-  let content = null;
-  if (result && result.jobId) {
-    console.log(`[server] Supadata job started: ${result.jobId}`);
-    let status = 'queued';
-    let attempts = 0;
-    while (status !== 'completed' && status !== 'failed' && attempts < 30) {
-      await new Promise(r => setTimeout(r, 1000));
-      const job = await supadata.transcript.getJobStatus(result.jobId);
-      status = job.status;
-      if (status === 'completed') {
-        content = job.content;
-      } else if (status === 'failed') {
-        console.error(`[server] Supadata job failed: ${job.error}`);
-        throw new Error('Unable to get transcript for this video. Please try a different video.');
+  let result;
+  try {
+    result = await supadata.transcript({
+      url: videoUrl,
+      lang: langCode,
+      text: false,
+      mode: 'native'
+    });
+  } catch (e) {
+    if (e instanceof SupadataError) {
+      console.error(`[server] Supadata error [${e.error}]: ${e.message} | details: ${e.details}`);
+      if (e.error === 'transcript-unavailable') {
+        throw new Error('This video does not have subtitles/captions available. Please choose a video with captions enabled.');
       }
-      attempts++;
+      throw new Error('Something went wrong fetching the transcript. Please try again later.');
     }
-    // Timeout after 30 attempts
-    if (status !== 'completed') {
-      throw new Error('Transcript request timed out. Please try again.');
-    }
-  } else if (result) {
-    content = (result.content !== undefined) ? result.content : result;
+    throw e;
   }
+
+  const availableLangs = result?.availableLangs || [];
+  transcriptLang = result?.lang || null;
+  console.log(`[server] Supadata response: lang=${transcriptLang}, availableLangs=${JSON.stringify(availableLangs)}`);
+
+  // Detect language mismatch (e.g., requested zh-Hans but got en)
+  const langMismatch = transcriptLang && !transcriptLang.startsWith(langCode.split('-')[0]) && langCode.split('-')[0] !== transcriptLang.split('-')[0];
+  if (langMismatch) {
+    console.warn(`[server] Language mismatch: requested ${langCode}, got ${transcriptLang}. Available: ${availableLangs.join(', ')}`);
+  }
+
+  let content = (result && result.content !== undefined) ? result.content : result;
 
   if (Array.isArray(content) && content.length > 0) {
     // 1. Normalize Supadata segments (offset is ms, duration is ms)
@@ -123,15 +122,13 @@ export async function fetchVideoContext(videoId, targetLang = 'English') {
 
     transcriptSegments = merged;
     transcriptText = transcriptSegments.map(s => s.text).join(' ');
-    transcriptLang = result?.lang || null;
     console.log(`[server] Supadata transcript received. Segments: ${transcriptSegments.length}, lang: ${transcriptLang || 'unknown'}`);
   } else if (typeof content === 'string' && content.trim()) {
     transcriptText = content;
-    transcriptLang = result?.lang || null;
   } else {
     // No transcript content
-    throw new Error('Unable to get transcript for this video. Please try a different video.');
+    throw new Error('This video does not have subtitles/captions available. Please choose a video with captions enabled.');
   }
 
-  return { duration, transcriptText, transcriptSegments, transcriptLang };
+  return { duration, transcriptText, transcriptSegments, transcriptLang, transcriptLangMismatch: !!langMismatch };
 }

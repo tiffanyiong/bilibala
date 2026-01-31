@@ -4,7 +4,7 @@ import { useSubscription } from '../../../shared/context/SubscriptionContext';
 import { getBackendOrigin } from '../../../shared/services/backend';
 import { savePracticeSession, updateLibraryPracticeStats, uploadPracticeAudio, incrementTopicPracticeCount, incrementQuestionUseCount } from '../../../shared/services/database';
 import { checkAnonymousPracticeLimit, recordAnonymousPractice } from '../../../shared/services/usageTracking';
-import { PracticeTopic, SpeechAnalysisResult } from '../../../shared/types';
+import { PracticeTopic, TopicQuestion, SpeechAnalysisResult } from '../../../shared/types';
 import AudioRecorder from './AudioRecorder';
 import PyramidFeedback from './PyramidFeedback';
 
@@ -12,6 +12,11 @@ interface PracticeSessionProps {
   topic: PracticeTopic;
   allTopics?: PracticeTopic[];
   onTopicChange?: (topic: PracticeTopic) => void;
+  // Question navigation props
+  allQuestions?: TopicQuestion[];
+  onQuestionChange?: (question: TopicQuestion) => void;
+  onGenerateQuestion?: () => Promise<TopicQuestion | null>;
+  aiGeneratedCount?: number; // Number of AI-generated questions for this topic (max 3)
   level: string;
   nativeLang: string;
   targetLang: string;
@@ -66,7 +71,21 @@ const defaultLabels = {
     scoreKeepGrowing: 'Keep Growing'
 };
 
-const PracticeSession: React.FC<PracticeSessionProps> = ({ topic, allTopics = [], onTopicChange, level, nativeLang, targetLang, analysisId, onExit, onRequireAuth }) => {
+const PracticeSession: React.FC<PracticeSessionProps> = ({
+  topic,
+  allTopics = [],
+  onTopicChange,
+  allQuestions = [],
+  onQuestionChange,
+  onGenerateQuestion,
+  aiGeneratedCount = 0,
+  level,
+  nativeLang,
+  targetLang,
+  analysisId,
+  onExit,
+  onRequireAuth
+}) => {
   const { user } = useAuth();
   const { recordAction } = useSubscription();
   const [state, setState] = useState<SessionState>(SessionState.PREP);
@@ -77,6 +96,10 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({ topic, allTopics = []
 
   // NEW: Store the translated labels here
   const [translatedLabels, setTranslatedLabels] = useState<any>(defaultLabels);
+
+  // Question navigation state
+  const [isGenerating, setIsGenerating] = useState(false);
+  const AI_GENERATED_LIMIT = 3;
 
   const handleStartRecording = () => {
     setState(SessionState.RECORDING);
@@ -283,6 +306,49 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({ topic, allTopics = []
   const currentTopicIndex = allTopics.findIndex(t => t.topic === topic.topic);
   const hasMultipleTopics = allTopics.length > 1;
 
+  // Question navigation
+  const currentQuestionIndex = allQuestions.findIndex(q => q.questionId === topic.questionId);
+  const hasMultipleQuestions = allQuestions.length > 1;
+  const canGenerate = aiGeneratedCount < AI_GENERATED_LIMIT && !!onGenerateQuestion;
+
+  const handleQuestionSwitch = async (newQuestion: TopicQuestion) => {
+    if (newQuestion.questionId === topic.questionId) return;
+    // Check anonymous practice limit before allowing question switch
+    if (!user && onRequireAuth) {
+      const practiceStatus = await checkAnonymousPracticeLimit();
+      if (!practiceStatus.allowed) {
+        onRequireAuth();
+        return;
+      }
+    }
+    // Reset state for new question
+    setState(SessionState.PREP);
+    setAnalysisResult(null);
+    setError('');
+    setUserNote('');
+    if (currentAudioUrl) URL.revokeObjectURL(currentAudioUrl);
+    setCurrentAudioUrl(null);
+    // Notify parent
+    onQuestionChange?.(newQuestion);
+  };
+
+  const handleGenerateQuestion = async () => {
+    if (!canGenerate || isGenerating) return;
+    setIsGenerating(true);
+    try {
+      const newQuestion = await onGenerateQuestion?.();
+      if (newQuestion) {
+        // The parent will update allQuestions and call onQuestionChange
+        // to switch to the new question
+      }
+    } catch (err) {
+      console.error('Failed to generate question:', err);
+      setError('Failed to generate new question. Please try again.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#F6F4EF] p-6 lg:p-12 flex flex-col">
       {/* Header */}
@@ -339,10 +405,77 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({ topic, allTopics = []
                   </svg>
                 </button>
               )}
+
             </div>
-            <h1 className="text-3xl md:text-4xl font-serif text-stone-900 leading-tight max-w-3xl mx-auto">
-                {topic.question}
-            </h1>
+            {/* Question with navigation arrows */}
+            <div className="flex items-center justify-center gap-4">
+              {/* Previous Question Arrow */}
+              {hasMultipleQuestions && (
+                <button
+                  onClick={() => {
+                    const prevIndex = currentQuestionIndex > 0 ? currentQuestionIndex - 1 : allQuestions.length - 1;
+                    handleQuestionSwitch(allQuestions[prevIndex]);
+                  }}
+                  className="text-stone-300 hover:text-stone-500 transition-colors p-1 flex-shrink-0"
+                  aria-label="Previous question"
+                >
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="15 18 9 12 15 6" />
+                  </svg>
+                </button>
+              )}
+
+              <div className="flex flex-col items-center gap-2 flex-1 max-w-3xl">
+                <h1 className="text-3xl md:text-4xl font-serif text-stone-900 leading-tight inline">
+                  {topic.question}
+                  {onGenerateQuestion && (
+                    <button
+                      onClick={handleGenerateQuestion}
+                      disabled={!canGenerate || isGenerating}
+                      className={`group/gen inline-flex items-center align-middle ml-2 gap-1 transition-all ${
+                        canGenerate && !isGenerating
+                          ? 'text-stone-400 hover:text-stone-700 opacity-60 hover:opacity-100'
+                          : 'text-stone-300 cursor-not-allowed opacity-40'
+                      }`}
+                      title={!canGenerate ? `Generation limit reached (${aiGeneratedCount}/${AI_GENERATED_LIMIT})` : ''}
+                    >
+                      {isGenerating ? (
+                        <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <circle cx="12" cy="12" r="10" strokeOpacity="0.25" />
+                          <path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round" />
+                        </svg>
+                      ) : (
+                        <>
+                          <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6l2.1 2.1M5.6 18.4l2.1-2.1m8.6-8.6l2.1-2.1" />
+                          </svg>
+                          <span className="text-sm font-sans max-w-0 overflow-hidden whitespace-nowrap group-hover/gen:max-w-[10rem] transition-all duration-300 ease-in-out">
+                            generate question
+                          </span>
+                        </>
+                      )}
+                    </button>
+                  )}
+                </h1>
+              </div>
+
+              {/* Next Question Arrow */}
+              {hasMultipleQuestions && (
+                <button
+                  onClick={() => {
+                    const nextIndex = currentQuestionIndex < allQuestions.length - 1 ? currentQuestionIndex + 1 : 0;
+                    handleQuestionSwitch(allQuestions[nextIndex]);
+                  }}
+                  className="text-stone-300 hover:text-stone-500 transition-colors p-1 flex-shrink-0"
+                  aria-label="Next question"
+                >
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="9 18 15 12 9 6" />
+                  </svg>
+                </button>
+              )}
+            </div>
+
             {state === SessionState.PREP && (
                  <p className="text-stone-500">
                     {translatedLabels.structureYourAnswer}

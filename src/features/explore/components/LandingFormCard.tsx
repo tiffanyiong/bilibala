@@ -128,9 +128,9 @@ const LandingFormCard: React.FC<LandingFormCardProps> = ({
         />
       </div>
 
-      {/* Error Message */}
+      {/* Error Message — inline under input, no extra vertical space */}
       {errorMsg && (
-        <div className="bg-red-50 text-red-600 px-3 py-1.5 rounded-md text-[11px] sm:text-xs font-medium border border-red-100">
+        <div className="-mt-2 sm:-mt-3 text-red-500 text-[10px] sm:text-[11px] font-medium leading-tight px-1">
           {errorMsg}
         </div>
       )}

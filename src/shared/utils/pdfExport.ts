@@ -308,15 +308,55 @@ export async function exportPracticeReportToPdf(
 
     // ==================== GRAPH RENDERING ====================
 
+    // Calculate dynamic node dimensions using actual jsPDF text measurement
+    const calculateNodeDimensions = (label: string, type?: string, elaboration?: string, isRoot?: boolean, isImproved?: boolean) => {
+      const NODE_WIDTH = 100;
+      const PADDING = 4;
+      const TEXT_WIDTH = NODE_WIDTH - PADDING * 2;
+
+      // Use actual jsPDF text measurement for accurate line counts
+      const LABEL_FONT_SIZE = 8;
+      const ELAB_FONT_SIZE = 7;
+      const TYPE_FONT_SIZE = 6;
+
+      // Measure label text
+      setFont('bold', LABEL_FONT_SIZE);
+      const labelLines = doc.splitTextToSize(label, TEXT_WIDTH);
+      const labelHeight = labelLines.length * LABEL_FONT_SIZE * 0.4;
+
+      let height = PADDING * 2;
+
+      if (isRoot) {
+        height += labelHeight;
+        height = Math.max(height, 18);
+      } else {
+        // Type badge
+        if (type) {
+          height += TYPE_FONT_SIZE * 0.5 + 2;
+        }
+
+        // Label
+        height += labelHeight + 2;
+
+        // Elaboration for improved structure
+        if (elaboration && isImproved) {
+          setFont('italic', ELAB_FONT_SIZE);
+          const elabLines = doc.splitTextToSize(elaboration, TEXT_WIDTH);
+          const elabHeight = elabLines.length * ELAB_FONT_SIZE * 0.4;
+          height += elabHeight + 4;
+        }
+
+        height = Math.max(height, 20);
+      }
+
+      return { width: NODE_WIDTH, height };
+    };
+
     const generateFlowData = (data: any, isImproved: boolean = false, framework: string = ''): { nodes: GraphNode[], edges: GraphEdge[] } => {
       if (!data) return { nodes: [], edges: [] };
 
-      // Larger nodes to fit elaboration text
-      const NODE_WIDTH = 70;
-      const NODE_HEIGHT = 45;
-      const ROOT_HEIGHT = 35;
-      const RANK_SEP = 30;
-      const NODE_SEP = 15;
+      const RANK_SEP = 35;
+      const NODE_SEP = 20;
 
       const dagreGraph = new dagre.graphlib.Graph();
       dagreGraph.setDefaultEdgeLabel(() => ({}));
@@ -326,27 +366,31 @@ export async function exportPracticeReportToPdf(
       const edges: GraphEdge[] = [];
       const rootId = 'root';
 
+      // Calculate root node dimensions
+      const rootDimensions = calculateNodeDimensions(data.conclusion, undefined, undefined, true, isImproved);
       nodes.push({
         id: rootId,
         label: data.conclusion,
         isRoot: true,
         x: 0, y: 0,
-        width: NODE_WIDTH,
-        height: ROOT_HEIGHT,
+        width: rootDimensions.width,
+        height: rootDimensions.height,
       });
 
       const processNode = (item: any, parentId: string, index: number) => {
         const nodeId = `${parentId}-${index}`;
+        const label = isImproved ? (item.headline || item.point) : item.point;
+        const dimensions = calculateNodeDimensions(label, item.type, item.elaboration, false, isImproved);
 
         nodes.push({
           id: nodeId,
-          label: isImproved ? (item.headline || item.point) : item.point,
+          label: label,
           type: item.type,
           status: item.status,
           elaboration: item.elaboration,
           x: 0, y: 0,
-          width: NODE_WIDTH,
-          height: NODE_HEIGHT,
+          width: dimensions.width,
+          height: dimensions.height,
         });
 
         edges.push({
@@ -368,16 +412,18 @@ export async function exportPracticeReportToPdf(
           data.arguments.forEach((arg: any, index: number) => {
             const nodeId = `${rootId}-${index}`;
             nodeIds.push(nodeId);
+            const label = isImproved ? (arg.headline || arg.point) : arg.point;
+            const dimensions = calculateNodeDimensions(label, arg.type, arg.elaboration, false, isImproved);
 
             nodes.push({
               id: nodeId,
-              label: isImproved ? (arg.headline || arg.point) : arg.point,
+              label: label,
               type: arg.type,
               status: arg.status,
               elaboration: arg.elaboration,
               x: 0, y: 0,
-              width: NODE_WIDTH,
-              height: NODE_HEIGHT,
+              width: dimensions.width,
+              height: dimensions.height,
             });
 
             if (arg.sub_points?.length > 0) {
@@ -395,18 +441,16 @@ export async function exportPracticeReportToPdf(
       }
 
       nodes.forEach(node => {
-        const h = node.isRoot ? ROOT_HEIGHT : NODE_HEIGHT;
-        dagreGraph.setNode(node.id, { width: NODE_WIDTH, height: h });
+        dagreGraph.setNode(node.id, { width: node.width, height: node.height });
       });
       edges.forEach(edge => dagreGraph.setEdge(edge.source, edge.target));
       dagre.layout(dagreGraph);
 
       nodes.forEach(node => {
         const pos = dagreGraph.node(node.id);
-        const h = node.isRoot ? ROOT_HEIGHT : NODE_HEIGHT;
         if (pos) {
-          node.x = pos.x - NODE_WIDTH / 2;
-          node.y = pos.y - h / 2;
+          node.x = pos.x - node.width / 2;
+          node.y = pos.y - node.height / 2;
         }
       });
 
@@ -419,24 +463,43 @@ export async function exportPracticeReportToPdf(
       const { nodes, edges } = generateFlowData(structure, isImproved, framework);
       if (nodes.length === 0) return;
 
-      // Calculate bounds (use actual node heights)
+      // Calculate bounds using actual node dimensions from each node
       let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-      const ROOT_H = 35;
-      const CHILD_H = 45;
       nodes.forEach(node => {
-        const nodeH = node.isRoot ? ROOT_H : CHILD_H;
         minX = Math.min(minX, node.x);
         maxX = Math.max(maxX, node.x + node.width);
         minY = Math.min(minY, node.y);
-        maxY = Math.max(maxY, node.y + nodeH);
+        maxY = Math.max(maxY, node.y + node.height);
       });
 
       const graphWidth = maxX - minX;
       const graphHeight = maxY - minY;
-      const scale = Math.min(1, (contentWidth - 10) / graphWidth);
-      const scaledHeight = graphHeight * scale;
 
-      checkPageBreak(scaledHeight + 25);
+      // Minimum scale to keep text readable (don't shrink below 50%)
+      const MIN_SCALE = 0.5;
+      const headerSpace = 15;
+      const legendSpace = 20;
+      const bottomMargin = 25;
+
+      // Calculate scale for width
+      const widthScale = (contentWidth - 10) / graphWidth;
+
+      // Calculate available height on current page
+      let availableHeight = pageHeight - yPos - headerSpace - legendSpace - bottomMargin;
+      let heightScale = availableHeight / graphHeight;
+
+      // If graph won't fit at minimum readable scale, start a new page
+      if (heightScale < MIN_SCALE) {
+        doc.addPage();
+        yPos = margin;
+        // Recalculate with full page height
+        availableHeight = pageHeight - yPos - headerSpace - legendSpace - bottomMargin;
+        heightScale = availableHeight / graphHeight;
+      }
+
+      // Scale to fit both width and height, but never below minimum
+      const scale = Math.max(MIN_SCALE, Math.min(1, widthScale, heightScale));
+      const scaledHeight = graphHeight * scale;
 
       // Section header
       drawSectionHeader(title);
@@ -452,9 +515,8 @@ export async function exportPracticeReportToPdf(
         const source = nodes.find(n => n.id === edge.source);
         const target = nodes.find(n => n.id === edge.target);
         if (source && target) {
-          const sourceH = source.isRoot ? ROOT_H : CHILD_H;
           const x1 = offsetX + (source.x + source.width / 2) * scale;
-          const y1 = offsetY + (source.y + sourceH) * scale;
+          const y1 = offsetY + (source.y + source.height) * scale;
           const x2 = offsetX + (target.x + target.width / 2) * scale;
           const y2 = offsetY + target.y * scale;
 
@@ -473,15 +535,21 @@ export async function exportPracticeReportToPdf(
         const x = offsetX + node.x * scale;
         const y = offsetY + node.y * scale;
         const w = node.width * scale;
-        const nodeH = node.isRoot ? ROOT_H : CHILD_H;
-        const h = nodeH * scale;
+        const h = node.height * scale;
         const r = Math.max(2, 3 * scale);
-        const pad = Math.max(3, 4 * scale);
+        const pad = Math.max(3, 5 * scale);
+
+        // Minimum text width to prevent character-by-character wrapping
+        const MIN_TEXT_WIDTH = 25;
+        const textWidth = Math.max(MIN_TEXT_WIDTH, w - pad * 2);
 
         // Calculate responsive font sizes based on rendered width
-        const baseFontSize = Math.max(7, Math.min(11, w / 6));
-        const smallFontSize = Math.max(5, baseFontSize - 2);
-        const tinyFontSize = Math.max(5, baseFontSize - 3);
+        const baseFontSize = Math.max(6, Math.min(9, w / 9));
+        const smallFontSize = Math.max(5, baseFontSize - 1);
+        const tinyFontSize = Math.max(4, baseFontSize - 2);
+
+        // Line height that matches the calculation (scaled)
+        const lineHeight = 3 * scale;
 
         if (node.isRoot) {
           // Root node - dark background
@@ -490,11 +558,11 @@ export async function exportPracticeReportToPdf(
 
           setFont('bold', baseFontSize);
           doc.setTextColor(255, 255, 255);
-          const lines = doc.splitTextToSize(node.label, w - pad * 2);
-          const lineHeight = baseFontSize * 0.4;
+          const lines = doc.splitTextToSize(node.label, textWidth);
           const totalTextHeight = lines.length * lineHeight;
-          const startY = y + (h - totalTextHeight) / 2 + lineHeight;
-          doc.text(lines.slice(0, 4), x + pad, startY, { maxWidth: w - pad * 2 });
+          const startY = y + (h - totalTextHeight) / 2 + lineHeight * 0.8;
+          // Show all lines, no truncation
+          doc.text(lines, x + pad, startY, { maxWidth: textWidth, lineHeightFactor: 1.2 });
         } else {
           // Child nodes
           let bgColor = colors.grayCallout;
@@ -521,33 +589,37 @@ export async function exportPracticeReportToPdf(
           if (node.type) {
             setFont('bold', tinyFontSize);
             doc.setTextColor(...colors.mediumGray);
-            doc.text(node.type.toUpperCase(), x + pad, currentY);
-            currentY += tinyFontSize * 0.5 + 2;
+            doc.text(node.type.toUpperCase(), x + pad, currentY + tinyFontSize * 0.3);
+            currentY += tinyFontSize * 0.8 + 2 * scale;
           }
 
-          // Label (headline) - bold
+          // Label (headline) - bold - show full text
           setFont('bold', smallFontSize);
           doc.setTextColor(...colors.black);
-          const labelLines = doc.splitTextToSize(node.label, w - pad * 2);
-          const labelLineHeight = smallFontSize * 0.45;
-          doc.text(labelLines.slice(0, 2), x + pad, currentY + labelLineHeight, { maxWidth: w - pad * 2 });
-          currentY += Math.min(labelLines.length, 2) * labelLineHeight + 3;
+          const labelLines = doc.splitTextToSize(node.label, textWidth);
+          // Show all label lines, no truncation
+          doc.text(labelLines, x + pad, currentY + smallFontSize * 0.35, { maxWidth: textWidth, lineHeightFactor: 1.3 });
+          currentY += labelLines.length * lineHeight * 1.1 + 2 * scale;
 
           // Elaboration text (italic quote in light box) - for improved structure
           if (node.elaboration && isImproved) {
-            const elabBoxTop = currentY + 1;
-            const elabBoxH = h - (elabBoxTop - y) - pad;
+            const elabBoxTop = currentY;
+            const elabTextWidth = Math.max(MIN_TEXT_WIDTH, w - pad * 1.5);
 
-            if (elabBoxH > 8) {
-              // Light blue background for elaboration
+            // Calculate actual height needed for elaboration text
+            setFont('italic', tinyFontSize);
+            const elabLines = doc.splitTextToSize(node.elaboration, elabTextWidth);
+            const elabTextHeight = elabLines.length * tinyFontSize * 0.5 + pad;
+            const elabBoxH = Math.min(elabTextHeight, h - (elabBoxTop - y) - 2);
+
+            if (elabBoxH > 3 * scale) {
+              // Light blue background - sized to fit text tightly
               doc.setFillColor(235, 245, 255);
-              doc.roundedRect(x + pad - 1, elabBoxTop, w - pad * 2 + 2, elabBoxH, 2, 2, 'F');
+              doc.roundedRect(x + pad * 0.5, elabBoxTop, w - pad, elabBoxH, 2 * scale, 2 * scale, 'F');
 
               // Italic elaboration text
-              setFont('italic', tinyFontSize);
               doc.setTextColor(80, 80, 80);
-              const elabLines = doc.splitTextToSize(node.elaboration, w - pad * 2 - 4);
-              doc.text(elabLines.slice(0, 4), x + pad + 1, elabBoxTop + tinyFontSize * 0.5 + 2, { maxWidth: w - pad * 2 - 4 });
+              doc.text(elabLines, x + pad, elabBoxTop + tinyFontSize * 0.5, { maxWidth: elabTextWidth, lineHeightFactor: 1.2 });
             }
           }
         }

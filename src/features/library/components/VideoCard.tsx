@@ -104,11 +104,11 @@ const VideoCard: React.FC<VideoCardProps> = ({ video, onClick, onViewReports, on
             <HeartIcon filled={video.isFavorite} />
           </button>
         )}
-        {/* Delete button - bottom right */}
+        {/* Delete button - top left (hidden until hover) */}
         {onDelete && (
           <button
             onClick={handleDeleteClick}
-            className="absolute bottom-2 right-2 w-8 h-8 rounded-full flex items-center justify-center transition-all bg-white/80 text-stone-400 hover:bg-white hover:text-red-500 shadow-sm opacity-0 group-hover:opacity-100"
+            className="absolute top-2 left-2 w-8 h-8 rounded-full flex items-center justify-center transition-all bg-white/80 text-stone-400 hover:bg-white hover:text-red-500 shadow-sm opacity-0 group-hover:opacity-100"
             aria-label="Remove from library"
           >
             <TrashIcon />
@@ -117,30 +117,44 @@ const VideoCard: React.FC<VideoCardProps> = ({ video, onClick, onViewReports, on
       </div>
 
       {/* Content */}
-      <div className="p-4">
-        <h3 className="font-medium text-stone-800 truncate text-sm md:text-base">
+      <div className="px-3 sm:px-4 pt-2 pb-3 sm:pb-4">
+        {/* Level & Language tags */}
+        <div className="flex items-center gap-2 mb-1.5">
+          <span className={`text-[10px] font-semibold uppercase tracking-wide ${
+            video.level === 'Easy'
+              ? 'text-emerald-600'
+              : video.level === 'Medium'
+                ? 'text-amber-600'
+                : 'text-red-600'
+          }`}>
+            {video.level === 'Easy' ? 'Beginner' : video.level === 'Medium' ? 'Intermediate' : video.level === 'Hard' ? 'Advanced' : video.level}
+          </span>
+          <span className="text-stone-300">·</span>
+          <span className="text-[10px] text-stone-500 font-medium">
+            {video.targetLang.split(' ')[0]}
+          </span>
+        </div>
+        <h3 className="font-medium text-stone-800 text-sm md:text-base line-clamp-2 leading-snug">
           {video.title}
         </h3>
-        <p className="text-xs md:text-sm text-stone-500 mt-1">
-          {video.targetLang} &middot; {video.level}
-        </p>
-        <p className="text-xs text-stone-400 mt-0.5">
-          {formatDate(video.lastAccessedAt)}
-        </p>
-
-        {/* Practice Reports Badge - uses actual report count from practice_sessions */}
-        {video.reportCount > 0 && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onViewReports?.();
-            }}
-            className="mt-3 text-xs text-stone-600 hover:text-stone-800 flex items-center gap-1 bg-stone-50 px-2 py-1 rounded-full transition-colors"
-          >
-            <MicIcon />
-            {video.reportCount} Report{video.reportCount > 1 ? 's' : ''}
-          </button>
-        )}
+        <div className="flex items-center justify-between mt-2">
+          <p className="text-[11px] text-stone-400">
+            {formatDate(video.lastAccessedAt)}
+          </p>
+          {/* Practice Reports Badge */}
+          {video.reportCount > 0 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onViewReports?.();
+              }}
+              className="text-[11px] text-stone-500 hover:text-stone-700 flex items-center gap-1 transition-colors"
+            >
+              <MicIcon />
+              {video.reportCount}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
