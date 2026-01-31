@@ -423,7 +423,7 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({ topic, allTopics = []
                         level={level}
                         nativeLang={nativeLang}
                         targetLang={targetLang}
-                        onRequireAuth={onRequireAuth}
+                        onRequireAuth={!user ? onRequireAuth : undefined}
                     />
                 </div>
             )}
