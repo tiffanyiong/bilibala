@@ -203,7 +203,7 @@ const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({
         {/* Search & Filters */}
         <div className="space-y-4 mb-8">
           {/* AI Search */}
-          <div className="relative max-w-md">
+          <div className="relative w-full">
             <input
               type="text"
               placeholder="Search videos with AI..."

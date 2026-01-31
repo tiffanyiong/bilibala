@@ -8,13 +8,13 @@ import SubscriptionPage from './features/subscription/components/SubscriptionPag
 import { ProfilePage } from './features/profile';
 import SettingsPage from './features/settings/components/SettingsPage';
 import TranslationPopup from './features/translation/components/TranslationPopup';
+import { CubeCarousel } from './features/explore';
 import FloatingTutorWindow from './features/live-voice/components/FloatingTutorWindow';
 import PracticeSession from './features/practice/components/PracticeSession';
 import VideoPlayer, { VideoPlayerRef } from './features/video/components/VideoPlayer';
 import { extractVideoId, fetchVideoMetadata } from './features/video/services/youtubeService';
 import Layout from './shared/components/Layout';
 import UsageLimitModal from './shared/components/UsageLimitModal';
-import { LANGUAGES, LEVELS } from './shared/constants';
 import { useAuth } from './shared/context/AuthContext';
 import { useSubscription } from './shared/context/SubscriptionContext';
 import UpgradeModal from './features/subscription/components/UpgradeModal';
@@ -24,11 +24,15 @@ import {
   getAnyCachedAnalysisForYoutubeId,
   getCachedAnalysis,
   getCachedAnalysisById,
+  getCachedAnalysisWithVideoById,
   getOrCreateVideo,
+  getVideoByYoutubeId,
   getPracticeTopicsForAnalysis,
   getUserVideoLibrary,
+  incrementVideoView,
   saveCachedAnalysis,
   savePracticeTopicsFromAnalysis,
+  getLibraryEntry,
   toggleLibraryFavorite,
   updateLibraryAccess,
 } from './shared/services/database';
@@ -42,13 +46,6 @@ import {
 } from './shared/services/usageTracking';
 import { AppState, PracticeTopic, TopicPoint, VideoData, VocabularyItem } from './shared/types';
 import { VideoHistoryItem, TIER_LIMITS } from './shared/types/database';
-
-// Custom Chevron for Dropdowns
-const ChevronDownIcon = () => (
-  <svg className="w-4 h-4 text-zinc-500 pointer-events-none absolute right-4 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-  </svg>
-);
 
 const App: React.FC = () => {
   // Reveal body after mount to prevent FOUC with Tailwind CDN
@@ -608,14 +605,14 @@ const App: React.FC = () => {
       };
       setVideoData(vData);
 
-      // 4. Get or create video in database
-      const dbVideo = await getOrCreateVideo(videoId, metadata.title);
+      // 4. Check if video exists in database (don't create yet)
+      const existingVideo = await getVideoByYoutubeId(videoId);
 
-      // 5. Check for cached analysis
+      // 5. Check for cached analysis (only if video exists)
       let cachedAnalysis = null;
-      if (dbVideo) {
+      if (existingVideo) {
         cachedAnalysis = await getCachedAnalysis(
-          dbVideo.id,
+          existingVideo.id,
           level,
           targetLang,
           nativeLang
@@ -726,7 +723,10 @@ const App: React.FC = () => {
             setDiscussionTopics(analysis.discussionTopics || []);
             setSelectedTopics([]);
 
-            // Save to cache (async, don't block UI)
+            // Analysis succeeded - now save video to database
+            const dbVideo = await getOrCreateVideo(videoId, metadata.title);
+
+            // Save to cache
             if (dbVideo) {
               const savedAnalysis = await saveCachedAnalysis(
                 dbVideo.id,
@@ -796,10 +796,12 @@ const App: React.FC = () => {
             showDashboard();
         })
         .catch(err => {
-            console.error("Analysis background error:", err);
+            // Analysis failed (e.g., transcript unavailable) - show error on landing page
+            console.error("Analysis failed:", err);
             clearTimeout(messageTimerId);
             clearTimeout(maxWaitTimerId);
-            showDashboard(); // Proceed to dashboard even on partial error
+            setErrorMsg(err.message || "Failed to analyze video. Please try again.");
+            setAppState(AppState.LANDING);
         })
         .finally(() => {
             setIsAnalysisLoading(false);
@@ -910,6 +912,93 @@ const App: React.FC = () => {
       }
     } catch (error) {
       console.error('Error loading from library:', error);
+      setErrorMsg('Failed to load video. Please try again.');
+      setAppState(AppState.LANDING);
+    }
+  };
+
+  // Handle loading a video from the Explore section (public video, no library entry)
+  const handleExploreVideoSelect = async (analysisId: string) => {
+    setAppState(AppState.LOADING);
+    setLoadingText('Loading video...');
+
+    try {
+      const cachedAnalysis = await getCachedAnalysisWithVideoById(analysisId);
+
+      if (!cachedAnalysis) {
+        throw new Error('Video not found');
+      }
+
+      // Reconstruct video URL from youtubeId
+      const youtubeId = cachedAnalysis.global_videos.youtube_id;
+      if (!youtubeId) {
+        throw new Error('Invalid video data');
+      }
+
+      const videoUrl = `https://www.youtube.com/watch?v=${youtubeId}`;
+      setVideoUrl(videoUrl);
+
+      // Set language/level from the stored analysis
+      setNativeLang(cachedAnalysis.native_lang);
+      setTargetLang(cachedAnalysis.target_lang);
+      setLevel(cachedAnalysis.level);
+
+      // Set video data
+      setVideoData({
+        id: youtubeId,
+        url: videoUrl,
+        title: cachedAnalysis.global_videos.title || 'Untitled Video',
+      });
+
+      // Convert and set the analysis content
+      const analysis = dbAnalysisToContentAnalysis(cachedAnalysis);
+      setSummary(analysis.summary);
+      setTranslatedSummary(analysis.translatedSummary || '');
+      setTopics(analysis.topics);
+      setVocabulary(analysis.vocabulary);
+      setTranscript(analysis.transcript || []);
+      setCurrentAnalysisId(analysisId);
+
+      // Fetch practice topics with database IDs
+      const dbTopics = await getPracticeTopicsForAnalysis(analysisId);
+      if (dbTopics.length > 0 && analysis.discussionTopics) {
+        const topicsWithIds = analysis.discussionTopics.map(topic => {
+          const dbTopic = dbTopics.find(dt => dt.topic === topic.topic);
+          if (dbTopic) {
+            return {
+              ...topic,
+              topicId: dbTopic.id,
+              questionId: dbTopic.questionId,
+            };
+          }
+          return topic;
+        });
+        setDiscussionTopics(topicsWithIds);
+      } else {
+        setDiscussionTopics(analysis.discussionTopics || []);
+      }
+
+      // Check if this video is already in the user's library
+      if (user) {
+        const existingEntry = await getLibraryEntry(user.id, analysisId);
+        setLibraryEntry(existingEntry);
+      } else {
+        setLibraryEntry(null);
+      }
+
+      // Increment view count for popularity tracking
+      if (cachedAnalysis.video_id) {
+        incrementVideoView(cachedAnalysis.video_id).catch((err) => {
+          console.error('Failed to increment view count:', err);
+        });
+      }
+
+      // Update URL for shareability
+      window.history.pushState({}, '', `/${analysisId}`);
+
+      setAppState(AppState.DASHBOARD);
+    } catch (error) {
+      console.error('Error loading explore video:', error);
       setErrorMsg('Failed to load video. Please try again.');
       setAppState(AppState.LANDING);
     }
@@ -1053,89 +1142,19 @@ const App: React.FC = () => {
       {/* 1. LANDING PAGE */}
       {appState === AppState.LANDING && (
         <div className="h-full flex flex-col items-center justify-center p-4 overflow-y-auto">
-           <div className="w-full max-w-xl text-center space-y-8">
-              <div className="space-y-3">
-                  <h2 className="text-4xl md:text-5xl font-serif text-stone-800 tracking-tight">
-                    Bilibala
-                  </h2>
-                  <p className="text-base text-stone-500 max-w-md mx-auto leading-relaxed">
-                    Turn any YouTube video into a structured language lesson.
-                  </p>
-              </div>
-
-              <div className="bg-[#FAF9F6] p-6 md:p-8 border border-stone-200 shadow-sm rounded-2xl space-y-5 text-left">
-                 
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                        <label className="text-[11px] font-semibold uppercase tracking-wider text-stone-400 ml-1">I Speak</label>
-                        <div className="relative group">
-                            <select 
-                                value={nativeLang}
-                                onChange={(e) => setNativeLang(e.target.value)}
-                                className="w-full appearance-none bg-white border border-stone-200 text-stone-700 text-sm rounded-lg py-2.5 px-3 pr-8 outline-none focus:border-stone-400 focus:ring-1 focus:ring-stone-200 transition-all cursor-pointer hover:bg-stone-50"
-                            >
-                                {LANGUAGES.map(l => <option key={l.code} value={l.name}>{l.name}</option>)}
-                            </select>
-                            <ChevronDownIcon />
-                        </div>
-                    </div>
-
-                    <div className="space-y-1.5">
-                        <label className="text-[11px] font-semibold uppercase tracking-wider text-stone-400 ml-1">I'm Learning</label>
-                        <div className="relative group">
-                            <select 
-                                value={targetLang}
-                                onChange={(e) => setTargetLang(e.target.value)}
-                                className="w-full appearance-none bg-white border border-stone-200 text-stone-700 text-sm rounded-lg py-2.5 px-3 pr-8 outline-none focus:border-stone-400 focus:ring-1 focus:ring-stone-200 transition-all cursor-pointer hover:bg-stone-50"
-                            >
-                                {LANGUAGES.map(l => <option key={l.code} value={l.name}>{l.name}</option>)}
-                            </select>
-                            <ChevronDownIcon />
-                        </div>
-                    </div>
-
-                    <div className="col-span-1 md:col-span-2 space-y-1.5">
-                        <label className="text-[11px] font-semibold uppercase tracking-wider text-stone-400 ml-1">Depth Level</label>
-                        <div className="flex flex-wrap md:flex-nowrap bg-white p-1 rounded-lg border border-stone-200 gap-1">
-                            {LEVELS.map(l => (
-                                <button
-                                    key={l.id}
-                                    onClick={() => setLevel(l.id)}
-                                    className={`flex-1 py-2 rounded-md text-xs font-medium transition-all ${
-                                        level === l.id 
-                                        ? 'bg-[#FAF9F6] text-stone-800 shadow-sm border border-stone-200' 
-                                        : 'text-stone-500 hover:text-stone-700 hover:bg-stone-50'
-                                    }`}
-                                >
-                                    {l.label}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                 </div>
-
-                 <div className="space-y-1.5 pt-2">
-                    <label className="text-[11px] font-semibold uppercase tracking-wider text-stone-400 ml-1">Source Material</label>
-                    <input
-                      type="text"
-                      className="w-full bg-white border border-stone-300 px-4 py-3 text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none focus:border-stone-500 focus:ring-1 focus:ring-stone-200 transition-all rounded-lg shadow-sm"
-                      placeholder="Paste YouTube Link..."
-                      value={videoUrl}
-                      onChange={(e) => setVideoUrl(e.target.value)}
-                    />
-                 </div>
-
-                 {errorMsg && <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg text-xs font-medium border border-red-100">{errorMsg}</div>}
-
-                 <button
-                    onClick={handleStart}
-                    disabled={!videoUrl}
-                    className="w-full bg-stone-800 text-white font-medium py-3 text-sm rounded-lg shadow-md hover:bg-stone-900 hover:shadow-lg hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
-                 >
-                    Start
-                 </button>
-              </div>
-           </div>
+          <CubeCarousel
+            videoUrl={videoUrl}
+            setVideoUrl={setVideoUrl}
+            nativeLang={nativeLang}
+            setNativeLang={setNativeLang}
+            targetLang={targetLang}
+            setTargetLang={setTargetLang}
+            level={level}
+            setLevel={setLevel}
+            onStart={handleStart}
+            errorMsg={errorMsg}
+            onExploreVideoSelect={handleExploreVideoSelect}
+          />
         </div>
       )}
 

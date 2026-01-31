@@ -2,24 +2,26 @@ import { getBackendOrigin } from '../services/backend';
 import { ContentAnalysis } from '../types';
 
 export const analyzeVideoContent = async (
-  videoTitle: string, 
+  videoTitle: string,
   videoUrl: string,
-  nativeLang: string, 
-  targetLang: string, 
+  nativeLang: string,
+  targetLang: string,
   level: string
 ): Promise<ContentAnalysis> => {
-  try {
-    const resp = await fetch(`${getBackendOrigin()}/api/analyze-video-content`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ videoTitle, videoUrl, nativeLang, targetLang, level }),
-    });
-    if (!resp.ok) throw new Error('Failed to analyze video content. Please try again.');
-    return (await resp.json()) as ContentAnalysis;
-  } catch (error: any) {
-    console.error("Error analyzing video:", error);
-    throw new Error("Failed to analyze video content. Please try again.");
+  const resp = await fetch(`${getBackendOrigin()}/api/analyze-video-content`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ videoTitle, videoUrl, nativeLang, targetLang, level }),
+  });
+
+  if (!resp.ok) {
+    // Extract specific error message from API response
+    const errorData = await resp.json().catch(() => ({}));
+    const errorMessage = errorData.error || 'Failed to analyze video content. Please try again.';
+    throw new Error(errorMessage);
   }
+
+  return (await resp.json()) as ContentAnalysis;
 };
 
 export const generateConversationHints = async (

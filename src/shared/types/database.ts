@@ -198,6 +198,24 @@ export interface VideoHistoryItem {
   reportCount: number;
 }
 
+// For Explore section on landing page (public videos, no user-specific fields)
+export interface ExploreVideo {
+  // From cached_analyses
+  analysisId: string;
+  level: string;
+  targetLang: string;
+  nativeLang: string;
+  analyzedAt: string;
+
+  // From global_videos
+  videoId: string;
+  youtubeId: string;
+  title: string;
+  thumbnailUrl: string | null;
+  viewCount: number;
+  channelName: string | null;
+}
+
 // ============================================
 // SUBSCRIPTIONS
 // ============================================
