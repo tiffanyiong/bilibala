@@ -1,9 +1,11 @@
 import { supabase } from './supabaseClient';
-import { ContentAnalysis, PracticeTopic } from '../types';
+import { getBackendOrigin } from './backend';
+import { ContentAnalysis, PracticeTopic, TopicQuestion } from '../types';
 import {
   DbGlobalVideo,
   DbCachedAnalysis,
   DbPracticeTopic,
+  DbTopicQuestion,
   DbPracticeSession,
   DbUserLibrary,
   AnalysisContent,
@@ -263,6 +265,7 @@ export async function saveCachedAnalysis(
     translated_summary: analysis.translatedSummary || null,
     content,
     created_by: userId || null,
+    transcript_lang_mismatch: analysis.transcriptLangMismatch || false,
   };
 
   const { data, error } = await supabase
@@ -293,6 +296,7 @@ export function dbAnalysisToContentAnalysis(
     vocabulary: content?.vocabulary || [],
     transcript: content?.transcript || [],
     discussionTopics: content?.discussionTopics || [],
+    transcriptLangMismatch: dbAnalysis.transcript_lang_mismatch || false,
   };
 }
 
@@ -301,100 +305,305 @@ export function dbAnalysisToContentAnalysis(
 // ============================================
 
 /**
- * Save practice topics and their questions from an analysis
- * Returns the topics with their database IDs included
+ * Save practice topics and their questions from an analysis.
+ * Topics are canonical (standalone, deduplicated by normalized name + language).
+ * Questions link to both a topic and the video analysis they came from.
  */
 export async function savePracticeTopicsFromAnalysis(
   analysisId: string,
   discussionTopics: PracticeTopic[],
+  targetLang: string,
   difficultyLevel?: string
 ): Promise<PracticeTopic[]> {
   if (!discussionTopics || discussionTopics.length === 0) {
     return [];
   }
 
-  const topicsWithIds: PracticeTopic[] = [];
+  // 1. Fetch all existing canonical topics for this language
+  const { data: existingTopics } = await supabase
+    .from('practice_topics')
+    .select('id, topic, normalized_topic, target_words')
+    .eq('target_lang', targetLang)
+    .eq('is_active', true);
+
+  // 2. Phase 1: exact normalized match
+  const unmatched: PracticeTopic[] = [];
+  const matched: { topic: PracticeTopic; existingId: string }[] = [];
 
   for (const topic of discussionTopics) {
-    // Check if topic already exists for this analysis
-    const { data: existingTopic } = await supabase
-      .from('practice_topics')
-      .select('id')
-      .eq('topic', topic.topic)
-      .eq('analysis_id', analysisId)
-      .single();
+    const normalized = topic.topic.toLowerCase().trim();
+    const exactMatch = (existingTopics || []).find(
+      (e: any) => e.normalized_topic === normalized
+    );
+    if (exactMatch) {
+      matched.push({ topic, existingId: exactMatch.id });
+    } else {
+      unmatched.push(topic);
+    }
+  }
 
-    if (existingTopic) {
-      // Get the existing question ID
-      const { data: existingQuestion } = await supabase
-        .from('topic_questions')
-        .select('id')
-        .eq('topic_id', existingTopic.id)
-        .eq('question', topic.question)
-        .single();
-
-      topicsWithIds.push({
-        ...topic,
-        topicId: existingTopic.id,
-        questionId: existingQuestion?.id || undefined,
+  // 3. Phase 2: AI semantic match for unmatched topics
+  let aiMatches: { new_topic: string; match: string | null }[] = [];
+  if (unmatched.length > 0 && (existingTopics || []).length > 0) {
+    try {
+      const backendOrigin = getBackendOrigin();
+      const response = await fetch(`${backendOrigin}/api/match-topics`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          newTopics: unmatched.map(t => t.topic),
+          existingTopics: (existingTopics || []).map((t: any) => ({ id: t.id, topic: t.topic })),
+          targetLang,
+        }),
       });
-      continue;
+      const data = await response.json();
+      aiMatches = data.matches || [];
+    } catch (err) {
+      console.error('AI topic matching failed, treating all as new:', err);
     }
+  }
 
-    // Insert practice topic
-    const topicData: InsertPracticeTopic = {
-      topic: topic.topic,
-      category: null,
-      difficulty_level: difficultyLevel || null,
-      target_words: topic.targetWords || null,
-      source_type: 'video_generated',
-      analysis_id: analysisId,
-    };
+  // 4. Process all topics
+  const topicsWithIds: PracticeTopic[] = [];
 
-    const { data: createdTopic, error: topicError } = await supabase
-      .from('practice_topics')
-      .insert(topicData)
-      .select()
-      .single();
+  // Process exact matches
+  for (const { topic, existingId } of matched) {
+    const questionId = await upsertTopicQuestion(existingId, topic.question, analysisId, difficultyLevel);
+    await mergeTargetWords(existingId, topic.targetWords);
+    topicsWithIds.push({ ...topic, topicId: existingId, questionId });
+  }
 
-    if (topicError) {
-      console.error('Error saving practice topic:', topicError);
-      topicsWithIds.push(topic); // Add without IDs on error
-      continue;
-    }
+  // Process unmatched (may have AI matches)
+  for (const topic of unmatched) {
+    const aiMatch = aiMatches.find(m => m.new_topic === topic.topic);
 
-    let questionId: string | undefined;
-
-    // Insert associated question
-    if (topic.question) {
-      const questionData: InsertTopicQuestion = {
-        topic_id: createdTopic.id,
-        question: topic.question,
-        source_type: 'video_generated',
-        is_public: true,
-      };
-
-      const { data: createdQuestion, error: questionError } = await supabase
-        .from('topic_questions')
-        .insert(questionData)
-        .select()
-        .single();
-
-      if (questionError) {
-        console.error('Error saving topic question:', questionError);
+    if (aiMatch?.match) {
+      // AI found a semantic match to existing topic
+      const questionId = await upsertTopicQuestion(aiMatch.match, topic.question, analysisId, difficultyLevel);
+      await mergeTargetWords(aiMatch.match, topic.targetWords);
+      topicsWithIds.push({ ...topic, topicId: aiMatch.match, questionId });
+    } else {
+      // Create new canonical topic
+      const newTopicId = await createCanonicalTopic(topic, targetLang, difficultyLevel);
+      if (newTopicId) {
+        const questionId = await upsertTopicQuestion(newTopicId, topic.question, analysisId, difficultyLevel);
+        topicsWithIds.push({ ...topic, topicId: newTopicId, questionId });
       } else {
-        questionId = createdQuestion.id;
+        topicsWithIds.push(topic); // Add without IDs on error
       }
     }
-
-    topicsWithIds.push({
-      ...topic,
-      topicId: createdTopic.id,
-      questionId,
-    });
   }
 
   return topicsWithIds;
+}
+
+/**
+ * Insert a question under a topic if it doesn't already exist.
+ * Links the question to the analysis (video) it came from.
+ */
+async function upsertTopicQuestion(
+  topicId: string,
+  question: string,
+  analysisId: string,
+  difficultyLevel?: string | null
+): Promise<string | undefined> {
+  // Check if this exact question already exists for this topic
+  const { data: existing } = await supabase
+    .from('topic_questions')
+    .select('id')
+    .eq('topic_id', topicId)
+    .eq('question', question)
+    .single();
+
+  if (existing) return existing.id;
+
+  const questionData: InsertTopicQuestion = {
+    topic_id: topicId,
+    question,
+    analysis_id: analysisId,
+    source_type: 'video_generated',
+    difficulty_level: difficultyLevel?.toLowerCase() || null,
+    is_public: true,
+  };
+
+  const { data: created, error } = await supabase
+    .from('topic_questions')
+    .insert(questionData)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error saving topic question:', error);
+    return undefined;
+  }
+  return created.id;
+}
+
+/**
+ * Create a new canonical topic with normalized name and language.
+ */
+async function createCanonicalTopic(
+  topic: PracticeTopic,
+  targetLang: string,
+  difficultyLevel?: string
+): Promise<string | null> {
+  const topicData: InsertPracticeTopic = {
+    topic: topic.topic,
+    normalized_topic: topic.topic.toLowerCase().trim(),
+    target_lang: targetLang,
+    category: topic.category || null,
+    difficulty_level: difficultyLevel?.toLowerCase() || null,
+    target_words: topic.targetWords || null,
+    source_type: 'video_generated',
+  };
+
+  const { data, error } = await supabase
+    .from('practice_topics')
+    .insert(topicData)
+    .select('id')
+    .single();
+
+  if (error) {
+    console.error('Error creating canonical topic:', error);
+    return null;
+  }
+  return data.id;
+}
+
+/**
+ * Merge new target words into an existing topic's target_words array.
+ */
+async function mergeTargetWords(
+  topicId: string,
+  newWords: string[] | undefined
+): Promise<void> {
+  if (!newWords || newWords.length === 0) return;
+
+  const { data: existing } = await supabase
+    .from('practice_topics')
+    .select('target_words')
+    .eq('id', topicId)
+    .single();
+
+  const existingWords: string[] = existing?.target_words || [];
+  const merged = [...new Set([...existingWords, ...newWords])];
+
+  await supabase
+    .from('practice_topics')
+    .update({ target_words: merged })
+    .eq('id', topicId);
+}
+
+/**
+ * Save a new AI-generated question under a topic.
+ * Used by the "Generate" button in PracticeSession.
+ */
+export async function saveGeneratedQuestion(
+  topicId: string,
+  question: string,
+  analysisId?: string | null,
+  userId?: string | null,
+  difficultyLevel?: string | null
+): Promise<DbTopicQuestion | null> {
+  const questionData: InsertTopicQuestion = {
+    topic_id: topicId,
+    question,
+    analysis_id: analysisId || null,
+    source_type: 'ai_generated',
+    difficulty_level: difficultyLevel?.toLowerCase() || null,
+    created_by: userId || null,
+    is_public: true,
+  };
+
+  const { data, error } = await supabase
+    .from('topic_questions')
+    .insert(questionData)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error saving generated question:', error);
+    return null;
+  }
+  return data as DbTopicQuestion;
+}
+
+/**
+ * Get all questions for a topic, ordered by use count.
+ * Includes the video title for questions that came from a video analysis.
+ */
+export async function getQuestionsForTopic(
+  topicId: string,
+  userLevel?: string // 'easy' | 'medium' | 'hard' - filters questions to match user's level
+): Promise<TopicQuestion[]> {
+  let query = supabase
+    .from('topic_questions')
+    .select(`
+      id,
+      question,
+      analysis_id,
+      source_type,
+      difficulty_level,
+      use_count,
+      cached_analyses (
+        id,
+        global_videos ( title )
+      )
+    `)
+    .eq('topic_id', topicId)
+    .eq('is_public', true);
+
+  // Filter by difficulty level if provided
+  // Show questions matching user's level OR questions with no level set (legacy data)
+  if (userLevel) {
+    query = query.or(`difficulty_level.eq.${userLevel.toLowerCase()},difficulty_level.is.null`);
+  }
+
+  const { data, error } = await query.order('use_count', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching questions for topic:', error);
+    return [];
+  }
+
+  return (data || []).map((q: any) => ({
+    questionId: q.id,
+    question: q.question,
+    sourceType: q.source_type,
+    difficultyLevel: q.difficulty_level,
+    useCount: q.use_count,
+    videoTitle: q.cached_analyses?.global_videos?.title || null,
+    analysisId: q.analysis_id || null,
+  }));
+}
+
+/**
+ * Count AI-generated questions for a topic (for enforcing the 3-per-topic limit).
+ * If userId is provided, counts only questions created by that user (per-user limit).
+ * If userId is not provided, counts all AI-generated questions (global limit).
+ */
+export async function countAiGeneratedQuestions(
+  topicId: string,
+  userId?: string | null
+): Promise<number> {
+  let query = supabase
+    .from('topic_questions')
+    .select('*', { count: 'exact', head: true })
+    .eq('topic_id', topicId)
+    .eq('source_type', 'ai_generated');
+
+  // If userId provided, count only this user's generated questions
+  if (userId) {
+    query = query.eq('created_by', userId);
+  }
+
+  const { count, error } = await query;
+
+  if (error) {
+    console.error('Error counting AI questions:', error);
+    return 0;
+  }
+  return count || 0;
 }
 
 /**
@@ -502,19 +711,19 @@ export async function incrementQuestionUseCount(
 }
 
 /**
- * Get practice topics for a specific analysis with their question IDs
+ * Get practice topics for a specific analysis with their question IDs.
+ * Now queries via topic_questions.analysis_id since topics are canonical (not tied to a single analysis).
  */
 export async function getPracticeTopicsForAnalysis(
   analysisId: string
 ): Promise<(DbPracticeTopic & { questionId?: string })[]> {
+  // Find questions that came from this analysis, then get their topics
   const { data, error } = await supabase
-    .from('practice_topics')
+    .from('topic_questions')
     .select(`
-      *,
-      topic_questions (
-        id,
-        question
-      )
+      id,
+      question,
+      practice_topics (*)
     `)
     .eq('analysis_id', analysisId);
 
@@ -523,17 +732,39 @@ export async function getPracticeTopicsForAnalysis(
     return [];
   }
 
-  console.log('[DB] Raw practice topics with questions:', data);
+  // Deduplicate topics (a topic may have multiple questions from the same analysis)
+  // Use the first question found for each topic as the default questionId
+  const topicMap = new Map<string, DbPracticeTopic & { questionId?: string }>();
+  for (const q of (data || []) as any[]) {
+    if (q.practice_topics && !topicMap.has(q.practice_topics.id)) {
+      topicMap.set(q.practice_topics.id, {
+        ...q.practice_topics,
+        questionId: q.id,
+      });
+    }
+  }
 
-  // Flatten the result to include questionId directly
-  const result = (data || []).map((topic: any) => ({
-    ...topic,
-    questionId: topic.topic_questions?.[0]?.id || undefined,
-  }));
-
+  const result = Array.from(topicMap.values());
   console.log('[DB] Practice topics with questionId:', result.map(t => ({ topic: t.topic, topicId: t.id, questionId: t.questionId })));
 
   return result;
+}
+
+/**
+ * Update a video's category
+ */
+export async function updateVideoCategory(
+  videoId: string,
+  category: string
+): Promise<void> {
+  const { error } = await supabase
+    .from('global_videos')
+    .update({ category })
+    .eq('id', videoId);
+
+  if (error) {
+    console.error('Error updating video category:', error);
+  }
 }
 
 // ============================================

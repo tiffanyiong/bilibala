@@ -1,8 +1,8 @@
 import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
 import ReactFlow, { Background, Controls, Handle, MiniMap, Node, Position, ReactFlowProvider, useEdgesState, useNodesState, useReactFlow } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { SpeechAnalysisResult } from '../../../shared/types';
 import { checkAnonymousPracticeLimit } from '../../../shared/services/usageTracking';
+import { SpeechAnalysisResult } from '../../../shared/types';
 import { generateFlowData } from '../utils/transformPyramid';
 import AudioRecorder from './AudioRecorder';
 
@@ -77,7 +77,7 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
     showRetry = true, // Default to true for practice sessions
     onRequireAuth,
 }) => {
-  const { structure, improved_structure, feedback, transcription, detected_framework, improvements } = analysis;
+  const { structure, improved_structure, feedback, transcription, detected_framework, improvements, pronunciation } = analysis;
   const [viewMode, setViewMode] = useState<'user' | 'ai'>('user');
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
@@ -127,8 +127,8 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
 
   // Translations for score labels in native languages (used in Easy mode)
   const scoreTranslations: Record<string, { perfect: string; excellent: string; greatJob: string; goodStart: string; keepGrowing: string }> = {
-    'Chinese (Mandarin - 中文)': { perfect: '完美！', excellent: '优秀', greatJob: '做得好', goodStart: '良好开端', keepGrowing: '继续加油' },
-    'Chinese (Cantonese - 粵語)': { perfect: '完美！', excellent: '優秀', greatJob: '做得好', goodStart: '良好開端', keepGrowing: '繼續加油' },
+    'Chinese (Mandarin - 中文)': { perfect: '完美！', excellent: '优秀', greatJob: '做得很好', goodStart: '很好的开始', keepGrowing: '继续加油' },
+    'Chinese (Cantonese - 粵語)': { perfect: '完美！', excellent: '優秀', greatJob: '做得很好', goodStart: '很好的開始', keepGrowing: '繼續加油' },
     'Spanish': { perfect: '¡Perfecto!', excellent: 'Excelente', greatJob: '¡Buen trabajo!', goodStart: 'Buen comienzo', keepGrowing: 'Sigue así' },
     'French': { perfect: 'Parfait !', excellent: 'Excellent', greatJob: 'Bon travail !', goodStart: 'Bon début', keepGrowing: 'Continue ainsi' },
     'German': { perfect: 'Perfekt!', excellent: 'Ausgezeichnet', greatJob: 'Gut gemacht!', goodStart: 'Guter Anfang', keepGrowing: 'Weiter so' },
@@ -288,6 +288,79 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
                           </div>
                       </div>
                   ))}
+              </div>
+          </div>
+      )}
+
+      {/* POC: Pronunciation & Intonation Analysis */}
+      {pronunciation && (
+          <div className="space-y-4">
+              <h3 className="text-lg font-bold text-stone-800 font-serif border-b border-stone-200 pb-2 flex items-center gap-2">
+                  <span>🎤</span> Pronunciation & Intonation
+                  <span className="text-[10px] font-normal text-stone-400 bg-stone-100 px-2 py-0.5 rounded-full">POC</span>
+              </h3>
+
+              {/* Overall Rating & Intonation */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm">
+                      <div className="flex items-center justify-between mb-2">
+                          <span className="text-[10px] uppercase font-bold text-stone-400 tracking-wider">Overall Pronunciation</span>
+                          <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                              pronunciation.overall === 'native-like' ? 'bg-green-100 text-green-700' :
+                              pronunciation.overall === 'clear' ? 'bg-blue-100 text-blue-700' :
+                              pronunciation.overall === 'accented' ? 'bg-amber-100 text-amber-700' :
+                              'bg-red-100 text-red-700'
+                          }`}>
+                              {pronunciation.overall.replace('-', ' ')}
+                          </span>
+                      </div>
+                      <p className="text-sm text-stone-600">{pronunciation.summary}</p>
+                  </div>
+
+                  <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm">
+                      <div className="flex items-center justify-between mb-2">
+                          <span className="text-[10px] uppercase font-bold text-stone-400 tracking-wider">Intonation</span>
+                          <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                              pronunciation.intonation.pattern === 'natural' ? 'bg-green-100 text-green-700' :
+                              pronunciation.intonation.pattern === 'flat' || pronunciation.intonation.pattern === 'monotone' ? 'bg-amber-100 text-amber-700' :
+                              'bg-blue-100 text-blue-700'
+                          }`}>
+                              {pronunciation.intonation.pattern}
+                          </span>
+                      </div>
+                      <p className="text-sm text-stone-600">{pronunciation.intonation.feedback}</p>
+                  </div>
+              </div>
+
+              {/* Pronunciation Heatmap */}
+              <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm">
+                  <span className="text-[10px] uppercase font-bold text-stone-400 tracking-wider block mb-3">Word Pronunciation</span>
+                  <div className="flex flex-wrap gap-2">
+                      {pronunciation.words.map((w, idx) => (
+                          <div
+                              key={idx}
+                              className={`group relative px-3 py-1.5 rounded-lg text-sm font-medium transition-all cursor-default ${
+                                  w.status === 'good' ? 'bg-green-100 text-green-800 border border-green-200' :
+                                  w.status === 'needs-work' ? 'bg-amber-100 text-amber-800 border border-amber-200' :
+                                  'bg-red-100 text-red-800 border border-red-200'
+                              }`}
+                          >
+                              {w.word}
+                              {w.status === 'good' && <span className="ml-1">✓</span>}
+                              {w.feedback && (
+                                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-stone-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none">
+                                      {w.feedback}
+                                      <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-stone-900"></div>
+                                  </div>
+                              )}
+                          </div>
+                      ))}
+                  </div>
+                  <div className="flex items-center gap-4 mt-4 pt-3 border-t border-stone-100">
+                      <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-green-100 border border-green-200"></div><span className="text-[10px] text-stone-500">Good</span></div>
+                      <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-amber-100 border border-amber-200"></div><span className="text-[10px] text-stone-500">Needs Work</span></div>
+                      <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-red-100 border border-red-200"></div><span className="text-[10px] text-stone-500">Unclear</span></div>
+                  </div>
               </div>
           </div>
       )}

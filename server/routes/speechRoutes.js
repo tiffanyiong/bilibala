@@ -93,6 +93,18 @@ router.post('/analyze-speech', async (req, res) => {
       - **Score:** Provide a score from 0 to 100 based on overall speech quality, structure, clarity, and language use.
       - **Gap Analysis:** Explain why the new structure is better.
 
+      # TASK 4: PRONUNCIATION & INTONATION ANALYSIS (POC)
+      Listen carefully to HOW the user speaks, not just WHAT they say.
+
+      **Analyze:**
+      1. **Word-level pronunciation:** Identify 5-10 key words from the transcription. For each:
+         - Rate as "good" (clear, native-like), "needs-work" (understandable but accented), or "unclear" (hard to understand)
+         - Provide brief feedback for words that need work (e.g., "stress the first syllable", "soften the 'r' sound")
+      2. **Overall pronunciation:** Rate as "native-like", "clear", "accented", or "needs-work"
+      3. **Intonation pattern:** Classify as "natural" (good rhythm/melody), "flat" (monotone), "monotone" (no variation), or "overly-expressive"
+         - Provide specific feedback (e.g., "Try rising intonation at the end of questions")
+      4. **Summary:** One sentence summarizing the pronunciation quality and main area to improve
+
       # Output Requirements
       Generate a JSON response:
       - **NO EMPTY STRINGS**.
@@ -128,7 +140,19 @@ router.post('/analyze-speech', async (req, res) => {
           ]
         },
         "feedback": { ... },
-        "improvements": [ ... ]
+        "improvements": [ ... ],
+        "pronunciation": {
+          "overall": "clear",
+          "words": [
+            { "word": "example", "status": "good" },
+            { "word": "difficult", "status": "needs-work", "feedback": "Stress the second syllable: dif-FI-cult" }
+          ],
+          "intonation": {
+            "pattern": "natural",
+            "feedback": "Good use of rising intonation on questions."
+          },
+          "summary": "Clear pronunciation overall. Focus on word stress for multi-syllable words."
+        }
       }
     `.trim();
 
@@ -175,8 +199,11 @@ router.post('/analyze-speech', async (req, res) => {
         }
     };
 
+    console.log('[analyze-speech] Starting Gemini API call...');
+    const startTime = Date.now();
+
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview', // UPDATED to Gemini 3
+      model: 'gemini-2.5-flash',
       contents: [
         {
           role: 'user',
@@ -245,26 +272,59 @@ router.post('/analyze-speech', async (req, res) => {
                 },
                 required: ['original', 'improved', 'explanation']
               }
+            },
+            // POC: Pronunciation Analysis
+            pronunciation: {
+              type: Type.OBJECT,
+              properties: {
+                overall: { type: Type.STRING, enum: ['native-like', 'clear', 'accented', 'needs-work'] },
+                words: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      word: { type: Type.STRING },
+                      status: { type: Type.STRING, enum: ['good', 'needs-work', 'unclear'] },
+                      feedback: { type: Type.STRING }
+                    },
+                    required: ['word', 'status']
+                  }
+                },
+                intonation: {
+                  type: Type.OBJECT,
+                  properties: {
+                    pattern: { type: Type.STRING, enum: ['natural', 'flat', 'monotone', 'overly-expressive'] },
+                    feedback: { type: Type.STRING }
+                  },
+                  required: ['pattern', 'feedback']
+                },
+                summary: { type: Type.STRING }
+              },
+              required: ['overall', 'words', 'intonation', 'summary']
             }
           },
-          required: ['transcription', 'detected_framework', 'structure', 'improved_structure', 'feedback', 'improvements']
+          required: ['transcription', 'detected_framework', 'structure', 'improved_structure', 'feedback', 'improvements', 'pronunciation']
         }
       }
     });
+
+    console.log(`[analyze-speech] Gemini API call completed in ${Date.now() - startTime}ms`);
 
     let candidates = response.candidates;
     if (!candidates && response.data) candidates = response.data.candidates;
 
     if (!candidates || !candidates[0] || !candidates[0].content || !candidates[0].content.parts) {
+        console.error('[analyze-speech] Response missing candidates:', JSON.stringify(response, null, 2));
         throw new Error('Gemini response missing candidates');
     }
 
     const json = safeJsonParse(candidates[0].content.parts[0].text);
+    console.log(`[analyze-speech] Successfully parsed response, score: ${json.feedback?.score}`);
     res.json(json);
 
   } catch (err) {
-    console.error('analyze-speech failed', err);
-    res.status(500).json({ error: 'Failed to analyze speech' });
+    console.error('[analyze-speech] Failed:', err.message || err);
+    res.status(500).json({ error: 'Failed to analyze speech', details: err.message });
   }
 });
 

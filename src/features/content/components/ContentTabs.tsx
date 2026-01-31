@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { UI_TRANSLATIONS } from '../../../shared/constants';
 import { TopicPoint, VocabularyItem } from '../../../shared/types';
+import DinoGame from './DinoGame';
 
 interface ContentTabsProps {
   summary: string;
@@ -11,8 +12,10 @@ interface ContentTabsProps {
   onTimestampClick?: (offset: number) => void;
   isLoading: boolean;
   targetLang: string;
+  nativeLang?: string;
   layoutMode?: 'fixed' | 'auto';
   currentTime?: number;
+  transcriptLangMismatch?: boolean;
 }
 
 const BilingualText: React.FC<{ 
@@ -66,9 +69,23 @@ const parseTimestamp = (ts: string): number => {
   return 0;
 };
 
-const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, topics, vocabulary, transcript, onTimestampClick, isLoading, targetLang, layoutMode = 'fixed', currentTime = 0 }) => {
+const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, topics, vocabulary, transcript, onTimestampClick, isLoading, targetLang, nativeLang, layoutMode = 'fixed', currentTime = 0, transcriptLangMismatch = false }) => {
   const [activeTab, setActiveTab] = useState<'outline' | 'vocab' | 'transcript'>('outline');
   const uiText = UI_TRANSLATIONS[targetLang] || UI_TRANSLATIONS['English'];
+  const [showDinoGame, setShowDinoGame] = useState(false);
+  const [showLangMismatchInfo, setShowLangMismatchInfo] = useState(false);
+  const langInfoBtnRef = useRef<HTMLButtonElement>(null);
+  const nativeUiText = UI_TRANSLATIONS[nativeLang || 'English'] || UI_TRANSLATIONS['English'];
+  const mismatchMsg = nativeUiText.transcriptMismatch.replace('{lang}', targetLang);
+
+  useEffect(() => {
+    if (!isLoading) {
+      setShowDinoGame(false);
+      return;
+    }
+    const timer = setTimeout(() => setShowDinoGame(true), 15000);
+    return () => clearTimeout(timer);
+  }, [isLoading]);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const activeTranscriptRef = useRef<HTMLDivElement>(null);
@@ -193,16 +210,44 @@ const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, t
         >
           Vocabulary
         </button>
-        <button
-          onClick={() => setActiveTab('transcript')}
-          className={`px-3 py-2 text-[14px] rounded-md transition-all whitespace-nowrap ${
-            activeTab === 'transcript' 
-              ? 'text-gray-900 bg-gray-100 font-medium' 
-              : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
-          }`}
-        >
-          Transcript
-        </button>
+        <div className="relative flex items-center">
+          <button
+            onClick={() => setActiveTab('transcript')}
+            className={`px-3 py-2 text-[14px] rounded-md transition-all whitespace-nowrap ${
+              activeTab === 'transcript'
+                ? 'text-gray-900 bg-gray-100 font-medium'
+                : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+            }`}
+          >
+            Transcript
+          </button>
+          {transcriptLangMismatch && (
+            <button
+              ref={langInfoBtnRef}
+              onClick={(e) => { e.stopPropagation(); setShowLangMismatchInfo(!showLangMismatchInfo); }}
+              className="ml-0.5 p-0.5 text-amber-500 hover:text-amber-600 transition-colors"
+              title="Language info"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </button>
+          )}
+          {showLangMismatchInfo && langInfoBtnRef.current && (() => {
+            const rect = langInfoBtnRef.current!.getBoundingClientRect();
+            return (
+              <>
+                <div className="fixed inset-0 z-[9998]" onClick={() => setShowLangMismatchInfo(false)} />
+                <div
+                  className="fixed z-[9999] bg-amber-50 border border-amber-200 rounded-md px-3 py-2 text-amber-700 text-[11px] leading-snug shadow-lg w-56"
+                  style={{ top: rect.bottom + 4, left: rect.left }}
+                >
+                  {mismatchMsg}
+                </div>
+              </>
+            );
+          })()}
+        </div>
       </div>
 
       {/* Content Area */}
@@ -213,25 +258,38 @@ const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, t
       >
         
         {isLoading ? (
-           // SKELETON LOADING
-           <div className="flex flex-col space-y-4 px-2 py-4">
-               {activeTab === 'outline' && (
-                   <div className="p-3 bg-white rounded-lg border border-gray-100 shadow-sm space-y-2">
-                       <div className="h-3 w-20 bg-gray-100 rounded animate-pulse"></div>
-                       <div className="h-4 w-full bg-gray-100 rounded animate-pulse"></div>
-                       <div className="h-4 w-3/4 bg-gray-100 rounded animate-pulse"></div>
-                   </div>
-               )}
-               {[1, 2, 3, 4].map(i => (
-                   <div key={i} className="flex gap-3 p-2">
-                       <div className="h-4 w-10 bg-gray-100 rounded animate-pulse shrink-0"></div>
-                       <div className="flex-1 space-y-2">
-                           <div className="h-4 w-3/4 bg-gray-100 rounded animate-pulse"></div>
-                           <div className="h-3 w-1/2 bg-gray-100 rounded animate-pulse"></div>
-                       </div>
-                   </div>
-               ))}
-           </div>
+           showDinoGame ? (
+             // DINO GAME after 15s wait
+             <div className="flex flex-col items-center px-2 py-4 h-full">
+               <div className="flex-1 w-full">
+                 <DinoGame />
+               </div>
+               <div className="flex items-center gap-2 mt-3 mb-1">
+                 <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                 <p className="text-gray-400 text-xs">Generating content with AI... This can take a moment for longer video</p>
+               </div>
+             </div>
+           ) : (
+             // SKELETON LOADING (first 15s)
+             <div className="flex flex-col space-y-4 px-2 py-4">
+                 {activeTab === 'outline' && (
+                     <div className="p-3 bg-white rounded-lg border border-gray-100 shadow-sm space-y-2">
+                         <div className="h-3 w-20 bg-gray-100 rounded animate-pulse"></div>
+                         <div className="h-4 w-full bg-gray-100 rounded animate-pulse"></div>
+                         <div className="h-4 w-3/4 bg-gray-100 rounded animate-pulse"></div>
+                     </div>
+                 )}
+                 {[1, 2, 3, 4].map(i => (
+                     <div key={i} className="flex gap-3 p-2">
+                         <div className="h-4 w-10 bg-gray-100 rounded animate-pulse shrink-0"></div>
+                         <div className="flex-1 space-y-2">
+                             <div className="h-4 w-3/4 bg-gray-100 rounded animate-pulse"></div>
+                             <div className="h-3 w-1/2 bg-gray-100 rounded animate-pulse"></div>
+                         </div>
+                     </div>
+                 ))}
+             </div>
+           )
         ) : (
             <>
                 {activeTab === 'outline' ? (

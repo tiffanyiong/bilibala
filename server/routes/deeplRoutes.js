@@ -20,9 +20,7 @@ router.post('/translate/deepl', async (req, res) => {
     if (!text) {
       return res.status(400).json({ error: 'Text is required' });
     }
-    if (!sourceLang) {
-      return res.status(400).json({ error: 'Source language is required' });
-    }
+    // sourceLang is now optional - DeepL will auto-detect if not provided
     if (!targetLang) {
       return res.status(400).json({ error: 'Target language is required' });
     }

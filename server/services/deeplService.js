@@ -45,9 +45,9 @@ function getCacheKey(text, sourceLang, targetLang) {
 /**
  * Translate text using DeepL API with LRU caching
  * @param {string} text - Text to translate
- * @param {string} sourceLang - Source language (app format, e.g., 'English')
+ * @param {string|null} sourceLang - Source language (app format, e.g., 'English') - if null, DeepL auto-detects
  * @param {string} targetLang - Target language (app format, e.g., 'Chinese (Mandarin - 中文)')
- * @returns {Promise<{translation: string, cached: boolean}>}
+ * @returns {Promise<{translation: string, cached: boolean, detectedSourceLang?: string}>}
  */
 export async function translateText(text, sourceLang, targetLang) {
   // Validate text length
@@ -64,21 +64,22 @@ export async function translateText(text, sourceLang, targetLang) {
     throw new Error('DeepL API key not configured');
   }
 
-  const sourceCode = getDeepLCode(sourceLang);
+  // Source language is optional - DeepL will auto-detect if not provided
+  const sourceCode = sourceLang ? getDeepLCode(sourceLang) : null;
   const targetCode = getDeepLCode(targetLang);
 
-  // Check if languages are supported by DeepL
-  if (!sourceCode || !targetCode) {
+  // Check if target language is supported by DeepL
+  if (!targetCode) {
     throw new Error('LANGUAGE_NOT_SUPPORTED');
   }
 
-  // Same language, no translation needed
-  if (sourceCode === targetCode) {
+  // If source is specified and same as target, no translation needed
+  if (sourceCode && sourceCode === targetCode) {
     return { translation: text, cached: true };
   }
 
-  // Check cache first
-  const cacheKey = getCacheKey(text, sourceCode, targetCode);
+  // Check cache first (use 'auto' for source if not specified)
+  const cacheKey = getCacheKey(text, sourceCode || 'auto', targetCode);
   const cachedTranslation = translationCache.get(cacheKey);
 
   if (cachedTranslation) {
@@ -87,7 +88,16 @@ export async function translateText(text, sourceLang, targetLang) {
   }
 
   // Call DeepL API
-  console.log(`[DeepL] Cache miss, calling API for: "${text.substring(0, 30)}..."`);
+  console.log(`[DeepL] Cache miss, calling API for: "${text.substring(0, 30)}..." (source: ${sourceCode || 'auto-detect'})`);
+
+  // Build request body - only include source_lang if explicitly provided
+  const requestBody = {
+    text: [text],
+    target_lang: targetCode,
+  };
+  if (sourceCode) {
+    requestBody.source_lang = sourceCode;
+  }
 
   const response = await fetch('https://api-free.deepl.com/v2/translate', {
     method: 'POST',
@@ -95,11 +105,7 @@ export async function translateText(text, sourceLang, targetLang) {
       'Authorization': `DeepL-Auth-Key ${config.deepl.apiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      text: [text],
-      source_lang: sourceCode,
-      target_lang: targetCode,
-    }),
+    body: JSON.stringify(requestBody),
   });
 
   if (!response.ok) {

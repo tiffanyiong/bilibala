@@ -41,20 +41,20 @@ export const LEVELS = [
   { id: 'Hard', label: 'Advanced' }
 ];
 
-export const UI_TRANSLATIONS: Record<string, { outline: string; slang: string; ready: string; start: string }> = {
-  'English': { outline: 'Story Outline', slang: 'Magic Words', ready: 'Ready to Chat?', start: 'Start Adventure' },
-  'Spanish (Español)': { outline: 'Historia', slang: 'Palabras Mágicas', ready: '¿Listo?', start: 'Comenzar' },
-  'French (Français)': { outline: 'Histoire', slang: 'Mots Magiques', ready: 'Prêt?', start: 'Commencer' },
-  'German (Deutsch)': { outline: 'Geschichte', slang: 'Zauberwörter', ready: 'Bereit?', start: 'Starten' },
-  'Portuguese (Português)': { outline: 'História', slang: 'Palavras Mágicas', ready: 'Pronto?', start: 'Começar' },
-  'Japanese (日本語)': { outline: 'ストーリー', slang: '魔法の言葉', ready: '準備OK？', start: 'スタート' },
-  'Korean (한국어)': { outline: '스토리', slang: '마법의 단어', ready: '준비됐나요?', start: '시작하기' },
-  'Chinese (Mandarin - 中文)': { outline: '故事大纲', slang: '魔法词汇', ready: '准备好了吗？', start: '开始冒险' },
-  'Hindi (हिन्दी)': { outline: 'कहानी', slang: 'जादुई शब्द', ready: 'तैयार?', start: 'शुरू करें' },
-  'Italian (Italiano)': { outline: 'Storia', slang: 'Parole Magiche', ready: 'Pronto?', start: 'Inizia' },
-  'Russian (Русский)': { outline: 'История', slang: 'Магические слова', ready: 'Готовы?', start: 'Начать' },
-  'Arabic (العربية)': { outline: 'القصة', slang: 'كلمات سحرية', ready: 'مستعد؟', start: 'ابدأ' },
-  'Indonesian (Bahasa Indonesia)': { outline: 'Cerita', slang: 'Kata Ajaib', ready: 'Siap?', start: 'Mulai' },
-  'Turkish (Türkçe)': { outline: 'Hikaye', slang: 'Sihirli Kelimeler', ready: 'Hazır mısın?', start: 'Başla' },
-  'Vietnamese (Tiếng Việt)': { outline: 'Câu chuyện', slang: 'Từ ngữ phép thuật', ready: 'Sẵn sàng?', start: 'Bắt đầu' }
+export const UI_TRANSLATIONS: Record<string, { outline: string; slang: string; ready: string; start: string; transcriptMismatch: string }> = {
+  'English': { outline: 'Story Outline', slang: 'Magic Words', ready: 'Ready to Chat?', start: 'Start Adventure', transcriptMismatch: 'Transcript not available in {lang}. Showing available captions instead.' },
+  'Spanish (Español)': { outline: 'Historia', slang: 'Palabras Mágicas', ready: '¿Listo?', start: 'Comenzar', transcriptMismatch: 'Transcripción no disponible en {lang}. Mostrando subtítulos disponibles.' },
+  'French (Français)': { outline: 'Histoire', slang: 'Mots Magiques', ready: 'Prêt?', start: 'Commencer', transcriptMismatch: 'Transcription non disponible en {lang}. Affichage des sous-titres disponibles.' },
+  'German (Deutsch)': { outline: 'Geschichte', slang: 'Zauberwörter', ready: 'Bereit?', start: 'Starten', transcriptMismatch: 'Transkript nicht verfügbar auf {lang}. Verfügbare Untertitel werden angezeigt.' },
+  'Portuguese (Português)': { outline: 'História', slang: 'Palavras Mágicas', ready: 'Pronto?', start: 'Começar', transcriptMismatch: 'Transcrição não disponível em {lang}. Mostrando legendas disponíveis.' },
+  'Japanese (日本語)': { outline: 'ストーリー', slang: '魔法の言葉', ready: '準備OK？', start: 'スタート', transcriptMismatch: '{lang}の字幕がありません。利用可能な字幕を表示しています。' },
+  'Korean (한국어)': { outline: '스토리', slang: '마법의 단어', ready: '준비됐나요?', start: '시작하기', transcriptMismatch: '{lang} 자막을 사용할 수 없습니다. 사용 가능한 자막을 표시합니다.' },
+  'Chinese (Mandarin - 中文)': { outline: '故事大纲', slang: '魔法词汇', ready: '准备好了吗？', start: '开始冒险', transcriptMismatch: '{lang}字幕不可用，正在显示可用的字幕。' },
+  'Hindi (हिन्दी)': { outline: 'कहानी', slang: 'जादुई शब्द', ready: 'तैयार?', start: 'शुरू करें', transcriptMismatch: '{lang} में ट्रांसक्रिप्ट उपलब्ध नहीं है। उपलब्ध कैप्शन दिखा रहे हैं।' },
+  'Italian (Italiano)': { outline: 'Storia', slang: 'Parole Magiche', ready: 'Pronto?', start: 'Inizia', transcriptMismatch: 'Trascrizione non disponibile in {lang}. Visualizzazione dei sottotitoli disponibili.' },
+  'Russian (Русский)': { outline: 'История', slang: 'Магические слова', ready: 'Готовы?', start: 'Начать', transcriptMismatch: 'Транскрипция недоступна на {lang}. Показаны доступные субтитры.' },
+  'Arabic (العربية)': { outline: 'القصة', slang: 'كلمات سحرية', ready: 'مستعد؟', start: 'ابدأ', transcriptMismatch: 'النص غير متوفر بـ{lang}. يتم عرض الترجمات المتاحة.' },
+  'Indonesian (Bahasa Indonesia)': { outline: 'Cerita', slang: 'Kata Ajaib', ready: 'Siap?', start: 'Mulai', transcriptMismatch: 'Transkrip tidak tersedia dalam {lang}. Menampilkan teks yang tersedia.' },
+  'Turkish (Türkçe)': { outline: 'Hikaye', slang: 'Sihirli Kelimeler', ready: 'Hazır mısın?', start: 'Başla', transcriptMismatch: '{lang} dilinde altyazı mevcut değil. Mevcut altyazılar gösteriliyor.' },
+  'Vietnamese (Tiếng Việt)': { outline: 'Câu chuyện', slang: 'Từ ngữ phép thuật', ready: 'Sẵn sàng?', start: 'Bắt đầu', transcriptMismatch: 'Phụ đề không có sẵn bằng {lang}. Đang hiển thị phụ đề có sẵn.' }
 };
