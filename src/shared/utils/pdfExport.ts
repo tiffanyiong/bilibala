@@ -251,7 +251,7 @@ export async function exportPracticeReportToPdf(
     const drawCallout = (text: string, bgColor: [number, number, number], textColor: [number, number, number] = colors.black) => {
       setFont('normal', 10);
       const lines = doc.splitTextToSize(text, contentWidth - 16);
-      const boxHeight = lines.length * 5.5 + 12;
+      const boxHeight = lines.length * 5.5 ;
 
       checkPageBreak(boxHeight + 5);
 
@@ -730,7 +730,86 @@ export async function exportPracticeReportToPdf(
       yPos += 4;
     }
 
-    // ==================== 3. STRENGTHS ====================
+    // ==================== 3. PRONUNCIATION & INTONATION ====================
+    if (analysis.pronunciation) {
+      drawSectionHeader('Pronunciation & Intonation');
+
+      // Overall Pronunciation
+      checkPageBreak(20);
+      setFont('bold', 10);
+      doc.setTextColor(...colors.black);
+      const overallLabel = analysis.pronunciation.overall.replace('-', ' ');
+      doc.text(`Overall: ${overallLabel}`, margin, yPos);
+      yPos += 6;
+
+      if (analysis.pronunciation.summary) {
+        setFont('normal', 10);
+        doc.setTextColor(...colors.darkGray);
+        const summaryLines = doc.splitTextToSize(analysis.pronunciation.summary, contentWidth - 5);
+        doc.text(summaryLines, margin + 5, yPos);
+        yPos += summaryLines.length * 5 + 4;
+      }
+
+      // Intonation
+      checkPageBreak(15);
+      setFont('bold', 10);
+      doc.setTextColor(...colors.black);
+      doc.text(`Intonation: ${analysis.pronunciation.intonation.pattern}`, margin, yPos);
+      yPos += 6;
+
+      if (analysis.pronunciation.intonation.feedback) {
+        setFont('normal', 10);
+        doc.setTextColor(...colors.darkGray);
+        const intoLines = doc.splitTextToSize(analysis.pronunciation.intonation.feedback, contentWidth - 5);
+        doc.text(intoLines, margin + 5, yPos);
+        yPos += intoLines.length * 5 + 6;
+      }
+
+      // Word Pronunciation - only show words that need work or are unclear, with their tips
+      if (analysis.pronunciation.words && analysis.pronunciation.words.length > 0) {
+        const wordsNeedingAttention = analysis.pronunciation.words.filter(
+          w => w.status === 'needs-work' || w.status === 'unclear'
+        );
+
+        if (wordsNeedingAttention.length > 0) {
+          checkPageBreak(15);
+          setFont('bold', 10);
+          doc.setTextColor(...colors.black);
+          doc.text('Words to Practice:', margin, yPos);
+          yPos += 6;
+
+          for (const wordObj of wordsNeedingAttention) {
+            checkPageBreak(15);
+
+            const bulletColor = wordObj.status === 'needs-work' ? colors.weak : [239, 68, 68] as [number, number, number];
+
+            // Bullet point
+            doc.setFillColor(...bulletColor);
+            doc.circle(margin + 3, yPos + 2, 1.5, 'F');
+
+            // Word only
+            setFont('bold', 10);
+            doc.setTextColor(...colors.black);
+            doc.text(wordObj.word, margin + 10, yPos + 4);
+
+            yPos += 6;
+
+            // Feedback/tip from tooltip if available
+            if (wordObj.feedback) {
+              setFont('italic', 9);
+              doc.setTextColor(...colors.darkGray);
+              const feedbackLines = doc.splitTextToSize(`→ ${wordObj.feedback}`, contentWidth - 15);
+              doc.text(feedbackLines, margin + 10, yPos + 2);
+              yPos += feedbackLines.length * 4.5 + 3;
+            }
+          }
+        }
+      }
+
+      yPos += 6;
+    }
+
+    // ==================== 4. STRENGTHS ====================
     if (analysis.feedback?.strengths && analysis.feedback.strengths.length > 0) {
       drawSectionHeader('Strengths');
 
@@ -740,7 +819,7 @@ export async function exportPracticeReportToPdf(
       yPos += 6;
     }
 
-    // ==================== 4. AREAS FOR IMPROVEMENT ====================
+    // ==================== 5. AREAS FOR IMPROVEMENT ====================
     if (analysis.feedback?.weaknesses && analysis.feedback.weaknesses.length > 0) {
       drawSectionHeader('Areas for Improvement');
 
@@ -750,7 +829,7 @@ export async function exportPracticeReportToPdf(
       yPos += 6;
     }
 
-    // ==================== 5. ACTIONABLE TIPS ====================
+    // ==================== 6. ACTIONABLE TIPS ====================
     if (analysis.feedback?.suggestions && analysis.feedback.suggestions.length > 0) {
       drawSectionHeader('Actionable Tips');
 
@@ -760,14 +839,14 @@ export async function exportPracticeReportToPdf(
       yPos += 6;
     }
 
-    // ==================== 6. LOGIC STRUCTURE ====================
+    // ==================== 7. LOGIC STRUCTURE ====================
     const detectedFramework = analysis.detected_framework || '';
 
     if (analysis.structure?.conclusion && analysis.structure?.arguments) {
       drawGraph(analysis.structure, 'Your Logic Structure', false, detectedFramework);
     }
 
-    // ==================== 7. AI IMPROVED STRUCTURE ====================
+    // ==================== 8. AI IMPROVED STRUCTURE ====================
     if (analysis.improved_structure?.conclusion && analysis.improved_structure?.arguments) {
       const improvedFramework = analysis.improved_structure.recommended_framework || detectedFramework;
       drawGraph(analysis.improved_structure, 'Improved Structure', true, improvedFramework);
