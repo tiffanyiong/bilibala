@@ -6,6 +6,79 @@ import { SpeechAnalysisResult } from '../../../shared/types';
 import { generateFlowData } from '../utils/transformPyramid';
 import AudioRecorder from './AudioRecorder';
 
+// --- WORD WITH TOOLTIP COMPONENT ---
+const WordWithTooltip = ({ word }: { word: { word: string; status: 'good' | 'needs-work' | 'unclear'; feedback?: string } }) => {
+    const wordRef = useRef<HTMLDivElement>(null);
+    const tooltipRef = useRef<HTMLDivElement>(null);
+    const [tooltipStyle, setTooltipStyle] = useState<React.CSSProperties>({});
+    const [arrowStyle, setArrowStyle] = useState<React.CSSProperties>({});
+
+    const handleMouseEnter = () => {
+        if (!wordRef.current || !tooltipRef.current) return;
+
+        const wordRect = wordRef.current.getBoundingClientRect();
+        const tooltipRect = tooltipRef.current.getBoundingClientRect();
+        const viewportWidth = window.innerWidth;
+        const padding = 16; // Minimum padding from viewport edges
+
+        // Calculate ideal centered position
+        let left = wordRect.left + wordRect.width / 2 - tooltipRect.width / 2;
+
+        // Clamp to viewport bounds
+        if (left < padding) {
+            left = padding;
+        } else if (left + tooltipRect.width > viewportWidth - padding) {
+            left = viewportWidth - padding - tooltipRect.width;
+        }
+
+        // Position above the word
+        const top = wordRect.top - tooltipRect.height - 8; // 8px gap
+
+        // Calculate arrow position relative to tooltip
+        const wordCenterX = wordRect.left + wordRect.width / 2;
+        const arrowLeft = wordCenterX - left;
+
+        setTooltipStyle({
+            left: `${left}px`,
+            top: `${top}px`,
+            transform: 'none',
+        });
+
+        setArrowStyle({
+            left: `${arrowLeft}px`,
+            transform: 'translateX(-50%)',
+        });
+    };
+
+    return (
+        <div
+            ref={wordRef}
+            onMouseEnter={handleMouseEnter}
+            className={`group relative px-3 py-1.5 rounded-lg text-sm font-medium transition-all cursor-default ${
+                word.status === 'good' ? 'bg-green-100 text-green-800 border border-green-200' :
+                word.status === 'needs-work' ? 'bg-amber-100 text-amber-800 border border-amber-200' :
+                'bg-red-100 text-red-800 border border-red-200'
+            }`}
+        >
+            {word.word}
+            {word.status === 'good' && <span className="ml-1">✓</span>}
+            {word.feedback && (
+                <div
+                    ref={tooltipRef}
+                    style={tooltipStyle}
+                    className="fixed px-3 py-2 bg-stone-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none max-w-[calc(100vw-32px)]"
+                >
+                    {word.feedback}
+                    <div
+                        style={arrowStyle}
+                        className="absolute top-full border-4 border-transparent border-t-stone-900"
+                    ></div>
+                </div>
+            )}
+        </div>
+    );
+};
+
 // --- NODE COMPONENT (Unchanged) ---
 const PyramidNode = memo(({ data }: { data: any }) => {
     const getBadge = () => {
@@ -122,7 +195,23 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
     scoreExcellent: 'Excellent',
     scoreGreatJob: 'Great Job',
     scoreGoodStart: 'Good Start',
-    scoreKeepGrowing: 'Keep Growing'
+    scoreKeepGrowing: 'Keep Growing',
+    // Pronunciation Analysis labels
+    pronunciationIntonation: 'Pronunciation & Intonation',
+    overallPronunciation: 'Overall Pronunciation',
+    intonation: 'Intonation',
+    wordPronunciation: 'Word Pronunciation',
+    pronunciationNativeLike: 'native-like',
+    pronunciationClear: 'clear',
+    pronunciationAccented: 'accented',
+    pronunciationNeedsWork: 'needs work',
+    intonationNatural: 'natural',
+    intonationFlat: 'flat',
+    intonationMonotone: 'monotone',
+    intonationOverlyExpressive: 'overly-expressive',
+    pronunciationGood: 'Good',
+    pronunciationNeedsWorkLabel: 'Needs Work',
+    pronunciationUnclear: 'Unclear'
   };
 
   // Translations for score labels in native languages (used in Easy mode)
@@ -161,6 +250,28 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
   };
 
   const scoreDisplay = getScoreDisplay(feedback?.score || 0);
+
+  // Helper to get translated pronunciation status label
+  const getOverallPronunciationLabel = (status: string) => {
+    const statusMap: Record<string, string> = {
+      'native-like': labels.pronunciationNativeLike,
+      'clear': labels.pronunciationClear,
+      'accented': labels.pronunciationAccented,
+      'needs-work': labels.pronunciationNeedsWork,
+    };
+    return statusMap[status] || status.replace('-', ' ');
+  };
+
+  // Helper to get translated intonation pattern label
+  const getIntonationPatternLabel = (pattern: string) => {
+    const patternMap: Record<string, string> = {
+      'natural': labels.intonationNatural,
+      'flat': labels.intonationFlat,
+      'monotone': labels.intonationMonotone,
+      'overly-expressive': labels.intonationOverlyExpressive,
+    };
+    return patternMap[pattern] || pattern;
+  };
 
   // MiniMap Handlers
   const showMap = () => setIsMapVisible(true);
@@ -295,23 +406,22 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
       {/* POC: Pronunciation & Intonation Analysis */}
       {pronunciation && (
           <div className="space-y-4">
-              <h3 className="text-lg font-bold text-stone-800 font-serif border-b border-stone-200 pb-2 flex items-center gap-2">
-                  <span>🎤</span> Pronunciation & Intonation
-                  <span className="text-[10px] font-normal text-stone-400 bg-stone-100 px-2 py-0.5 rounded-full">POC</span>
+              <h3 className="text-lg font-bold text-stone-800 font-serif border-b border-stone-200 pb-2">
+                  {labels.pronunciationIntonation}
               </h3>
 
               {/* Overall Rating & Intonation */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm">
                       <div className="flex items-center justify-between mb-2">
-                          <span className="text-[10px] uppercase font-bold text-stone-400 tracking-wider">Overall Pronunciation</span>
+                          <span className="text-[10px] uppercase font-bold text-stone-400 tracking-wider">{labels.overallPronunciation}</span>
                           <span className={`px-2 py-1 rounded-full text-xs font-bold ${
                               pronunciation.overall === 'native-like' ? 'bg-green-100 text-green-700' :
                               pronunciation.overall === 'clear' ? 'bg-blue-100 text-blue-700' :
                               pronunciation.overall === 'accented' ? 'bg-amber-100 text-amber-700' :
                               'bg-red-100 text-red-700'
                           }`}>
-                              {pronunciation.overall.replace('-', ' ')}
+                              {getOverallPronunciationLabel(pronunciation.overall)}
                           </span>
                       </div>
                       <p className="text-sm text-stone-600">{pronunciation.summary}</p>
@@ -319,13 +429,13 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
 
                   <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm">
                       <div className="flex items-center justify-between mb-2">
-                          <span className="text-[10px] uppercase font-bold text-stone-400 tracking-wider">Intonation</span>
+                          <span className="text-[10px] uppercase font-bold text-stone-400 tracking-wider">{labels.intonation}</span>
                           <span className={`px-2 py-1 rounded-full text-xs font-bold ${
                               pronunciation.intonation.pattern === 'natural' ? 'bg-green-100 text-green-700' :
                               pronunciation.intonation.pattern === 'flat' || pronunciation.intonation.pattern === 'monotone' ? 'bg-amber-100 text-amber-700' :
                               'bg-blue-100 text-blue-700'
                           }`}>
-                              {pronunciation.intonation.pattern}
+                              {getIntonationPatternLabel(pronunciation.intonation.pattern)}
                           </span>
                       </div>
                       <p className="text-sm text-stone-600">{pronunciation.intonation.feedback}</p>
@@ -334,32 +444,16 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
 
               {/* Pronunciation Heatmap */}
               <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm">
-                  <span className="text-[10px] uppercase font-bold text-stone-400 tracking-wider block mb-3">Word Pronunciation</span>
+                  <span className="text-[10px] uppercase font-bold text-stone-400 tracking-wider block mb-3">{labels.wordPronunciation}</span>
                   <div className="flex flex-wrap gap-2">
                       {pronunciation.words.map((w, idx) => (
-                          <div
-                              key={idx}
-                              className={`group relative px-3 py-1.5 rounded-lg text-sm font-medium transition-all cursor-default ${
-                                  w.status === 'good' ? 'bg-green-100 text-green-800 border border-green-200' :
-                                  w.status === 'needs-work' ? 'bg-amber-100 text-amber-800 border border-amber-200' :
-                                  'bg-red-100 text-red-800 border border-red-200'
-                              }`}
-                          >
-                              {w.word}
-                              {w.status === 'good' && <span className="ml-1">✓</span>}
-                              {w.feedback && (
-                                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-stone-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none">
-                                      {w.feedback}
-                                      <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-stone-900"></div>
-                                  </div>
-                              )}
-                          </div>
+                          <WordWithTooltip key={idx} word={w} />
                       ))}
                   </div>
                   <div className="flex items-center gap-4 mt-4 pt-3 border-t border-stone-100">
-                      <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-green-100 border border-green-200"></div><span className="text-[10px] text-stone-500">Good</span></div>
-                      <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-amber-100 border border-amber-200"></div><span className="text-[10px] text-stone-500">Needs Work</span></div>
-                      <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-red-100 border border-red-200"></div><span className="text-[10px] text-stone-500">Unclear</span></div>
+                      <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-green-100 border border-green-200"></div><span className="text-[10px] text-stone-500">{labels.pronunciationGood}</span></div>
+                      <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-amber-100 border border-amber-200"></div><span className="text-[10px] text-stone-500">{labels.pronunciationNeedsWorkLabel}</span></div>
+                      <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-red-100 border border-red-200"></div><span className="text-[10px] text-stone-500">{labels.pronunciationUnclear}</span></div>
                   </div>
               </div>
           </div>
