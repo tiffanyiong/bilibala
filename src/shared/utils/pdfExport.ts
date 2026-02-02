@@ -251,7 +251,7 @@ export async function exportPracticeReportToPdf(
     const drawCallout = (text: string, bgColor: [number, number, number], textColor: [number, number, number] = colors.black) => {
       setFont('normal', 10);
       const lines = doc.splitTextToSize(text, contentWidth - 16);
-      const boxHeight = lines.length * 5.5 ;
+      const boxHeight = lines.length * 5.5 + 5;
 
       checkPageBreak(boxHeight + 5);
 

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { translateText, getCacheStats, MAX_CHARS } from '../services/deeplService.js';
+import { getCacheStats, MAX_CHARS, translateText } from '../services/deeplService.js';
 
 const router = Router();
 
@@ -8,7 +8,7 @@ const router = Router();
  * Translate text using DeepL API with LRU caching
  *
  * Request body:
- * - text: string (required, max 150 chars)
+ * - text: string (required, max 200 chars)
  * - sourceLang: string (required, e.g., 'English')
  * - targetLang: string (required, e.g., 'Chinese (Mandarin - 中文)')
  */
