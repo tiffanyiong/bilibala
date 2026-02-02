@@ -68,7 +68,23 @@ const defaultLabels = {
     scoreExcellent: 'Excellent',
     scoreGreatJob: 'Great Job',
     scoreGoodStart: 'Good Start',
-    scoreKeepGrowing: 'Keep Growing'
+    scoreKeepGrowing: 'Keep Growing',
+    // Pronunciation Analysis labels
+    pronunciationIntonation: 'Pronunciation & Intonation',
+    overallPronunciation: 'Overall Pronunciation',
+    intonation: 'Intonation',
+    wordPronunciation: 'Word Pronunciation',
+    pronunciationNativeLike: 'native-like',
+    pronunciationClear: 'clear',
+    pronunciationAccented: 'accented',
+    pronunciationNeedsWork: 'needs work',
+    intonationNatural: 'natural',
+    intonationFlat: 'flat',
+    intonationMonotone: 'monotone',
+    intonationOverlyExpressive: 'overly-expressive',
+    pronunciationGood: 'Good',
+    pronunciationNeedsWorkLabel: 'Needs Work',
+    pronunciationUnclear: 'Unclear'
 };
 
 const PracticeSession: React.FC<PracticeSessionProps> = ({
@@ -225,6 +241,7 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
                 improved_structure: analysisData.improved_structure,
                 feedback: analysisData.feedback,
                 improvements: analysisData.improvements,
+                pronunciation: analysisData.pronunciation,
               },
             });
 
