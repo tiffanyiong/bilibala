@@ -1,8 +1,9 @@
+import { TIER_LIMITS } from '@/shared/types/database';
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../../shared/context/AuthContext';
 import { useSubscription } from '../../../shared/context/SubscriptionContext';
 import { getBackendOrigin } from '../../../shared/services/backend';
-import { incrementQuestionUseCount, incrementTopicPracticeCount, savePracticeSession, updateLibraryPracticeStats, uploadPracticeAudio } from '../../../shared/services/database';
+import { getUserVideoLibrary, incrementQuestionUseCount, incrementTopicPracticeCount, savePracticeSession, updateLibraryPracticeStats, uploadPracticeAudio } from '../../../shared/services/database';
 import { checkAnonymousPracticeLimit, recordAnonymousPractice } from '../../../shared/services/usageTracking';
 import { PracticeTopic, SpeechAnalysisResult, TopicQuestion } from '../../../shared/types';
 import DinoGame from '../../content/components/DinoGame';
@@ -99,6 +100,7 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
   onRequireAuth
 }) => {
   const { user } = useAuth();
+  const { tier } = useSubscription();
   const { recordAction } = useSubscription();
   
   // Basic State
@@ -239,6 +241,15 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
       // Save logic for logged in users
       if (user) {
         const score = analysisData.feedback?.score !== undefined ? Math.round(analysisData.feedback.score) : null;
+
+        // 1. Check if the video is already in the user's library
+        const libraryLimit = TIER_LIMITS[tier].videoLibraryMax;
+        const currentLibrary = await getUserVideoLibrary(user.id);
+        const isAlreadyInLibrary = currentLibrary.some(v => v.analysisId === analysisId);
+
+        // 2. Decide if we should allow a "Library Link"
+        // If NOT in library and at 10 slots, we set a flag to skip auto-linking
+        const isLibraryFull = !isAlreadyInLibrary && currentLibrary.length >= libraryLimit;
         (async () => {
           try {
             const audioUrl = await uploadPracticeAudio(user.id, audioData);
@@ -258,7 +269,8 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
               feedback_data: analysisData
             });
             if (savedSession) recordAction('practice_session');
-            if (analysisId && score !== null) await updateLibraryPracticeStats(user.id, analysisId, score);
+            // Only update stats if the video actually exists in the library
+            if (analysisId && score !== null && !isLibraryFull) await updateLibraryPracticeStats(user.id, analysisId, score);
             if (topic.topicId) await incrementTopicPracticeCount(topic.topicId);
             if (topic.questionId) await incrementQuestionUseCount(topic.questionId);
           } catch (err) { console.error('Save failed', err); }
