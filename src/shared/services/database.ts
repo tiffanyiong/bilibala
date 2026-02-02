@@ -283,6 +283,41 @@ export async function saveCachedAnalysis(
 }
 
 /**
+ * Update the content of a cached analysis (e.g., to use canonical topic names)
+ */
+export async function updateCachedAnalysisContent(
+  analysisId: string,
+  discussionTopics: PracticeTopic[]
+): Promise<void> {
+  // Fetch current content first
+  const { data: current, error: fetchError } = await supabase
+    .from('cached_analyses')
+    .select('content')
+    .eq('id', analysisId)
+    .single();
+
+  if (fetchError || !current) {
+    console.error('Error fetching cached analysis for update:', fetchError);
+    return;
+  }
+
+  // Update only the discussionTopics in the content
+  const updatedContent = {
+    ...(current.content as AnalysisContent),
+    discussionTopics,
+  };
+
+  const { error: updateError } = await supabase
+    .from('cached_analyses')
+    .update({ content: updatedContent })
+    .eq('id', analysisId);
+
+  if (updateError) {
+    console.error('Error updating cached analysis content:', updateError);
+  }
+}
+
+/**
  * Convert cached analysis back to ContentAnalysis format for the app
  */
 export function dbAnalysisToContentAnalysis(
@@ -366,11 +401,17 @@ export async function savePracticeTopicsFromAnalysis(
   // 4. Process all topics
   const topicsWithIds: PracticeTopic[] = [];
 
-  // Process exact matches
+  // Process exact matches - use canonical topic name from DB
   for (const { topic, existingId } of matched) {
+    const canonicalTopic = (existingTopics || []).find((e: any) => e.id === existingId);
     const questionId = await upsertTopicQuestion(existingId, topic.question, analysisId, difficultyLevel);
     await mergeTargetWords(existingId, topic.targetWords);
-    topicsWithIds.push({ ...topic, topicId: existingId, questionId });
+    topicsWithIds.push({
+      ...topic,
+      topic: canonicalTopic?.topic || topic.topic, // Use canonical name
+      topicId: existingId,
+      questionId
+    });
   }
 
   // Process unmatched (may have AI matches)
@@ -378,12 +419,18 @@ export async function savePracticeTopicsFromAnalysis(
     const aiMatch = aiMatches.find(m => m.new_topic === topic.topic);
 
     if (aiMatch?.match) {
-      // AI found a semantic match to existing topic
+      // AI found a semantic match to existing topic - use canonical name
+      const canonicalTopic = (existingTopics || []).find((e: any) => e.id === aiMatch.match);
       const questionId = await upsertTopicQuestion(aiMatch.match, topic.question, analysisId, difficultyLevel);
       await mergeTargetWords(aiMatch.match, topic.targetWords);
-      topicsWithIds.push({ ...topic, topicId: aiMatch.match, questionId });
+      topicsWithIds.push({
+        ...topic,
+        topic: canonicalTopic?.topic || topic.topic, // Use canonical name
+        topicId: aiMatch.match,
+        questionId
+      });
     } else {
-      // Create new canonical topic
+      // Create new canonical topic - topic name becomes the canonical name
       const newTopicId = await createCanonicalTopic(topic, targetLang, difficultyLevel);
       if (newTopicId) {
         const questionId = await upsertTopicQuestion(newTopicId, topic.question, analysisId, difficultyLevel);
@@ -515,6 +562,16 @@ export async function saveGeneratedQuestion(
     is_public: true,
   };
 
+  console.log('[saveGeneratedQuestion] Saving with data:', {
+    topicId,
+    question: question.substring(0, 50) + '...',
+    analysisId,
+    userId,
+    difficultyLevel,
+    difficulty_level_to_save: questionData.difficulty_level,
+    created_by: questionData.created_by,
+  });
+
   const { data, error } = await supabase
     .from('topic_questions')
     .insert(questionData)
@@ -525,6 +582,13 @@ export async function saveGeneratedQuestion(
     console.error('Error saving generated question:', error);
     return null;
   }
+
+  console.log('[saveGeneratedQuestion] Saved question result:', {
+    id: data.id,
+    created_by: data.created_by,
+    difficulty_level: data.difficulty_level,
+  });
+
   return data as DbTopicQuestion;
 }
 
@@ -716,7 +780,7 @@ export async function incrementQuestionUseCount(
  */
 export async function getPracticeTopicsForAnalysis(
   analysisId: string
-): Promise<(DbPracticeTopic & { questionId?: string })[]> {
+): Promise<(DbPracticeTopic & { questionId?: string; question?: string })[]> {
   // Find questions that came from this analysis, then get their topics
   const { data, error } = await supabase
     .from('topic_questions')
@@ -734,18 +798,19 @@ export async function getPracticeTopicsForAnalysis(
 
   // Deduplicate topics (a topic may have multiple questions from the same analysis)
   // Use the first question found for each topic as the default questionId
-  const topicMap = new Map<string, DbPracticeTopic & { questionId?: string }>();
+  const topicMap = new Map<string, DbPracticeTopic & { questionId?: string; question?: string }>();
   for (const q of (data || []) as any[]) {
     if (q.practice_topics && !topicMap.has(q.practice_topics.id)) {
       topicMap.set(q.practice_topics.id, {
         ...q.practice_topics,
         questionId: q.id,
+        question: q.question, // Include question text for matching
       });
     }
   }
 
   const result = Array.from(topicMap.values());
-  console.log('[DB] Practice topics with questionId:', result.map(t => ({ topic: t.topic, topicId: t.id, questionId: t.questionId })));
+  console.log('[DB] Practice topics with questionId:', result.map(t => ({ topic: t.topic, topicId: t.id, questionId: t.questionId, question: t.question?.substring(0, 30) })));
 
   return result;
 }

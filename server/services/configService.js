@@ -14,6 +14,8 @@ const DEFAULTS = {
   free_video_library_max: '10',
   anonymous_video_limit: '2',
   anonymous_practice_limit: '2',
+  practice_recording_max_seconds: '240',
+  speech_analysis_timeout_seconds: '150',
 };
 
 /**

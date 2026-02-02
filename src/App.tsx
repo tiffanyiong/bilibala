@@ -33,6 +33,7 @@ import {
   incrementVideoView,
   saveCachedAnalysis,
   savePracticeTopicsFromAnalysis,
+  updateCachedAnalysisContent,
   saveGeneratedQuestion,
   countAiGeneratedQuestions,
   updateVideoCategory,
@@ -664,7 +665,11 @@ const App: React.FC = () => {
   // Handle generating a new question for the current topic
   const handleGenerateQuestion = async (): Promise<TopicQuestion | null> => {
     if (!activePracticeTopic?.topicId || !currentAnalysisId) {
-      console.error('Cannot generate question: missing topic or analysis ID');
+      console.error('Cannot generate question: missing topic or analysis ID', {
+        topicId: activePracticeTopic?.topicId,
+        currentAnalysisId,
+        activePracticeTopic,
+      });
       return null;
     }
 
@@ -692,13 +697,23 @@ const App: React.FC = () => {
 
       const { question, targetWords, difficultyLevel } = await response.json();
 
+      console.log('[handleGenerateQuestion] API response:', {
+        question: question?.substring(0, 50) + '...',
+        difficultyLevel,
+        fallbackLevel: level,
+        userId: user?.id,
+      });
+
       // Save the generated question to the database with the difficulty level
+      const levelToSave = difficultyLevel || level;
+      console.log('[handleGenerateQuestion] Saving with level:', levelToSave);
+
       const savedQuestion = await saveGeneratedQuestion(
         activePracticeTopic.topicId,
         question,
         currentAnalysisId,
         user?.id,
-        difficultyLevel || level // Use the level from response, fallback to current user level
+        levelToSave
       );
 
       if (!savedQuestion) {
@@ -948,9 +963,11 @@ const App: React.FC = () => {
                     targetLang,
                     level
                   );
-                  // Update discussion topics with database IDs
+                  // Update discussion topics with database IDs (now with canonical names)
                   if (topicsWithIds.length > 0) {
                     setDiscussionTopics(topicsWithIds);
+                    // Update cached analysis with canonical topic names for future loads
+                    await updateCachedAnalysisContent(savedAnalysis.id, topicsWithIds);
                   }
                 }
 
@@ -1146,10 +1163,13 @@ const App: React.FC = () => {
       setCurrentAnalysisId(analysisId);
 
       // Fetch practice topics with database IDs
-      const dbTopics = await getPracticeTopicsForAnalysis(analysisId);
-      if (dbTopics.length > 0 && analysis.discussionTopics) {
+      if (analysis.discussionTopics && analysis.discussionTopics.length > 0) {
+        const dbTopics = await getPracticeTopicsForAnalysis(analysisId);
+
+        // Match by QUESTION text (not topic name) since canonical topics may have different names
+        // e.g., analysis has "Dealing with Boredom" but DB has canonical "Overcoming Boredom"
         const topicsWithIds = analysis.discussionTopics.map(topic => {
-          const dbTopic = dbTopics.find(dt => dt.topic === topic.topic);
+          const dbTopic = dbTopics.find(dt => dt.question === topic.question);
           if (dbTopic) {
             return {
               ...topic,
@@ -1159,9 +1179,10 @@ const App: React.FC = () => {
           }
           return topic;
         });
+
         setDiscussionTopics(topicsWithIds);
       } else {
-        setDiscussionTopics(analysis.discussionTopics || []);
+        setDiscussionTopics([]);
       }
 
       // Check if this video is already in the user's library
@@ -1453,7 +1474,7 @@ const App: React.FC = () => {
             onTopicChange={handleTopicChange}
             allQuestions={allQuestionsForTopic}
             onQuestionChange={handleQuestionChange}
-            onGenerateQuestion={user ? handleGenerateQuestion : undefined}
+            onGenerateQuestion={user && activePracticeTopic?.topicId && currentAnalysisId ? handleGenerateQuestion : undefined}
             aiGeneratedCount={aiGeneratedQuestionCount}
             level={level}
             nativeLang={nativeLang}
