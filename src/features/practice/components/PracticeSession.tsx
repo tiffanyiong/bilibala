@@ -427,8 +427,8 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
 
             {state === SessionState.ANALYZING && (
                 <div className="flex flex-col items-center justify-center space-y-6 animate-in fade-in py-12">
-                    {/** set the DinoGame to appear after 10 seconds of analyzing **/}
-                    {analyzingElapsed < 10 ? (
+                    {/** set the DinoGame to appear after 60 seconds of analyzing **/}
+                    {analyzingElapsed < 60 ? (
                       <>
                         <div className="w-24 h-24 border-4 border-stone-200 border-t-stone-800 animate-spin rounded-full"></div>
                         <h3 className="text-xl font-medium text-stone-800">{translatedLabels.analyzingStructure}</h3>
