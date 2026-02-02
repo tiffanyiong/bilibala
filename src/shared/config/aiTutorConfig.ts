@@ -8,6 +8,7 @@
  */
 
 import { getBackendOrigin } from '../services/backend';
+import { updateMaxDuration } from '../../features/practice/config/audioConfig';
 
 // --- Fallback defaults (used until server config loads) ---
 export let SESSION_MAX_MINUTES = 40;
@@ -20,6 +21,12 @@ export let FREE_PRACTICE_SESSIONS_PER_MONTH = 5;
 export let FREE_VIDEO_LIBRARY_MAX = 10;
 export let ANONYMOUS_VIDEO_LIMIT = 2;
 export let ANONYMOUS_PRACTICE_LIMIT = 2;
+
+// --- Recording limits ---
+export let PRACTICE_RECORDING_MAX_SECONDS = 240;
+
+// --- Speech analysis limits ---
+export let SPEECH_ANALYSIS_TIMEOUT_SECONDS = 150;
 
 let configLoaded = false;
 
@@ -42,6 +49,9 @@ export async function fetchAppConfig(): Promise<void> {
     FREE_VIDEO_LIBRARY_MAX = data.free_video_library_max ?? FREE_VIDEO_LIBRARY_MAX;
     ANONYMOUS_VIDEO_LIMIT = data.anonymous_video_limit ?? ANONYMOUS_VIDEO_LIMIT;
     ANONYMOUS_PRACTICE_LIMIT = data.anonymous_practice_limit ?? ANONYMOUS_PRACTICE_LIMIT;
+    PRACTICE_RECORDING_MAX_SECONDS = data.practice_recording_max_seconds ?? PRACTICE_RECORDING_MAX_SECONDS;
+    updateMaxDuration(PRACTICE_RECORDING_MAX_SECONDS);
+    SPEECH_ANALYSIS_TIMEOUT_SECONDS = data.speech_analysis_timeout_seconds ?? SPEECH_ANALYSIS_TIMEOUT_SECONDS;
 
     configLoaded = true;
     console.log('[AppConfig] Loaded from server');

@@ -3,6 +3,7 @@ import { Type } from '@google/genai';
 import { createAi } from '../services/geminiService.js';
 import { safeJsonParse } from '../utils/helpers.js';
 import { config } from '../config/env.js';
+import { getConfigNumber } from '../services/configService.js';
 
 const router = Router();
 
@@ -202,20 +203,25 @@ router.post('/analyze-speech', async (req, res) => {
     console.log('[analyze-speech] Starting Gemini API call...');
     const startTime = Date.now();
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            { text: prompt },
-            { inlineData: { mimeType: 'audio/webm', data: audioData } }
-          ]
-        }
-      ],
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: {
+    const TIMEOUT_MS = getConfigNumber('speech_analysis_timeout_seconds', 150) * 1000;
+    const MAX_RETRIES = 1;     // 1 retry after initial attempt
+
+    const callGemini = () => {
+      return Promise.race([
+        ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                { text: prompt },
+                { inlineData: { mimeType: 'audio/webm', data: audioData } }
+              ]
+            }
+          ],
+          config: {
+            responseMimeType: 'application/json',
+            responseSchema: {
           type: Type.OBJECT,
           properties: {
             transcription: { type: Type.STRING },
@@ -306,7 +312,30 @@ router.post('/analyze-speech', async (req, res) => {
           required: ['transcription', 'detected_framework', 'structure', 'improved_structure', 'feedback', 'improvements', 'pronunciation']
         }
       }
-    });
+    }),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error(`Gemini API timeout after ${TIMEOUT_MS / 1000}s`)), TIMEOUT_MS)
+        )
+      ]);
+    };
+
+    let response;
+    let lastError;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        if (attempt > 0) {
+          console.log(`[analyze-speech] Retry attempt ${attempt}...`);
+        }
+        response = await callGemini();
+        break; // success
+      } catch (err) {
+        lastError = err;
+        console.warn(`[analyze-speech] Attempt ${attempt + 1} failed: ${err.message}`);
+        if (attempt >= MAX_RETRIES) {
+          throw lastError;
+        }
+      }
+    }
 
     console.log(`[analyze-speech] Gemini API call completed in ${Date.now() - startTime}ms`);
 
@@ -323,8 +352,12 @@ router.post('/analyze-speech', async (req, res) => {
     res.json(json);
 
   } catch (err) {
-    console.error('[analyze-speech] Failed:', err.message || err);
-    res.status(500).json({ error: 'Failed to analyze speech', details: err.message });
+    const isTimeout = err.message?.includes('timeout');
+    console.error(`[analyze-speech] Failed${isTimeout ? ' (timeout)' : ''}:`, err.message || err);
+    res.status(isTimeout ? 504 : 500).json({
+      error: isTimeout ? 'Analysis took too long. Please try again.' : 'Failed to analyze speech',
+      details: err.message
+    });
   }
 });
 

@@ -2,14 +2,15 @@
  * Audio Recorder Configuration
  *
  * Centralized configuration for audio recording settings.
- * Modify these values to adjust recording behavior across the app.
+ * The maxDurationSeconds value can be overridden from the app_config table
+ * via updateMaxDuration(). The default (240s) is used until config loads.
  */
 
 export const audioConfig = {
   // Recording time limits (in seconds)
   recording: {
-    /** Maximum recording duration in seconds (default: 6 minutes = 360 seconds) */
-    maxDurationSeconds: 360,
+    /** Maximum recording duration in seconds (default: 4 minutes = 240 seconds) */
+    maxDurationSeconds: 240,
 
     /** Warning threshold - show warning when this many seconds remain */
     warningThresholdSeconds: 30,
@@ -47,6 +48,13 @@ export const audioConfig = {
     /** Timer update interval in milliseconds */
     timerIntervalMs: 100,
   },
+};
+
+// Update max duration from server config (called after fetchAppConfig)
+export const updateMaxDuration = (seconds: number) => {
+  if (seconds > 0) {
+    audioConfig.recording.maxDurationSeconds = seconds;
+  }
 };
 
 // Helper function to get max duration in minutes (for display)
