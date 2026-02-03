@@ -36,7 +36,8 @@ const BilingualText: React.FC<{
                     setShowTranslation(!showTranslation);
                 }
             }} 
-            className={`${hasTranslation ? 'cursor-pointer group/trans' : ''} relative transition-all inline-block ${className}`}
+            // cursor pointer only if has translation
+            className={`${hasTranslation ? 'cursor-pointer hover:underline decoration-amber-200 underline-offset-4 active:scale-95' : ''} relative transition-all inline-block ${className}`}
         >
             <span className={isBlock ? "block" : "inline"}>
                {main}
@@ -351,7 +352,7 @@ const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, t
                               className="font-medium text-gray-800 text-[15px]" 
                           />
                           <div className="text-gray-300 group-hover:text-gray-400 transition-colors shrink-0">
-                            <StarfishIcon />
+                            {/* <StarfishIcon />  TODO: Will display it when we have vocab feature*/}
                           </div>
                         </div>
                         <div className="text-gray-600 text-[13px] mb-2 leading-relaxed">
