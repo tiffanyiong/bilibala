@@ -49,7 +49,7 @@ const TopicSelector: React.FC<TopicSelectorProps> = ({
             Practice Topics
         </h3>
         <p className="text-[13px] text-stone-500 font-light">
-            Select a topic to start speaking practice with your AI tutor.
+            Select a topic to start speaking practice and get your personalized feedback.
         </p>
       </div>
 
