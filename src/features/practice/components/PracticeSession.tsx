@@ -402,6 +402,8 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
               <div className="flex flex-col items-center gap-2 flex-1 max-w-3xl">
                 <h1 className="text-3xl md:text-4xl font-serif text-stone-900 leading-tight">
                   {topic.question}
+                  
+                  {/* AI Generate Button */}
                   {onGenerateQuestion && (
                     <button onClick={handleGenerateQuestion} disabled={!canGenerate || isGenerating} className="ml-2 align-middle text-stone-400 hover:text-stone-700 disabled:opacity-30">
                       {isGenerating ? <div className="w-5 h-5 border-2 border-stone-400 border-t-transparent animate-spin rounded-full"/> : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6l2.1 2.1M5.6 18.4l2.1-2.1m8.6-8.6l2.1-2.1" /></svg>}

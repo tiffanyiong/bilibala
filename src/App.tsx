@@ -1,47 +1,47 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ContentTabs from './features/content/components/ContentTabs';
 import TopicSelector from './features/content/components/TopicSelector';
-import VideoLibraryPage from './features/library/components/VideoLibraryPage';
-import PracticeReportsPage from './features/library/components/PracticeReportsPage';
-import PracticeReportDetailPage from './features/library/components/PracticeReportDetailPage';
-import SubscriptionPage from './features/subscription/components/SubscriptionPage';
-import { ProfilePage } from './features/profile';
-import SettingsPage from './features/settings/components/SettingsPage';
-import TranslationPopup from './features/translation/components/TranslationPopup';
 import { CubeCarousel } from './features/explore';
+import PracticeReportDetailPage from './features/library/components/PracticeReportDetailPage';
+import PracticeReportsPage from './features/library/components/PracticeReportsPage';
+import VideoLibraryPage from './features/library/components/VideoLibraryPage';
 import FloatingTutorWindow from './features/live-voice/components/FloatingTutorWindow';
 import PracticeSession from './features/practice/components/PracticeSession';
+import { ProfilePage } from './features/profile';
+import SettingsPage from './features/settings/components/SettingsPage';
+import SubscriptionPage from './features/subscription/components/SubscriptionPage';
+import UpgradeModal from './features/subscription/components/UpgradeModal';
+import TranslationPopup from './features/translation/components/TranslationPopup';
 import VideoPlayer, { VideoPlayerRef } from './features/video/components/VideoPlayer';
 import { extractVideoId, fetchVideoMetadata } from './features/video/services/youtubeService';
 import Layout from './shared/components/Layout';
 import UsageLimitModal from './shared/components/UsageLimitModal';
 import { useAuth } from './shared/context/AuthContext';
 import { useSubscription } from './shared/context/SubscriptionContext';
-import UpgradeModal from './features/subscription/components/UpgradeModal';
+import { getBackendOrigin } from './shared/services/backend';
 import {
   addToUserLibrary,
+  countAiGeneratedQuestions,
   dbAnalysisToContentAnalysis,
   getAnyCachedAnalysisForYoutubeId,
   getCachedAnalysis,
   getCachedAnalysisById,
   getCachedAnalysisWithVideoById,
+  getLibraryEntry,
   getOrCreateVideo,
-  getVideoByYoutubeId,
   getPracticeTopicsForAnalysis,
   getQuestionsForTopic,
   getUserVideoLibrary,
+  getVideoByYoutubeId,
   incrementVideoView,
   saveCachedAnalysis,
-  savePracticeTopicsFromAnalysis,
-  updateCachedAnalysisContent,
   saveGeneratedQuestion,
-  countAiGeneratedQuestions,
-  updateVideoCategory,
-  getLibraryEntry,
+  savePracticeTopicsFromAnalysis,
   toggleLibraryFavorite,
+  updateCachedAnalysisContent,
   updateLibraryAccess,
+  updateVideoCategory,
 } from './shared/services/database';
-import { getBackendOrigin } from './shared/services/backend';
 import { analyzeVideoContent } from './shared/services/geminiService';
 import {
   checkAnonymousPracticeLimit,
@@ -50,8 +50,8 @@ import {
   recordAnonymousUsage,
   UsageDisplayInfo
 } from './shared/services/usageTracking';
-import { AppState, PracticeTopic, TopicQuestion, TopicPoint, VideoData, VocabularyItem } from './shared/types';
-import { VideoHistoryItem, TIER_LIMITS } from './shared/types/database';
+import { AppState, PracticeTopic, TopicPoint, TopicQuestion, VideoData, VocabularyItem } from './shared/types';
+import { TIER_LIMITS, VideoHistoryItem } from './shared/types/database';
 
 const App: React.FC = () => {
   // Reveal body after mount to prevent FOUC with Tailwind CDN
@@ -1076,23 +1076,23 @@ const App: React.FC = () => {
 
         // Fetch practice topics with database IDs and merge with discussion topics
         const dbTopics = await getPracticeTopicsForAnalysis(video.analysisId);
-        if (dbTopics.length > 0 && analysis.discussionTopics) {
-          // Merge database IDs into discussion topics
-          const topicsWithIds = analysis.discussionTopics.map(topic => {
-            const dbTopic = dbTopics.find(dt => dt.topic === topic.topic);
-            if (dbTopic) {
-              return {
-                ...topic,
-                topicId: dbTopic.id,
-                questionId: dbTopic.questionId,
-              };
-            }
-            return topic;
-          });
-          setDiscussionTopics(topicsWithIds);
-        } else {
-          setDiscussionTopics(analysis.discussionTopics || []);
-        }
+        if (dbTopics.length > 0) {
+        // Use the database topics as the primary source for the UI
+        const topicsForUI: PracticeTopic[] = dbTopics.map(dt => ({
+          topic: dt.topic,
+          topicId: dt.id,
+          question: dt.question,
+          questionId: dt.questionId,
+          // Add these required properties with default values
+          targetWords: [], 
+          description: '',
+        }));
+        
+        setDiscussionTopics(topicsForUI);
+      } else {
+        // Fallback to what was in the analysis JSON if DB is empty
+        setDiscussionTopics(analysis.discussionTopics || []);
+      }
 
         // Update last_accessed_at and set library entry
         if (user) {

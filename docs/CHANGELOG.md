@@ -12,7 +12,7 @@ Added a highlight-to-translate feature powered by DeepL Free API. Pro users can 
 - Positions using `range.getBoundingClientRect()` for cross-device accuracy
 - Auto-adjusts to stay within viewport bounds
 - Dismisses on outside click/tap or Escape key
-- **150 character limit** per selection
+- **200 character limit** per selection
 
 ### Backend: DeepL API + LRU Cache
 - **DeepL Free tier**: 500,000 characters/month, text translation only
