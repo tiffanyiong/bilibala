@@ -335,6 +335,31 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
           </div>
       </div>
 
+      {/*  LANGUAGE POLISH & ALTERNATIVES SECTION */}
+      {improvements && improvements.length > 0 && (
+          <div className="space-y-6">
+              <h3 className="text-lg font-bold text-stone-800 font-serif border-b border-stone-200 pb-2">{labels.languagePolish}</h3>
+              <div className="grid gap-6">
+                  {improvements.map((imp, idx) => (
+                      <div key={idx} className="bg-white p-6 rounded-[24px] border border-stone-200 shadow-sm flex flex-col md:flex-row gap-6 items-start">
+                          <div className="flex-1 space-y-2">
+                              <span className="text-[10px] uppercase font-bold text-red-400 tracking-wider px-2 py-0.5 bg-red-50 rounded-full">{labels.original}</span>
+                              <p className="text-stone-600 italic leading-relaxed text-sm">"{imp.original}"</p>
+                          </div>
+                          <div className="hidden md:flex items-center self-center text-stone-300">
+                              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+                          </div>
+                          <div className="flex-1 space-y-2">
+                              <span className="text-[10px] uppercase font-bold text-green-600 tracking-wider px-2 py-0.5 bg-green-50 rounded-full">{labels.betterAlternative}</span>
+                              <p className="text-stone-800 font-medium leading-relaxed text-sm">"{imp.improved}"</p>
+                              {imp.explanation && <p className="text-xs text-stone-400 mt-2 bg-stone-50 p-2 rounded-lg">{imp.explanation}</p>}
+                          </div>
+                      </div>
+                  ))}
+              </div>
+          </div>
+      )}
+
       {/* POC: Pronunciation & Intonation Analysis */}
       {pronunciation && (
           <div className="space-y-4">
