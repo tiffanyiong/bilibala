@@ -1,9 +1,9 @@
-import { Router } from 'express';
 import { Type } from '@google/genai';
+import { Router } from 'express';
+import { config } from '../config/env.js';
 import { createAi } from '../services/geminiService.js';
 import { fetchVideoContext } from '../services/videoService.js';
 import { extractVideoId, safeJsonParse } from '../utils/helpers.js';
-import { config } from '../config/env.js';
 
 const router = Router();
 
@@ -32,7 +32,8 @@ router.post('/analyze-video-content', async (req, res) => {
 
     const prompt = `
     You are an expert Linguistic Content Generator for a language learning app.
-    Your task is to analyze a YouTube video transcript and generate learning materials tailored to a specific proficiency level.
+    Your task is to analyze a YouTube video transcript and generate learning materials tailored to a specific proficiency level in different languages (e.g. Chinese, English).
+    
 
     # Context
     - **Video Title:** "${videoTitle}"
@@ -52,7 +53,7 @@ router.post('/analyze-video-content', async (req, res) => {
     - **Vocabulary:** Extract **High-Frequency / Basic words** (CEFR A1/A2) from the video. Focus on concrete nouns and verbs.
     - **Summary:** Write simple, short sentences focusing on the main plot/idea.
     - **Practice Topics:** Generate questions about **personal preferences** or **simple descriptions** (e.g., "Do you like...?", "What is...?").
-    - **Outline:** Keep it very brief (3-5 key moments).
+    - **Outline:** Keep it very brief (5-8 key moments).
 
     ### IF LEVEL IS "MEDIUM" (Intermediate):
     - **Vocabulary:** Extract **Collocations, Phrasal Verbs, and Idioms** (CEFR B1/B2) from the video. (e.g., instead of "rain", extract "heavy rain").
@@ -77,7 +78,8 @@ router.post('/analyze-video-content', async (req, res) => {
         - Translation of the context sentence (in ${nativeLang})
     3.  **Practice Topics (Mission Data):** Generate ${targetTopicCount} specific discussion cards. ALL topic names, questions, and target words MUST be written in ${targetLang}. For EACH card, you must provide:
         - **Topic Name:** A short tag in ${targetLang} (e.g., if target is Chinese: "工作与生活平衡", if English: "Work-Life Balance")
-        - **Category:** A broad category for the topic (e.g., "Career", "Travel", "Daily Life", "Technology", "Culture", "Health", "Education", "Relationships", "Entertainment", "Society")
+          - Must be unique across all topic names. If two topics are very similar, modify one to be more specific.
+        - **Category:** A broad category for the topic in ${targetLang} (e.g., "Career", "Travel", "Daily Life", "Technology", "Culture", "Health", "Education", "Relationships", "Entertainment", "Society")
         - **Question:** A specific question in ${targetLang} for the user to answer.
         - **Target Words:** Select 3 words in ${targetLang} (from the video or relevant to the topic) that the user MUST try to use in their answer.
     5.  **Video Category:** Pick the single most fitting category for this video overall (e.g., "Career", "Travel", "Daily Life", "Technology", "Culture", "Health", "Education", "Relationships", "Entertainment", "Society").
@@ -366,10 +368,12 @@ router.post('/match-topics', async (req, res) => {
     You are a topic-matching assistant for a language learning app.
 
     Given a list of NEW topics from a video analysis and a list of EXISTING canonical topics (all in ${targetLang || 'the same language'}),
-    determine which new topics match existing ones (semantically the same discussion theme).
+    You must filter out those topics that are not in ${targetLang} and then
+    determine which new topics match existing ones (semantically the same discussion theme). 
 
     Rules:
-    - Match only if the topics would lead to the same type of discussion
+    - Ignore non-target-language topics: if a topic is not in ${targetLang}, treat it as NO MATCH.
+    - Match only if the topics would lead to the same type of discussion and is in ${targetLang}.
     - "jobs" and "work & career" = MATCH
     - "travel fears" and "adventure anxiety" = MATCH
     - "city life" and "food culture" = NO MATCH (too different)
@@ -377,7 +381,7 @@ router.post('/match-topics', async (req, res) => {
 
     NEW TOPICS: ${JSON.stringify(newTopics)}
     EXISTING TOPICS: ${JSON.stringify(existingTopics.map(t => ({ id: t.id, topic: t.topic })))}
-
+    
     For each new topic, return whether it matches an existing topic and your confidence level.
     Only match if confidence >= 0.8.
     `.trim();

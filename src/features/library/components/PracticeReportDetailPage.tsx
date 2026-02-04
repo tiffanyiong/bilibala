@@ -1,4 +1,4 @@
-import React, { useEffect, useState, Component, ErrorInfo, ReactNode } from 'react';
+import React, { useEffect, useState, useMemo, Component, ErrorInfo, ReactNode } from 'react';
 import { VideoHistoryItem, DbPracticeSession } from '../../../shared/types/database';
 import { SpeechAnalysisResult } from '../../../shared/types';
 import { getPracticeSessionById } from '../../../shared/services/database';
@@ -6,6 +6,8 @@ import { useAuth } from '../../../shared/context/AuthContext';
 import { useSubscription } from '../../../shared/context/SubscriptionContext';
 import PyramidFeedback from '../../practice/components/PyramidFeedback';
 import { exportPracticeReportToPdf } from '../../../shared/utils/pdfExport';
+import { getBackendOrigin } from '../../../shared/services/backend';
+import { UI_TRANSLATIONS } from '../../../shared/constants';
 
 // Stable default labels object to prevent infinite re-renders in PyramidFeedback
 const DEFAULT_LABELS = {
@@ -57,7 +59,11 @@ const DEFAULT_LABELS = {
   intonationOverlyExpressive: 'overly-expressive',
   pronunciationGood: 'Good',
   pronunciationNeedsWorkLabel: 'Needs Work',
-  pronunciationUnclear: 'Unclear'
+  pronunciationUnclear: 'Unclear',
+  // Header labels
+  topic: 'Topic',
+  question: 'Question',
+  video: 'Video',
 };
 
 // Error boundary to catch PyramidFeedback crashes
@@ -192,6 +198,47 @@ const PracticeReportDetailPage: React.FC<PracticeReportDetailPageProps> = ({
   const [session, setSession] = useState<DbPracticeSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [translatedLabels, setTranslatedLabels] = useState<typeof DEFAULT_LABELS>(DEFAULT_LABELS);
+
+  // Fetch translated labels based on level
+  useEffect(() => {
+    if (!session) return;
+
+    const isEasy = video.level.toLowerCase() === 'easy';
+    const nativeLang = session.native_lang || 'English';
+    const languageToUse = isEasy ? nativeLang : video.targetLang;
+
+    // Skip translation if using English
+    if (!languageToUse || languageToUse.toLowerCase().includes('english')) {
+      setTranslatedLabels(DEFAULT_LABELS);
+      return;
+    }
+
+    // Check cache first
+    const cacheKey = `ui-labels-${languageToUse}-${isEasy}`;
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        setTranslatedLabels({ ...DEFAULT_LABELS, ...JSON.parse(cached) });
+        return;
+      }
+    } catch {}
+
+    // Fetch translations from backend
+    fetch(`${getBackendOrigin()}/api/translate-ui-labels`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ language: languageToUse, isEasyLevel: isEasy, sourceLabels: DEFAULT_LABELS })
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data?.labels) {
+          setTranslatedLabels({ ...DEFAULT_LABELS, ...data.labels });
+          localStorage.setItem(cacheKey, JSON.stringify(data.labels));
+        }
+      })
+      .catch(err => console.error('Translation error:', err));
+  }, [session, video.level, video.targetLang]);
 
   // Fetch session on mount
   useEffect(() => {
@@ -240,6 +287,19 @@ const PracticeReportDetailPage: React.FC<PracticeReportDetailPageProps> = ({
     });
   };
 
+  // Get header labels based on level (Easy = native lang, Med/Hard = target lang)
+  const headerLabels = useMemo(() => {
+    const isEasy = video.level.toLowerCase() === 'easy';
+    const nativeLang = session?.native_lang || 'English';
+    const langToUse = isEasy ? nativeLang : video.targetLang;
+    const uiText = UI_TRANSLATIONS[langToUse] || UI_TRANSLATIONS['English'];
+    return {
+      topic: uiText.topic || 'Topic',
+      question: uiText.question || 'Question',
+      video: uiText.video || 'Video',
+    };
+  }, [video.level, video.targetLang, session?.native_lang]);
+
   // Handle PDF export
   const [isExporting, setIsExporting] = useState(false);
 
@@ -259,6 +319,7 @@ const PracticeReportDetailPage: React.FC<PracticeReportDetailPageProps> = ({
         questionText: session.question_text || undefined,
         date: formatDate(session.created_at),
         targetLang: video.targetLang,
+        nativeLang: session.native_lang || 'English',
         level: video.level,
       });
       // Record PDF export usage
@@ -291,7 +352,7 @@ const PracticeReportDetailPage: React.FC<PracticeReportDetailPageProps> = ({
             <div className="flex-1 min-w-0">
               {/* Topic */}
               <div className="flex items-baseline gap-2 mb-1">
-                <span className="text-xs font-medium text-stone-400 uppercase tracking-wide">Topic:</span>
+                <span className="text-xs font-medium text-stone-400 uppercase tracking-wide">{headerLabels.topic}:</span>
                 <h1 className="text-lg font-medium text-stone-800 leading-snug">
                   {session?.topic_text || 'Practice Session'}
                 </h1>
@@ -299,13 +360,13 @@ const PracticeReportDetailPage: React.FC<PracticeReportDetailPageProps> = ({
               {/* Question */}
               {session?.question_text && (
                 <div className="flex items-baseline gap-2 mb-1">
-                  <span className="text-xs font-medium text-stone-400 uppercase tracking-wide">Question:</span>
+                  <span className="text-xs font-medium text-stone-400 uppercase tracking-wide">{headerLabels.question}:</span>
                   <p className="text-sm text-stone-700">{session.question_text}</p>
                 </div>
               )}
               {/* Video */}
               <div className="flex items-baseline gap-2">
-                <span className="text-xs font-medium text-stone-400 uppercase tracking-wide">Video:</span>
+                <span className="text-xs font-medium text-stone-400 uppercase tracking-wide">{headerLabels.video}:</span>
                 <p className="text-sm text-stone-500 line-clamp-1">{video.title}</p>
               </div>
               {session && (
@@ -404,7 +465,7 @@ const PracticeReportDetailPage: React.FC<PracticeReportDetailPageProps> = ({
                   level={video.level}
                   nativeLang={session.native_lang || 'English'}
                   targetLang={video.targetLang}
-                  preFetchedLabels={DEFAULT_LABELS}
+                  preFetchedLabels={translatedLabels}
                   showRetry={false}
                 />
               </ReportErrorBoundary>

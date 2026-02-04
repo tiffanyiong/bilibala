@@ -3,6 +3,7 @@ import { Type } from '@google/genai';
 import { createAi } from '../services/geminiService.js';
 import { safeJsonParse } from '../utils/helpers.js';
 import { config } from '../config/env.js';
+import { getConfigNumber } from '../services/configService.js';
 
 const router = Router();
 
@@ -30,15 +31,37 @@ router.post('/analyze-speech', async (req, res) => {
       - **Question:** "${question}"
       - **User Level:** ${level}
       - **Target Language:** ${targetLang || 'English'}
-      - **Native Language:** ${nativeLang || 'Chinese (Mandarin - 中文)'}
+      - **Native Language:** ${nativeLang || 'English'}
 
-      # CRITICAL LANGUAGE REQUIREMENT
+      # CRITICAL LANGUAGE REQUIREMENT - READ CAREFULLY
       ${level === 'Easy' ? `
-      FOR BEGINNER (EASY) LEVEL:
-      - Graph content (conclusion, argument points, headlines, elaborations, critiques, evidence) MUST be in ${targetLang || 'English'}
-      - Coach's Feedback (strengths, weaknesses, suggestions) MUST be in ${nativeLang || 'English)'} to help beginners understand better
-      - Word improvements (original, improved, explanation) MUST be in ${targetLang || 'English'}
-      - The transcription field must remain as-is (user's actual speech in ${targetLang || 'English'})
+      ⚠️ IMPORTANT: This is a BEGINNER learning ${targetLang || 'English'}. Their NATIVE language is ${nativeLang || 'English'}.
+
+      ALL EXPLANATORY TEXT must be written in ${nativeLang || 'English'} so the beginner can understand.
+
+      FIELD-BY-FIELD LANGUAGE REQUIREMENTS:
+
+      📌 FIELDS THAT MUST BE IN ${targetLang || 'English'} (the language being learned):
+      - transcription: Keep as-is (user's actual speech)
+      - structure.conclusion: User's main point in ${targetLang || 'English'}
+      - structure.arguments[].point: User's argument points in ${targetLang || 'English'}
+      - improved_structure.conclusion: Improved conclusion in ${targetLang || 'English'}
+      - improved_structure.arguments[].headline: Step headlines in ${targetLang || 'English'}
+      - improvements[].original: Original phrase in ${targetLang || 'English'}
+      - improvements[].improved: Improved phrase in ${targetLang || 'English'}
+
+      📌 FIELDS THAT MUST BE IN ${nativeLang || 'English'} (native language for explanations):
+      - structure.arguments[].critique: Write critique in ${nativeLang || 'English'}
+      - improved_structure.arguments[].elaboration: Write elaboration/explanation in ${nativeLang || 'English'}
+      - feedback.strengths[]: Write each strength in ${nativeLang || 'English'}
+      - feedback.weaknesses[]: Write each weakness in ${nativeLang || 'English'}
+      - feedback.suggestions[]: Write each suggestion in ${nativeLang || 'English'}
+      - improvements[].explanation: Write explanation WHY in ${nativeLang || 'English'}
+      - pronunciation.summary: Write summary in ${nativeLang || 'English'}
+      - pronunciation.intonation.feedback: Write feedback in ${nativeLang || 'English'}
+      - pronunciation.words[].feedback: Write word feedback in ${nativeLang || 'English'}
+
+      ⚠️ DO NOT write critique, elaboration, explanation, or feedback fields in ${targetLang || 'English'}. The beginner needs to understand these in their native language.
       ` : `
       FOR INTERMEDIATE/ADVANCED LEVEL:
       ALL text content in your response MUST be in ${targetLang || 'English'}. This includes:
@@ -46,6 +69,7 @@ router.post('/analyze-speech', async (req, res) => {
       - All argument points, headlines, elaborations, critiques, and evidence MUST be in ${targetLang || 'English'}.
       - All feedback (strengths, weaknesses, suggestions) MUST be in ${targetLang || 'English'}.
       - All improvement suggestions (original, improved, explanation) MUST be in ${targetLang || 'English'}
+      - Pronunciation feedback (summary, intonation feedback, word-level feedback) MUST be in ${targetLang || 'English'}
       - The transcription field must remain as-is (user's actual speech)
       `}
 
@@ -202,20 +226,25 @@ router.post('/analyze-speech', async (req, res) => {
     console.log('[analyze-speech] Starting Gemini API call...');
     const startTime = Date.now();
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            { text: prompt },
-            { inlineData: { mimeType: 'audio/webm', data: audioData } }
-          ]
-        }
-      ],
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: {
+    const TIMEOUT_MS = getConfigNumber('speech_analysis_timeout_seconds', 150) * 1000;
+    const MAX_RETRIES = 1;     // 1 retry after initial attempt
+
+    const callGemini = () => {
+      return Promise.race([
+        ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                { text: prompt },
+                { inlineData: { mimeType: 'audio/webm', data: audioData } }
+              ]
+            }
+          ],
+          config: {
+            responseMimeType: 'application/json',
+            responseSchema: {
           type: Type.OBJECT,
           properties: {
             transcription: { type: Type.STRING },
@@ -306,7 +335,30 @@ router.post('/analyze-speech', async (req, res) => {
           required: ['transcription', 'detected_framework', 'structure', 'improved_structure', 'feedback', 'improvements', 'pronunciation']
         }
       }
-    });
+    }),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error(`Gemini API timeout after ${TIMEOUT_MS / 1000}s`)), TIMEOUT_MS)
+        )
+      ]);
+    };
+
+    let response;
+    let lastError;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        if (attempt > 0) {
+          console.log(`[analyze-speech] Retry attempt ${attempt}...`);
+        }
+        response = await callGemini();
+        break; // success
+      } catch (err) {
+        lastError = err;
+        console.warn(`[analyze-speech] Attempt ${attempt + 1} failed: ${err.message}`);
+        if (attempt >= MAX_RETRIES) {
+          throw lastError;
+        }
+      }
+    }
 
     console.log(`[analyze-speech] Gemini API call completed in ${Date.now() - startTime}ms`);
 
@@ -323,8 +375,12 @@ router.post('/analyze-speech', async (req, res) => {
     res.json(json);
 
   } catch (err) {
-    console.error('[analyze-speech] Failed:', err.message || err);
-    res.status(500).json({ error: 'Failed to analyze speech', details: err.message });
+    const isTimeout = err.message?.includes('timeout');
+    console.error(`[analyze-speech] Failed${isTimeout ? ' (timeout)' : ''}:`, err.message || err);
+    res.status(isTimeout ? 504 : 500).json({
+      error: isTimeout ? 'Analysis took too long. Please try again.' : 'Failed to analyze speech',
+      details: err.message
+    });
   }
 });
 
