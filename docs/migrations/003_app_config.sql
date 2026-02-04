@@ -38,7 +38,13 @@ insert into app_config (key, value, description) values
 
   -- Anonymous user limits
   ('anonymous_video_limit', '2', 'Max video analyses per month for anonymous users'),
-  ('anonymous_practice_limit', '2', 'Max practice sessions per month for anonymous users')
+  ('anonymous_practice_limit', '2', 'Max practice sessions per month for anonymous users'),
+
+  -- Recording limits
+  ('practice_recording_max_seconds', '240', 'Max recording duration in seconds for practice sessions'),
+
+  -- Speech analysis limits
+  ('speech_analysis_timeout_seconds', '150', 'Timeout in seconds for Gemini speech analysis API call')
 on conflict (key) do nothing;
 
 -- ==============================================================================

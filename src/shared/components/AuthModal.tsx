@@ -144,7 +144,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
         {/* Header */}
         <div className="text-center mb-6">
           <h2 className="text-2xl font-serif text-stone-900">
-            {view === 'sign_in' && 'Welcome back'}
+            {view === 'sign_in' && 'Bililala'}
             {view === 'sign_up' && 'Create account'}
             {view === 'forgot_password' && 'Reset password'}
           </h2>
@@ -215,9 +215,10 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
             </form>
 
             <div className="mt-4 flex flex-col items-center gap-2">
-              <span className={linkClasses} onClick={() => setView('forgot_password')}>
+                  {/* TODO: We will generate a page for this later */}
+              {/* <span className={linkClasses} onClick={() => setView('forgot_password')}>
                 Forgot your password?
-              </span>
+              </span> */}
               <span className="text-stone-500 text-sm">
                 Don't have an account?{' '}
                 <span className="text-stone-800 hover:underline cursor-pointer" onClick={() => setView('sign_up')}>

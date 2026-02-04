@@ -143,7 +143,7 @@ Based on cost analysis:
 | AI Tutor | NO | Most expensive feature |
 | AI feedback | YES (5 total) | Included in practice sessions |
 | PDF export | NO | Pro feature |
-| Video library | Last 10 | Older videos archived |
+| Video library | Up to 10 | Must remove videos to add more |
 
 ### Pro Tier ($9/month or $7/month annual)
 | Feature | Limit | Notes |
@@ -165,11 +165,11 @@ Based on cost analysis:
 
 ## Answers to Your Questions
 
-### Video Library Limit (Free: Last 10)
-**Recommendation: Last 10 is fine**
+### Video Library Limit (Free: Up to 10)
+**Recommendation: Up to 10 is fine**
 - Storage cost is minimal (Supabase)
 - Encourages upgrade without being frustrating
-- Users can still see older videos exist, just can't access full details
+- Users must remove existing videos to add new ones when at limit
 
 ### AI Feedback Limit (Free: 5 total)
 **Recommendation: 5 per month (resets monthly)**

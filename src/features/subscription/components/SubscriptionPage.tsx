@@ -132,7 +132,7 @@ const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ onOpenAuthModal }) 
     },
     {
       name: 'Video library',
-      free: `Last ${freeLimits.videoLibraryMax}`,
+      free: `Up to ${freeLimits.videoLibraryMax} videos`,
       pro: 'Unlimited',
     },
     {

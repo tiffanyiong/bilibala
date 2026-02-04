@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { getBackendOrigin } from '../../../shared/services/backend';
 
-const MAX_CHARS = 150;
+const MAX_CHARS = 200; // Max characters allowed for translation
 
 // Localized error messages keyed by language name
 const ERROR_MESSAGES: Record<string, { notAvailable: string; tooLong: string }> = {

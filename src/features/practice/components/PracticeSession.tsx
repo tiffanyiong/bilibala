@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import { TIER_LIMITS } from '@/shared/types/database';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../../shared/context/AuthContext';
 import { useSubscription } from '../../../shared/context/SubscriptionContext';
 import { getBackendOrigin } from '../../../shared/services/backend';
-import { savePracticeSession, updateLibraryPracticeStats, uploadPracticeAudio, incrementTopicPracticeCount, incrementQuestionUseCount } from '../../../shared/services/database';
+import { getUserVideoLibrary, incrementQuestionUseCount, incrementTopicPracticeCount, savePracticeSession, updateLibraryPracticeStats, uploadPracticeAudio } from '../../../shared/services/database';
 import { checkAnonymousPracticeLimit, recordAnonymousPractice } from '../../../shared/services/usageTracking';
-import { PracticeTopic, TopicQuestion, SpeechAnalysisResult } from '../../../shared/types';
+import { PracticeTopic, SpeechAnalysisResult, TopicQuestion } from '../../../shared/types';
+import DinoGame from '../../content/components/DinoGame';
 import AudioRecorder from './AudioRecorder';
 import PyramidFeedback from './PyramidFeedback';
 
@@ -12,11 +14,10 @@ interface PracticeSessionProps {
   topic: PracticeTopic;
   allTopics?: PracticeTopic[];
   onTopicChange?: (topic: PracticeTopic) => void;
-  // Question navigation props
   allQuestions?: TopicQuestion[];
   onQuestionChange?: (question: TopicQuestion) => void;
   onGenerateQuestion?: () => Promise<TopicQuestion | null>;
-  aiGeneratedCount?: number; // Number of AI-generated questions for this topic (max 3)
+  aiGeneratedCount?: number;
   level: string;
   nativeLang: string;
   targetLang: string;
@@ -32,7 +33,6 @@ enum SessionState {
   RESULTS
 }
 
-// English defaults to serve as source text and fallback
 const defaultLabels = {
     communicationLogic: 'Communication Logic',
     detected: 'Detected',
@@ -57,19 +57,18 @@ const defaultLabels = {
     takeYourTime: 'Take your time',
     tapAnalyze: 'Tap analyze when ready',
     retake: 'Retake',
-    // PracticeSession specific labels
+    tryIncorporateFeedback: 'Try to incorporate the feedback.',
+    microphoneError: 'Microphone Error',
     topic: 'Topic',
     structureYourAnswer: 'Take a moment to structure your answer. Think about your main point and supporting arguments.',
     yourNotesOutline: 'Your Notes / Outline',
     notesPlaceholder: 'Type your key points here to help you speak...',
     analyzingStructure: 'Analyzing Structure...',
-    // Score labels
     scorePerfect: 'Perfect!',
     scoreExcellent: 'Excellent',
     scoreGreatJob: 'Great Job',
     scoreGoodStart: 'Good Start',
     scoreKeepGrowing: 'Keep Growing',
-    // Pronunciation Analysis labels
     pronunciationIntonation: 'Pronunciation & Intonation',
     overallPronunciation: 'Overall Pronunciation',
     intonation: 'Intonation',
@@ -103,125 +102,159 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
   onRequireAuth
 }) => {
   const { user } = useAuth();
+  const { tier } = useSubscription();
   const { recordAction } = useSubscription();
+  
+  // Basic State
   const [state, setState] = useState<SessionState>(SessionState.PREP);
   const [analysisResult, setAnalysisResult] = useState<SpeechAnalysisResult | null>(null);
   const [error, setError] = useState('');
   const [currentAudioUrl, setCurrentAudioUrl] = useState<string | null>(null);
   const [userNote, setUserNote] = useState('');
-
-  // NEW: Store the translated labels here
-  const [translatedLabels, setTranslatedLabels] = useState<any>(defaultLabels);
-
-  // Question navigation state
+  const [analyzingElapsed, setAnalyzingElapsed] = useState(0);
   const [isGenerating, setIsGenerating] = useState(false);
+
+  // Cache for storing analysis results per question
+  const [resultsCache, setResultsCache] = useState<Record<string, {
+    analysisResult: SpeechAnalysisResult;
+    audioUrl: string | null;
+    translatedLabels: any;
+    userNote: string;
+  }>>({});
+
   const AI_GENERATED_LIMIT = 3;
 
-  const handleStartRecording = () => {
-    setState(SessionState.RECORDING);
+  // --- EFFECT: SYNC UI WITH CACHE ON QUESTION CHANGE ---
+ useEffect(() => {
+  if (!topic.questionId && !topic.question) return;
+
+  // Use a composite key: ID + Text
+  const cacheKey = `${topic.questionId}-${topic.question}`;
+  const cached = resultsCache[cacheKey];
+
+  if (cached) {
+    setAnalysisResult(cached.analysisResult);
+    setCurrentAudioUrl(cached.audioUrl);
+    setTranslatedLabels(cached.translatedLabels);
+    setUserNote(cached.userNote);
+    setState(SessionState.RESULTS);
+  } else {
+    // This is a brand new question (no cache), so keep it in PREP
+    setState(SessionState.PREP);
+    setAnalysisResult(null);
+    setCurrentAudioUrl(null);
+    setUserNote('');
+  }
+  setError('');
+}, [topic.questionId, topic.question]); // Trigger on ID OR Text change
+
+
+  // Elapsed time tracker for analyzing state
+  useEffect(() => {
+    if (state !== SessionState.ANALYZING) {
+      setAnalyzingElapsed(0);
+      return;
+    }
+    const interval = setInterval(() => setAnalyzingElapsed(prev => prev + 1), 1000);
+    return () => clearInterval(interval);
+  }, [state]);
+
+  // Labels logic
+  const getInitialLabels = () => {
+    const isEasy = level.toLowerCase() === 'easy';
+    const languageToUse = isEasy ? nativeLang : targetLang;
+    if (languageToUse && !languageToUse.toLowerCase().includes('english')) {
+      try {
+        const cached = localStorage.getItem(`ui-labels-${languageToUse}-${isEasy}`);
+        if (cached) return { ...defaultLabels, ...JSON.parse(cached) };
+      } catch {}
+    }
+    return defaultLabels;
   };
 
+  const [translatedLabels, setTranslatedLabels] = useState<any>(getInitialLabels);
+
+  // Fetch/Update Translations
+  useEffect(() => {
+    const isEasy = level.toLowerCase() === 'easy';
+    const languageToUse = isEasy ? nativeLang : targetLang;
+    if (languageToUse && !languageToUse.toLowerCase().includes('english')) {
+      fetch(`${getBackendOrigin()}/api/translate-ui-labels`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ language: languageToUse, isEasyLevel: isEasy, sourceLabels: defaultLabels })
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data?.labels) {
+            setTranslatedLabels({ ...defaultLabels, ...data.labels });
+            localStorage.setItem(`ui-labels-${languageToUse}-${isEasy}`, JSON.stringify(data.labels));
+          }
+        })
+        .catch(err => console.error('Translation error:', err));
+    }
+  }, [level, nativeLang, targetLang]);
+
+  const handleStartRecording = () => setState(SessionState.RECORDING);
+
   const handleRecordingComplete = async (audioData: string) => {
-    // Switch to ANALYZING to show spinner
     setState(SessionState.ANALYZING);
     setError('');
-    
-    // Create Audio URL for playback
+
+    let newAudioUrl: string | null = null;
     try {
         const byteCharacters = atob(audioData);
         const byteNumbers = new Array(byteCharacters.length);
-        for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i);
-        }
+        for (let i = 0; i < byteCharacters.length; i++) byteNumbers[i] = byteCharacters.charCodeAt(i);
         const byteArray = new Uint8Array(byteNumbers);
         const blob = new Blob([byteArray], { type: 'audio/mp3' });
-        const url = URL.createObjectURL(blob);
-        
+        newAudioUrl = URL.createObjectURL(blob);
         if (currentAudioUrl) URL.revokeObjectURL(currentAudioUrl);
-        setCurrentAudioUrl(url);
-    } catch (e) {
-        console.error("Failed to create audio URL from base64", e);
-    }
+        setCurrentAudioUrl(newAudioUrl);
+    } catch (e) { console.error("Audio error", e); }
 
     try {
-      // --- PARALLEL REQUESTS START ---
-      
-      // 1. Speech Analysis Request
-      const analysisPromise = fetch(`${getBackendOrigin()}/api/analyze-speech`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          audioData,
-          topic: topic.topic,
-          question: topic.question,
-          level,
-          targetLang,
-          nativeLang
-        }),
-      }).then(res => res.json());
-
-      // 2. Translation Request (Only if needed)
-      let translationPromise = Promise.resolve({ labels: null }); // Default no-op
-      
       const isEasy = level.toLowerCase() === 'easy';
       const languageToUse = isEasy ? nativeLang : targetLang;
       const isEnglish = languageToUse && languageToUse.toLowerCase().includes('english');
 
+      const analysisPromise = fetch(`${getBackendOrigin()}/api/analyze-speech`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ audioData, topic: topic.topic, question: topic.question, level, targetLang, nativeLang }),
+      }).then(res => res.json());
+
+      let translationPromise = Promise.resolve({ labels: null });
       if (languageToUse && !isEnglish) {
           translationPromise = fetch(`${getBackendOrigin()}/api/translate-ui-labels`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                language: languageToUse, 
-                isEasyLevel: isEasy,
-                sourceLabels: defaultLabels // Send source so backend knows what to translate
-            })
+            body: JSON.stringify({ language: languageToUse, isEasyLevel: isEasy, sourceLabels: defaultLabels })
           }).then(res => res.json());
       }
 
-      // --- AWAIT BOTH ---
       const [analysisData, translationData] = await Promise.all([analysisPromise, translationPromise]);
+      if (analysisData.error) throw new Error(analysisData.error);
 
-      if (analysisData.error) {
-        throw new Error(analysisData.error);
-      }
-
-      // Set Data
       setAnalysisResult(analysisData);
+      const finalLabels = translationData?.labels ? { ...defaultLabels, ...translationData.labels } : defaultLabels;
+      setTranslatedLabels(finalLabels);
 
-      // Update Labels (Merge new translations with defaults)
-      if (translationData && translationData.labels) {
-          setTranslatedLabels({ ...defaultLabels, ...translationData.labels });
-      } else {
-          setTranslatedLabels(defaultLabels);
-      }
-
-      // Save practice session to database (only for logged-in users)
+      // Save logic for logged in users
       if (user) {
-        // Extract score - use undefined check to handle score of 0
-        // Round to integer since database expects integer type
-        const score = analysisData.feedback?.score !== undefined
-          ? Math.round(analysisData.feedback.score)
-          : null;
+        const score = analysisData.feedback?.score !== undefined ? Math.round(analysisData.feedback.score) : null;
 
-        console.log('[PracticeSession] Starting save process...', {
-          userId: user.id,
-          analysisId,
-          topicId: topic.topicId,
-          questionId: topic.questionId,
-          score,
-        });
+        // 1. Check if the video is already in the user's library
+        const libraryLimit = TIER_LIMITS[tier].videoLibraryMax;
+        const currentLibrary = await getUserVideoLibrary(user.id);
+        const isAlreadyInLibrary = currentLibrary.some(v => v.analysisId === analysisId);
 
-        // Save practice session async (don't block UI)
+        // 2. Decide if we should allow a "Library Link"
+        // If NOT in library and at 10 slots, we set a flag to skip auto-linking
+        const isLibraryFull = !isAlreadyInLibrary && currentLibrary.length >= libraryLimit;
         (async () => {
           try {
-            // 1. Upload audio to storage
-            console.log('[PracticeSession] Uploading audio...');
             const audioUrl = await uploadPracticeAudio(user.id, audioData);
-            console.log('[PracticeSession] Audio uploaded:', audioUrl ? 'success' : 'failed (null)');
-
-            // 2. Save practice session
-            console.log('[PracticeSession] Saving practice session...');
             const savedSession = await savePracticeSession({
               user_id: user.id,
               analysis_id: analysisId || null,
@@ -235,341 +268,208 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
               audio_url: audioUrl,
               transcription: analysisData.transcription || null,
               score,
-              feedback_data: {
-                detected_framework: analysisData.detected_framework,
-                structure: analysisData.structure,
-                improved_structure: analysisData.improved_structure,
-                feedback: analysisData.feedback,
-                improvements: analysisData.improvements,
-                pronunciation: analysisData.pronunciation,
-              },
+              feedback_data: analysisData
             });
-
-            if (savedSession) {
-              console.log('[PracticeSession] Practice session saved successfully:', savedSession.id);
-              recordAction('practice_session');
-            } else {
-              console.error('[PracticeSession] Practice session save returned null - check database.ts logs');
-            }
-
-            // 3. Update library practice stats (practice count and last score)
-            if (analysisId && score !== null) {
-              console.log('[PracticeSession] Updating library stats...');
-              await updateLibraryPracticeStats(user.id, analysisId, score);
-              console.log('[PracticeSession] Library stats updated for analysis:', analysisId);
-            } else {
-              console.log('[PracticeSession] Skipping library stats update:', { analysisId, score });
-            }
-
-            // 4. Increment topic practice count (for popularity ranking)
-            if (topic.topicId) {
-              console.log('[PracticeSession] Incrementing topic practice count...');
-              await incrementTopicPracticeCount(topic.topicId);
-              console.log('[PracticeSession] Topic practice count incremented:', topic.topicId);
-            }
-
-            // 5. Increment question use count (for popularity ranking)
-            if (topic.questionId) {
-              console.log('[PracticeSession] Incrementing question use count...');
-              await incrementQuestionUseCount(topic.questionId);
-              console.log('[PracticeSession] Question use count incremented:', topic.questionId);
-            }
-          } catch (err) {
-            console.error('[PracticeSession] Failed to save practice session:', err);
-          }
+            if (savedSession) recordAction('practice_session');
+            // Only update stats if the video actually exists in the library
+            if (analysisId && score !== null && !isLibraryFull) await updateLibraryPracticeStats(user.id, analysisId, score);
+            if (topic.topicId) await incrementTopicPracticeCount(topic.topicId);
+            if (topic.questionId) await incrementQuestionUseCount(topic.questionId);
+          } catch (err) { console.error('Save failed', err); }
         })();
       } else {
-        // Record anonymous practice usage (for limit tracking)
-        console.log('[PracticeSession] User not logged in, recording anonymous practice usage');
         recordAnonymousPractice();
       }
 
-      // Finally, show results (User sees everything ready at once)
-      setState(SessionState.RESULTS);
+      // CACHE UPDATING
+      if (topic.questionId || topic.question) {
+        const cacheKey = `${topic.questionId}-${topic.question}`; // Use composite key
+        setResultsCache(prev => ({
+        ...prev,
+        [cacheKey]: {
+          analysisResult: analysisData,
+          audioUrl: newAudioUrl,
+          translatedLabels: finalLabels,
+          userNote,
+        }
+      }));
+    }
 
+      setState(SessionState.RESULTS);
     } catch (err: any) {
-      console.error(err);
-      setError(err.message || "Failed to analyze speech. Please try again.");
+      setError(err.message || "Failed to analyze speech.");
       setState(SessionState.PREP); 
     }
   };
 
-  const startRetake = (audioData: string) => {
-    // Anonymous limit check happens in PyramidFeedback's handleOpenRetake (before recorder opens)
-    handleRecordingComplete(audioData);
-  };
+  const handleQuestionSwitch = async (newQuestion: TopicQuestion) => {
+  if (newQuestion.questionId === topic.questionId && newQuestion.question === topic.question) return;
+
+  // Save CURRENT question to cache before leaving
+  if (analysisResult && state === SessionState.RESULTS) {
+    const currentCacheKey = `${topic.questionId}-${topic.question}`;
+    setResultsCache(prev => ({
+      ...prev,
+      [currentCacheKey]: {
+        analysisResult,
+        audioUrl: currentAudioUrl,
+        translatedLabels,
+        userNote,
+      }
+    }));
+  }
+
+  onQuestionChange?.(newQuestion);
+};
 
   const handleTopicSwitch = async (newTopic: PracticeTopic) => {
     if (newTopic.topic === topic.topic) return;
-    // Check anonymous practice limit before allowing topic switch
     if (!user && onRequireAuth) {
       const practiceStatus = await checkAnonymousPracticeLimit();
-      if (!practiceStatus.allowed) {
-        onRequireAuth();
-        return;
-      }
+      if (!practiceStatus.allowed) { onRequireAuth(); return; }
     }
-    // Reset state for new topic
     setState(SessionState.PREP);
     setAnalysisResult(null);
-    setError('');
     setUserNote('');
     if (currentAudioUrl) URL.revokeObjectURL(currentAudioUrl);
     setCurrentAudioUrl(null);
-    // Notify parent
     onTopicChange?.(newTopic);
   };
 
-  const currentTopicIndex = allTopics.findIndex(t => t.topic === topic.topic);
-  const hasMultipleTopics = allTopics.length > 1;
-
-  // Question navigation
-  const currentQuestionIndex = allQuestions.findIndex(q => q.questionId === topic.questionId);
-  const hasMultipleQuestions = allQuestions.length > 1;
-  const canGenerate = aiGeneratedCount < AI_GENERATED_LIMIT && !!onGenerateQuestion;
-
-  const handleQuestionSwitch = async (newQuestion: TopicQuestion) => {
-    if (newQuestion.questionId === topic.questionId) return;
-    // Check anonymous practice limit before allowing question switch
-    if (!user && onRequireAuth) {
-      const practiceStatus = await checkAnonymousPracticeLimit();
-      if (!practiceStatus.allowed) {
-        onRequireAuth();
-        return;
-      }
-    }
-    // Reset state for new question
-    setState(SessionState.PREP);
-    setAnalysisResult(null);
-    setError('');
-    setUserNote('');
-    if (currentAudioUrl) URL.revokeObjectURL(currentAudioUrl);
-    setCurrentAudioUrl(null);
-    // Notify parent
-    onQuestionChange?.(newQuestion);
-  };
-
   const handleGenerateQuestion = async () => {
-    if (!canGenerate || isGenerating) return;
-    setIsGenerating(true);
-    try {
-      const newQuestion = await onGenerateQuestion?.();
-      if (newQuestion) {
-        // The parent will update allQuestions and call onQuestionChange
-        // to switch to the new question
-      }
-    } catch (err) {
-      console.error('Failed to generate question:', err);
-      setError('Failed to generate new question. Please try again.');
-    } finally {
-      setIsGenerating(false);
-    }
-  };
+  if (!canGenerate || isGenerating) return;
+  
+  setIsGenerating(true);
+  setError('');
+  
+  // CRITICAL: Clear current state so the old report doesn't 
+  // show up for the new incoming question
+  setAnalysisResult(null);
+  setState(SessionState.PREP);
+  setUserNote('');
+  if (currentAudioUrl) URL.revokeObjectURL(currentAudioUrl);
+  setCurrentAudioUrl(null);
+
+  try {
+    await onGenerateQuestion?.();
+    // The parent will now push a new question with a unique ID
+  } catch (err) {
+    console.error('Failed to generate question:', err);
+    setError('Failed to generate new question. Please try again.');
+  } finally {
+    setIsGenerating(false);
+  }
+};
+
+  // UI Helpers
+  const currentTopicIndex = allTopics.findIndex(t => t.topic === topic.topic);
+  const currentQuestionIndex = allQuestions.findIndex(q => q.questionId === topic.questionId);
+  const isAnalyzing = state === SessionState.ANALYZING;
+  const canGenerate = aiGeneratedCount < AI_GENERATED_LIMIT && !!onGenerateQuestion && !isAnalyzing;
 
   return (
     <div className="min-h-screen bg-[#F6F4EF] p-6 lg:p-12 flex flex-col">
-      {/* Header */}
       <div className="flex items-center justify-between mb-8 max-w-5xl mx-auto w-full">
-        <button 
-            onClick={onExit}
-            className="flex items-center gap-2 text-stone-500 hover:text-stone-800 transition-colors"
-        >
+        <button onClick={onExit} className="flex items-center gap-2 text-stone-500 hover:text-stone-800 transition-colors">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-         
         </button>
-       
       </div>
 
       <div className="flex-1 max-w-5xl mx-auto w-full flex flex-col justify-start pt-4 space-y-10">
-        
-        {/* SHARED HEADER: Topic & Question (Always Visible) */}
         <div className="text-center space-y-4 animate-in fade-in slide-in-from-top-4 duration-500">
-            {/* Topic indicator with arrows */}
+            {/* Topic Navigation */}
             <div className="flex items-center justify-center gap-6">
-              {/* Previous Arrow */}
-              {hasMultipleTopics && (
-                <button
-                  onClick={() => {
-                    const prevIndex = currentTopicIndex > 0 ? currentTopicIndex - 1 : allTopics.length - 1;
-                    handleTopicSwitch(allTopics[prevIndex]);
-                  }}
-                  className="text-stone-300 hover:text-stone-500 transition-colors p-1"
-                  aria-label="Previous topic"
-                >
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="15 18 9 12 15 6" />
-                  </svg>
+              {allTopics.length > 1 && (
+                <button onClick={() => handleTopicSwitch(allTopics[currentTopicIndex > 0 ? currentTopicIndex - 1 : allTopics.length - 1])} disabled={isAnalyzing} className="text-stone-300 hover:text-stone-500 p-1 disabled:opacity-30">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><polyline points="15 18 9 12 15 6" /></svg>
                 </button>
               )}
-
-              {/* Current Topic Pill */}
               <span className="bg-stone-100 text-stone-600 px-4 py-1.5 rounded-full text-xs font-medium border border-stone-200">
-                {hasMultipleTopics ? `${currentTopicIndex + 1}/${allTopics.length} ${topic.topic}` : topic.topic}
+                {allTopics.length > 1 ? `${currentTopicIndex + 1}/${allTopics.length} ${topic.topic}` : topic.topic}
               </span>
-
-              {/* Next Arrow */}
-              {hasMultipleTopics && (
-                <button
-                  onClick={() => {
-                    const nextIndex = currentTopicIndex < allTopics.length - 1 ? currentTopicIndex + 1 : 0;
-                    handleTopicSwitch(allTopics[nextIndex]);
-                  }}
-                  className="text-stone-300 hover:text-stone-500 transition-colors p-1"
-                  aria-label="Next topic"
-                >
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="9 18 15 12 9 6" />
-                  </svg>
+              {allTopics.length > 1 && (
+                <button onClick={() => handleTopicSwitch(allTopics[currentTopicIndex < allTopics.length - 1 ? currentTopicIndex + 1 : 0])} disabled={isAnalyzing} className="text-stone-300 hover:text-stone-500 p-1 disabled:opacity-30">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><polyline points="9 18 15 12 9 6" /></svg>
                 </button>
               )}
-
             </div>
-            {/* Question with navigation arrows */}
+
+            {/* Question Navigation */}
             <div className="flex items-center justify-center gap-4">
-              {/* Previous Question Arrow */}
-              {hasMultipleQuestions && (
-                <button
-                  onClick={() => {
-                    const prevIndex = currentQuestionIndex > 0 ? currentQuestionIndex - 1 : allQuestions.length - 1;
-                    handleQuestionSwitch(allQuestions[prevIndex]);
-                  }}
-                  className="text-stone-300 hover:text-stone-500 transition-colors p-1 flex-shrink-0"
-                  aria-label="Previous question"
-                >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="15 18 9 12 15 6" />
-                  </svg>
+              {allQuestions.length > 1 && (
+                <button onClick={() => handleQuestionSwitch(allQuestions[currentQuestionIndex > 0 ? currentQuestionIndex - 1 : allQuestions.length - 1])} disabled={isAnalyzing} className="text-stone-300 hover:text-stone-500 p-1 disabled:opacity-30">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><polyline points="15 18 9 12 15 6" /></svg>
                 </button>
               )}
-
               <div className="flex flex-col items-center gap-2 flex-1 max-w-3xl">
-                <h1 className="text-3xl md:text-4xl font-serif text-stone-900 leading-tight inline">
+                <h1 className="text-3xl md:text-4xl font-serif text-stone-900 leading-tight">
                   {topic.question}
+                  
+                  {/* AI Generate Button */}
                   {onGenerateQuestion && (
-                    <button
-                      onClick={handleGenerateQuestion}
-                      disabled={!canGenerate || isGenerating}
-                      className={`group/gen inline-flex items-center align-middle ml-2 gap-1 transition-all ${
-                        canGenerate && !isGenerating
-                          ? 'text-stone-400 hover:text-stone-700 opacity-60 hover:opacity-100'
-                          : 'text-stone-300 cursor-not-allowed opacity-40'
-                      }`}
-                      title={!canGenerate ? `Generation limit reached (${aiGeneratedCount}/${AI_GENERATED_LIMIT})` : ''}
-                    >
-                      {isGenerating ? (
-                        <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <circle cx="12" cy="12" r="10" strokeOpacity="0.25" />
-                          <path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round" />
-                        </svg>
-                      ) : (
-                        <>
-                          <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6l2.1 2.1M5.6 18.4l2.1-2.1m8.6-8.6l2.1-2.1" />
-                          </svg>
-                          <span className="text-sm font-sans max-w-0 overflow-hidden whitespace-nowrap group-hover/gen:max-w-[10rem] transition-all duration-300 ease-in-out">
-                            generate question
-                          </span>
-                        </>
-                      )}
+                    <button onClick={handleGenerateQuestion} disabled={!canGenerate || isGenerating} className="ml-2 align-middle text-stone-400 hover:text-stone-700 disabled:opacity-30">
+                      {isGenerating ? <div className="w-5 h-5 border-2 border-stone-400 border-t-transparent animate-spin rounded-full"/> : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6l2.1 2.1M5.6 18.4l2.1-2.1m8.6-8.6l2.1-2.1" /></svg>}
                     </button>
                   )}
                 </h1>
               </div>
-
-              {/* Next Question Arrow */}
-              {hasMultipleQuestions && (
-                <button
-                  onClick={() => {
-                    const nextIndex = currentQuestionIndex < allQuestions.length - 1 ? currentQuestionIndex + 1 : 0;
-                    handleQuestionSwitch(allQuestions[nextIndex]);
-                  }}
-                  className="text-stone-300 hover:text-stone-500 transition-colors p-1 flex-shrink-0"
-                  aria-label="Next question"
-                >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="9 18 15 12 9 6" />
-                  </svg>
+              {allQuestions.length > 1 && (
+                <button onClick={() => handleQuestionSwitch(allQuestions[currentQuestionIndex < allQuestions.length - 1 ? currentQuestionIndex + 1 : 0])} disabled={isAnalyzing} className="text-stone-300 hover:text-stone-500 p-1 disabled:opacity-30">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><polyline points="9 18 15 12 9 6" /></svg>
                 </button>
               )}
             </div>
-
-            {state === SessionState.PREP && (
-                 <p className="text-stone-500">
-                    {translatedLabels.structureYourAnswer}
-                </p>
-            )}
         </div>
 
-        {/* CONTENT AREA */}
-        <div className="w-full transition-all duration-300">
-            
-            {/* 1. PREP & RECORDING STATES */}
+        <div className="w-full">
             {(state === SessionState.PREP || state === SessionState.RECORDING) && (
-                <div className="max-w-2xl mx-auto w-full space-y-10 animate-in fade-in duration-300">
-
-                    {/* Notes Area */}
-                    <div className="bg-white p-6 rounded-xl border border-stone-200 shadow-sm relative">
+                <div className="max-w-2xl mx-auto space-y-10 animate-in fade-in">
+                    <div className="bg-white p-6 rounded-xl border border-stone-200 shadow-sm">
                         <label className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-3 block text-center">{translatedLabels.yourNotesOutline}</label>
-                        <textarea
-                            value={userNote}
-                            onChange={(e) => setUserNote(e.target.value)}
-                            placeholder={translatedLabels.notesPlaceholder}
-                            className="w-full min-h-[120px] p-4 bg-stone-50 border border-stone-100 rounded-lg text-stone-700 text-sm focus:outline-none focus:border-stone-300 focus:bg-white resize-none transition-all placeholder:text-stone-400"
-                        />
+                        <textarea value={userNote} onChange={(e) => setUserNote(e.target.value)} placeholder={translatedLabels.notesPlaceholder} className="w-full min-h-[120px] p-4 bg-stone-50 border border-stone-100 rounded-lg text-sm focus:outline-none focus:bg-white resize-none"/>
                     </div>
-
                     <div className="flex justify-center min-h-[120px] items-center">
                         {state === SessionState.PREP ? (
-                            <button 
-                                onClick={handleStartRecording}
-                                className="w-20 h-20 bg-stone-900 rounded-full flex items-center justify-center text-white shadow-xl hover:scale-105 active:scale-95 transition-all ring-4 ring-stone-100 group"
-                                title="Start Recording"
-                            >
-                                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:scale-110 transition-transform duration-300">
-                                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                                    <line x1="12" y1="19" x2="12" y2="23" />
-                                    <line x1="8" y1="23" x2="16" y2="23" />
-                                </svg>
+                            <button onClick={handleStartRecording} className="w-20 h-20 bg-stone-900 rounded-full flex items-center justify-center text-white shadow-xl hover:scale-105 transition-all">
+                                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" /></svg>
                             </button>
                         ) : (
-                            <AudioRecorder 
-                                onRecordingComplete={handleRecordingComplete} 
-                                onCancel={() => setState(SessionState.PREP)} 
+                            <AudioRecorder
+                                onRecordingComplete={handleRecordingComplete}
+                                onCancel={() => setState(SessionState.PREP)}
+                                defaultTitle={translatedLabels.recordAnswer}
+                                labels={translatedLabels}
                             />
                         )}
                     </div>
-                    
                     {error && <p className="text-red-500 text-center text-sm">{error}</p>}
                 </div>
             )}
 
-            {/* 3. ANALYZING STATE */}
             {state === SessionState.ANALYZING && (
-                <div className="flex flex-col items-center justify-center space-y-6 animate-in fade-in duration-500 py-12">
-                    <div className="relative w-24 h-24">
-                        <div className="absolute inset-0 border-4 border-stone-200 rounded-full"></div>
-                        <div className="absolute inset-0 border-4 border-stone-800 rounded-full border-t-transparent animate-spin"></div>
-                    </div>
-                    <div className="text-center space-y-2">
+                <div className="flex flex-col items-center justify-center space-y-6 animate-in fade-in py-12">
+                    {/** set the DinoGame to appear after 60 seconds of analyzing **/}
+                    {analyzingElapsed < 60 ? (
+                      <>
+                        <div className="w-24 h-24 border-4 border-stone-200 border-t-stone-800 animate-spin rounded-full"></div>
                         <h3 className="text-xl font-medium text-stone-800">{translatedLabels.analyzingStructure}</h3>
-                        <p className="text-stone-500">{translatedLabels.checkingLogic}</p>
-                    </div>
+                      </>
+                    ) : (
+                      <div className="w-full max-w-lg space-y-4">
+                        <div className="bg-white rounded-xl border border-stone-200 shadow-sm overflow-hidden h-[180px]"><DinoGame /></div>
+                      </div>
+                    )}
                 </div>
             )}
 
-            {/* 4. RESULTS STATE */}
             {state === SessionState.RESULTS && analysisResult && (
-                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-8 duration-500 pb-20">
+                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-8 pb-20">
                     <PyramidFeedback
                         analysis={analysisResult}
                         onRetry={() => setState(SessionState.PREP)}
                         audioUrl={currentAudioUrl}
-                        startRetake={startRetake}
-                        // PASS THE PRE-FETCHED LABELS HERE
+                        startRetake={handleRecordingComplete}
                         preFetchedLabels={translatedLabels}
-
-                        // We still pass these for safety/future use, but the heavy lifting is done above
                         level={level}
                         nativeLang={nativeLang}
                         targetLang={targetLang}
@@ -577,7 +477,6 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
                     />
                 </div>
             )}
-
         </div>
       </div>
     </div>

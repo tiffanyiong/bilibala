@@ -13,6 +13,7 @@ interface ContentTabsProps {
   isLoading: boolean;
   targetLang: string;
   nativeLang?: string;
+  level?: string;
   layoutMode?: 'fixed' | 'auto';
   currentTime?: number;
   transcriptLangMismatch?: boolean;
@@ -36,7 +37,8 @@ const BilingualText: React.FC<{
                     setShowTranslation(!showTranslation);
                 }
             }} 
-            className={`${hasTranslation ? 'cursor-pointer group/trans' : ''} relative transition-all inline-block ${className}`}
+            // cursor pointer only if has translation
+            className={`${hasTranslation ? 'cursor-pointer hover:underline decoration-amber-200 underline-offset-4 active:scale-95' : ''} relative transition-all inline-block ${className}`}
         >
             <span className={isBlock ? "block" : "inline"}>
                {main}
@@ -69,9 +71,14 @@ const parseTimestamp = (ts: string): number => {
   return 0;
 };
 
-const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, topics, vocabulary, transcript, onTimestampClick, isLoading, targetLang, nativeLang, layoutMode = 'fixed', currentTime = 0, transcriptLangMismatch = false }) => {
+const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, topics, vocabulary, transcript, onTimestampClick, isLoading, targetLang, nativeLang, level = 'Medium', layoutMode = 'fixed', currentTime = 0, transcriptLangMismatch = false }) => {
   const [activeTab, setActiveTab] = useState<'outline' | 'vocab' | 'transcript'>('outline');
-  const uiText = UI_TRANSLATIONS[targetLang] || UI_TRANSLATIONS['English'];
+
+  // Determine which language to use for UI based on level
+  const isEasy = level.toLowerCase() === 'easy';
+  const uiLang = isEasy ? (nativeLang || 'English') : targetLang;
+  const uiText = UI_TRANSLATIONS[uiLang] || UI_TRANSLATIONS['English'];
+
   const [showDinoGame, setShowDinoGame] = useState(false);
   const [showLangMismatchInfo, setShowLangMismatchInfo] = useState(false);
   const langInfoBtnRef = useRef<HTMLButtonElement>(null);
@@ -193,22 +200,22 @@ const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, t
         <button
           onClick={() => setActiveTab('outline')}
           className={`px-3 py-2 text-[14px] rounded-md transition-all whitespace-nowrap ${
-            activeTab === 'outline' 
-              ? 'text-gray-900 bg-gray-100 font-medium' 
+            activeTab === 'outline'
+              ? 'text-gray-900 bg-gray-100 font-medium'
               : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
           }`}
         >
-          Outline
+          {uiText.outlineTab}
         </button>
         <button
           onClick={() => setActiveTab('vocab')}
           className={`px-3 py-2 text-[14px] rounded-md transition-all whitespace-nowrap ${
-            activeTab === 'vocab' 
-              ? 'text-gray-900 bg-gray-100 font-medium' 
+            activeTab === 'vocab'
+              ? 'text-gray-900 bg-gray-100 font-medium'
               : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
           }`}
         >
-          Vocabulary
+          {uiText.vocabularyTab}
         </button>
         <div className="relative flex items-center">
           <button
@@ -219,7 +226,7 @@ const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, t
                 : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
             }`}
           >
-            Transcript
+            {uiText.transcriptTab}
           </button>
           {transcriptLangMismatch && (
             <button
@@ -266,7 +273,7 @@ const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, t
                </div>
                <div className="flex items-center gap-2 mt-3 mb-1">
                  <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
-                 <p className="text-gray-400 text-xs">Generating content with AI... This can take a moment for longer video</p>
+                 <p className="text-gray-400 text-xs">{uiText.generatingContent}</p>
                </div>
              </div>
            ) : (
@@ -297,7 +304,7 @@ const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, t
                     {/* Summary Section */}
                     {summary && (
                         <div className="mb-4 p-3 bg-white rounded-lg border border-gray-100 shadow-sm">
-                            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Summary</h3>
+                            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">{uiText.summary}</h3>
                             <div className="text-[14px] text-gray-700 leading-relaxed">
                                 <BilingualText main={summary} translated={translatedSummary} />
                             </div>
@@ -351,7 +358,7 @@ const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, t
                               className="font-medium text-gray-800 text-[15px]" 
                           />
                           <div className="text-gray-300 group-hover:text-gray-400 transition-colors shrink-0">
-                            <StarfishIcon />
+                            {/* <StarfishIcon />  TODO: Will display it when we have vocab feature*/}
                           </div>
                         </div>
                         <div className="text-gray-600 text-[13px] mb-2 leading-relaxed">
@@ -378,7 +385,7 @@ const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, t
                                 className="sticky top-2 z-10 self-center bg-stone-800 text-white text-[11px] font-medium px-3 py-1.5 rounded-full shadow-lg flex items-center gap-1.5 hover:bg-stone-900 transition-all animate-in fade-in zoom-in duration-200 mb-2"
                             >
                                 <LocateIcon />
-                                <span>Locate current</span>
+                                <span>{uiText.locateCurrent}</span>
                             </button>
                         )}
 

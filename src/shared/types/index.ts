@@ -19,8 +19,7 @@ export interface PracticeTopic {
   topic: string;
   category?: string | null;
   question: string;
-  targetWords: string[];
-  // Optional database IDs (populated when loaded from DB)
+  targetWords?: string[];
   topicId?: string;
   questionId?: string;
 }
@@ -30,7 +29,7 @@ export interface TopicWithQuestions {
   topicId: string;
   topic: string;
   category: string | null;
-  targetWords: string[];
+  targetWords?: string[];
   practiceCount: number;
   questions: TopicQuestion[];
 }

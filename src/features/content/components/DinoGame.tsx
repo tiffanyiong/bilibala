@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 
 // Pixel art sprites encoded as 1/0 grids
 const DINO_SPRITE = [
