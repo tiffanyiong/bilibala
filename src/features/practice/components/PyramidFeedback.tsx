@@ -433,9 +433,11 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
               <div className="space-y-4">
                  {/* PerformanceCard */}
                 <div className="animate-in fade-in slide-in-from-bottom-4 duration-1000">
-                    <PerformanceCard 
-                        score={feedback?.score || 0} 
-                        targetLang={targetLang} 
+                    <PerformanceCard
+                        score={feedback?.score || 0}
+                        targetLang={targetLang}
+                        nativeLang={nativeLang}
+                        level={level}
                     />
                 </div>
                   <div className="bg-green-50 p-4 rounded-xl border border-green-100">

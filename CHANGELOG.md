@@ -1,5 +1,51 @@
 # Changelog
 
+## [Unreleased] - 2026-02-04
+
+### Added
+
+#### Level-Based UI Translations
+- **Dynamic UI Language**: All UI labels on the video analysis page now translate based on difficulty level
+  - Easy level: Labels display in user's native language
+  - Medium/Hard level: Labels display in target language (immersive learning)
+
+- **Translated Components**:
+  - `ContentTabs.tsx`: Outline, Vocabulary, Transcript tabs; Summary heading; loading and mismatch messages
+  - `TopicSelector.tsx`: Practice Topics heading and description
+  - `App.tsx`: Favorite/Favorited, Save to Library, Start Conversation buttons
+  - `PracticeReportDetailPage.tsx` & `PracticeReportsModal.tsx`: Feedback page headings (Topic, Question, Video, etc.)
+  - `pdfExport.ts`: PDF export headings now translate based on level
+
+- **New UI_TRANSLATIONS entries** (`src/shared/constants.ts`):
+  - Added 21 new translation keys for all 16 supported languages
+  - Keys: `outlineTab`, `vocabularyTab`, `transcriptTab`, `summary`, `practiceTopics`, `selectTopicDesc`, `selectTopic`, `favorite`, `favorited`, `saveToLibrary`, `startConversation`, `generatingContent`, `locateCurrent`, `topic`, `question`, `video`
+
+- **Practice Report Detail Page Translations** (`PracticeReportDetailPage.tsx`):
+  - Topic, Question, Video header labels now translate based on level
+  - Easy level: displays in native language
+  - Medium/Hard level: displays in target language
+
+- **Performance Card Translations** (`PerformanceCard.tsx`):
+  - Role badges (Explorer, Emerging Talent, etc.) now translate based on level
+  - "Performing better than X% of learners" text now translates based on level
+  - "NEXT MILESTONE" text now translates based on level
+  - Added translations for all 15 supported languages
+
+### Fixed
+
+- **Easy Level Language Rules for AI-Generated Content** (`server/routes/speechRoutes.js`):
+  - Graph critiques and elaborations now display in native language for Easy level
+  - Word improvement explanations now display in native language for Easy level
+  - Pronunciation feedback (summary, intonation, word-level) now displays in native language for Easy level
+  - Clarified prompt to separate content language (target language) from feedback language (native language)
+
+- **PDF Export Font Issues**:
+  - Removed `→` arrow character that caused jsPDF to fall back to Courier font
+  - Added `setFontForText()` helper for text-specific CJK font selection
+  - Pronunciation analysis section now uses correct font based on content language
+
+---
+
 ## [Unreleased] - 2026-01-21
 
 ### Added

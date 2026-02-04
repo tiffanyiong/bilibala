@@ -1,5 +1,6 @@
 import React from 'react';
 import { PracticeTopic, TopicQuestion } from '../../../shared/types';
+import { UI_TRANSLATIONS } from '../../../shared/constants';
 
 interface TopicSelectorProps {
   topics: PracticeTopic[];
@@ -7,6 +8,9 @@ interface TopicSelectorProps {
   onTopicToggle: (topic: string) => void;
   isLoading?: boolean;
   onStartPractice?: (topic: PracticeTopic, question: TopicQuestion) => void;
+  level?: string;
+  nativeLang?: string;
+  targetLang?: string;
 }
 
 const TopicSelector: React.FC<TopicSelectorProps> = ({
@@ -14,8 +18,15 @@ const TopicSelector: React.FC<TopicSelectorProps> = ({
   selectedTopics,
   onTopicToggle,
   isLoading = false,
-  onStartPractice
+  onStartPractice,
+  level = 'Medium',
+  nativeLang = 'English',
+  targetLang = 'English'
 }) => {
+  // Determine which language to use for UI based on level
+  const isEasy = level.toLowerCase() === 'easy';
+  const uiLang = isEasy ? nativeLang : targetLang;
+  const uiText = UI_TRANSLATIONS[uiLang] || UI_TRANSLATIONS['English'];
   // Render if loading OR if there are topics
   if (!isLoading && (!topics || topics.length === 0)) return null;
 
@@ -46,10 +57,10 @@ const TopicSelector: React.FC<TopicSelectorProps> = ({
     <div className="bg-white rounded-xl border border-stone-200 p-5 shadow-sm">
       <div className="mb-4">
         <h3 className="text-sm font-semibold text-stone-800 uppercase tracking-wide mb-1">
-            Practice Topics
+            {uiText.practiceTopics}
         </h3>
         <p className="text-[13px] text-stone-500 font-light">
-            Select a topic to start speaking practice and get your personalized feedback.
+            {uiText.selectTopicDesc}
         </p>
       </div>
 
@@ -108,7 +119,7 @@ const TopicSelector: React.FC<TopicSelectorProps> = ({
             <path d="M12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15Z" fill="currentColor"/>
             <path d="M12 18.5C15.5899 18.5 18.5 15.5899 18.5 12C18.5 8.41015 15.5899 5.5 12 5.5C8.41015 5.5 5.5 8.41015 5.5 12C5.5 15.5899 8.41015 18.5 12 18.5Z" stroke="currentColor" strokeWidth="1.5"/>
         </svg>
-        {selectedTopics.length > 0 ? "Start Practice" : "Select a topic"}
+        {selectedTopics.length > 0 ? uiText.start : uiText.selectTopic}
       </button>
     </div>
   );

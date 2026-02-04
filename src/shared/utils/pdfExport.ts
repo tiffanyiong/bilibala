@@ -8,11 +8,148 @@ interface ExportOptions {
   questionText?: string;
   date: string;
   targetLang: string;
+  nativeLang: string;
   level: string;
 }
 
 // Sequential frameworks that use chain layout (root → arg1 → arg2 → ...)
 const SEQUENTIAL_FRAMEWORKS = ['STAR', 'PREP', 'GOLDEN_CIRCLE', 'WSN'];
+
+// Translations for PDF headings - used for medium/hard levels
+const HEADING_TRANSLATIONS: Record<string, Record<string, string>> = {
+  'Chinese (Mandarin - 中文)': {
+    'Practice Report': '练习报告',
+    'Topic': '主题',
+    'Question': '问题',
+    'Source': '来源',
+    'Your Response': '你的回答',
+    'Language Polish': '语言润色',
+    'Before': '修改前',
+    'After': '修改后',
+    'Pronunciation & Intonation': '发音与语调',
+    'Overall': '总体',
+    'Intonation': '语调',
+    'Words to Practice': '需要练习的词汇',
+    'Strengths': '优点',
+    'Areas for Improvement': '改进空间',
+    'Actionable Tips': '实用建议',
+    'Your Logic Structure': '你的逻辑结构',
+    'Improved Structure': '改进后的结构',
+  },
+  'Japanese (日本語)': {
+    'Practice Report': '練習レポート',
+    'Topic': 'トピック',
+    'Question': '質問',
+    'Source': '出典',
+    'Your Response': 'あなたの回答',
+    'Language Polish': '言語の改善',
+    'Before': '修正前',
+    'After': '修正後',
+    'Pronunciation & Intonation': '発音とイントネーション',
+    'Overall': '総合',
+    'Intonation': 'イントネーション',
+    'Words to Practice': '練習する単語',
+    'Strengths': '強み',
+    'Areas for Improvement': '改善点',
+    'Actionable Tips': '実践的なヒント',
+    'Your Logic Structure': 'あなたの論理構造',
+    'Improved Structure': '改善された構造',
+  },
+  'Korean (한국어)': {
+    'Practice Report': '연습 보고서',
+    'Topic': '주제',
+    'Question': '질문',
+    'Source': '출처',
+    'Your Response': '당신의 답변',
+    'Language Polish': '언어 교정',
+    'Before': '수정 전',
+    'After': '수정 후',
+    'Pronunciation & Intonation': '발음과 억양',
+    'Overall': '전체',
+    'Intonation': '억양',
+    'Words to Practice': '연습할 단어',
+    'Strengths': '강점',
+    'Areas for Improvement': '개선할 부분',
+    'Actionable Tips': '실용적인 팁',
+    'Your Logic Structure': '당신의 논리 구조',
+    'Improved Structure': '개선된 구조',
+  },
+  'Spanish (Español)': {
+    'Practice Report': 'Informe de Práctica',
+    'Topic': 'Tema',
+    'Question': 'Pregunta',
+    'Source': 'Fuente',
+    'Your Response': 'Tu Respuesta',
+    'Language Polish': 'Mejora del Lenguaje',
+    'Before': 'Antes',
+    'After': 'Después',
+    'Pronunciation & Intonation': 'Pronunciación y Entonación',
+    'Overall': 'General',
+    'Intonation': 'Entonación',
+    'Words to Practice': 'Palabras para Practicar',
+    'Strengths': 'Fortalezas',
+    'Areas for Improvement': 'Áreas de Mejora',
+    'Actionable Tips': 'Consejos Prácticos',
+    'Your Logic Structure': 'Tu Estructura Lógica',
+    'Improved Structure': 'Estructura Mejorada',
+  },
+  'French (Français)': {
+    'Practice Report': 'Rapport de Pratique',
+    'Topic': 'Sujet',
+    'Question': 'Question',
+    'Source': 'Source',
+    'Your Response': 'Votre Réponse',
+    'Language Polish': 'Amélioration Linguistique',
+    'Before': 'Avant',
+    'After': 'Après',
+    'Pronunciation & Intonation': 'Prononciation et Intonation',
+    'Overall': 'Global',
+    'Intonation': 'Intonation',
+    'Words to Practice': 'Mots à Pratiquer',
+    'Strengths': 'Points Forts',
+    'Areas for Improvement': 'Points à Améliorer',
+    'Actionable Tips': 'Conseils Pratiques',
+    'Your Logic Structure': 'Votre Structure Logique',
+    'Improved Structure': 'Structure Améliorée',
+  },
+  'German (Deutsch)': {
+    'Practice Report': 'Übungsbericht',
+    'Topic': 'Thema',
+    'Question': 'Frage',
+    'Source': 'Quelle',
+    'Your Response': 'Ihre Antwort',
+    'Language Polish': 'Sprachliche Verbesserung',
+    'Before': 'Vorher',
+    'After': 'Nachher',
+    'Pronunciation & Intonation': 'Aussprache und Intonation',
+    'Overall': 'Gesamt',
+    'Intonation': 'Intonation',
+    'Words to Practice': 'Wörter zum Üben',
+    'Strengths': 'Stärken',
+    'Areas for Improvement': 'Verbesserungsbereiche',
+    'Actionable Tips': 'Praktische Tipps',
+    'Your Logic Structure': 'Ihre Logikstruktur',
+    'Improved Structure': 'Verbesserte Struktur',
+  },
+};
+
+// Get translated heading based on level, target language, and native language
+const getHeading = (key: string, level: string, targetLang: string, nativeLang: string): string => {
+  // Easy level uses native language
+  if (level.toLowerCase() === 'easy') {
+    const nativeTranslations = HEADING_TRANSLATIONS[nativeLang];
+    if (nativeTranslations && nativeTranslations[key]) {
+      return nativeTranslations[key];
+    }
+    return key; // Fallback to English if no translation
+  }
+  // Medium and Hard levels use target language
+  const translations = HEADING_TRANSLATIONS[targetLang];
+  if (translations && translations[key]) {
+    return translations[key];
+  }
+  return key;
+};
 
 interface GraphNode {
   id: string;
@@ -175,6 +312,9 @@ export async function exportPracticeReportToPdf(
       ...(analysis.feedback?.weaknesses || []),
       ...(analysis.feedback?.suggestions || []),
       ...(analysis.improvements?.map(i => `${i.original} ${i.improved} ${i.explanation}`) || []),
+      analysis.pronunciation?.summary || '',
+      analysis.pronunciation?.intonation?.feedback || '',
+      ...(analysis.pronunciation?.words?.map(w => w.feedback || '') || []),
     ].join(' ');
 
     const needsChinese = containsCJK(allText);
@@ -214,6 +354,16 @@ export async function exportPracticeReportToPdf(
     // Font helper - use Chinese font for all text when loaded to ensure consistency
     const setFont = (style: 'normal' | 'bold' | 'italic' = 'normal', size: number = 10) => {
       if (chineseFontLoaded) {
+        doc.setFont('ChineseFont', 'normal');
+      } else {
+        doc.setFont('helvetica', style);
+      }
+      doc.setFontSize(size);
+    };
+
+    // Font helper for specific text - use Chinese font only if the text contains CJK characters
+    const setFontForText = (text: string, style: 'normal' | 'bold' | 'italic' = 'normal', size: number = 10) => {
+      if (chineseFontLoaded && containsCJK(text)) {
         doc.setFont('ChineseFont', 'normal');
       } else {
         doc.setFont('helvetica', style);
@@ -634,10 +784,13 @@ export async function exportPracticeReportToPdf(
 
     // ==================== PDF CONTENT ====================
 
+    // Helper to get translated heading
+    const t = (key: string) => getHeading(key, options.level, options.targetLang, options.nativeLang);
+
     // Title
     setFont('bold', 24);
     doc.setTextColor(...colors.black);
-    doc.text('Practice Report', margin, yPos + 5);
+    doc.text(t('Practice Report'), margin, yPos + 5);
     yPos += 15;
 
     // Meta info (subtle gray text)
@@ -651,7 +804,7 @@ export async function exportPracticeReportToPdf(
     // Topic & Question block
     setFont('bold', 11);
     doc.setTextColor(...colors.black);
-    doc.text('Topic', margin, yPos);
+    doc.text(t('Topic'), margin, yPos);
     yPos += 6;
 
     setFont('normal', 11);
@@ -663,7 +816,7 @@ export async function exportPracticeReportToPdf(
     if (options.questionText) {
       setFont('bold', 11);
       doc.setTextColor(...colors.black);
-      doc.text('Question', margin, yPos);
+      doc.text(t('Question'), margin, yPos);
       yPos += 6;
 
       setFont('normal', 10);
@@ -676,7 +829,7 @@ export async function exportPracticeReportToPdf(
     // Video source
     setFont('normal', 9);
     doc.setTextColor(...colors.mediumGray);
-    const videoLines = doc.splitTextToSize(`Source: ${options.videoTitle}`, contentWidth);
+    const videoLines = doc.splitTextToSize(`${t('Source')}: ${options.videoTitle}`, contentWidth);
     doc.text(videoLines[0], margin, yPos);
     yPos += 12;
 
@@ -684,14 +837,14 @@ export async function exportPracticeReportToPdf(
 
     // ==================== 1. YOUR RESPONSE ====================
     if (analysis.transcription) {
-      drawSectionHeader('Your Response');
+      drawSectionHeader(t('Your Response'));
       drawCallout(analysis.transcription, colors.grayCallout);
       yPos += 4;
     }
 
     // ==================== 2. LANGUAGE POLISH ====================
     if (analysis.improvements && analysis.improvements.length > 0) {
-      drawSectionHeader('Language Polish');
+      drawSectionHeader(t('Language Polish'));
 
       for (const imp of analysis.improvements) {
         checkPageBreak(35);
@@ -699,7 +852,7 @@ export async function exportPracticeReportToPdf(
         // Original (strikethrough style)
         setFont('normal', 9);
         doc.setTextColor(180, 80, 80);
-        doc.text('Before:', margin, yPos);
+        doc.text(`${t('Before')}:`, margin, yPos);
         yPos += 5;
 
         setFont('normal', 10);
@@ -711,7 +864,7 @@ export async function exportPracticeReportToPdf(
         // Improved
         setFont('normal', 9);
         doc.setTextColor(68, 131, 97);
-        doc.text('After:', margin, yPos);
+        doc.text(`${t('After')}:`, margin, yPos);
         yPos += 5;
 
         setFont('normal', 10);
@@ -732,18 +885,18 @@ export async function exportPracticeReportToPdf(
 
     // ==================== 3. PRONUNCIATION & INTONATION ====================
     if (analysis.pronunciation) {
-      drawSectionHeader('Pronunciation & Intonation');
+      drawSectionHeader(t('Pronunciation & Intonation'));
 
       // Overall Pronunciation
       checkPageBreak(20);
       setFont('bold', 10);
       doc.setTextColor(...colors.black);
       const overallLabel = analysis.pronunciation.overall.replace('-', ' ');
-      doc.text(`Overall: ${overallLabel}`, margin, yPos);
+      doc.text(`${t('Overall')}: ${overallLabel}`, margin, yPos);
       yPos += 6;
 
       if (analysis.pronunciation.summary) {
-        setFont('normal', 10);
+        setFontForText(analysis.pronunciation.summary, 'normal', 10);
         doc.setTextColor(...colors.darkGray);
         const summaryLines = doc.splitTextToSize(analysis.pronunciation.summary, contentWidth - 5);
         doc.text(summaryLines, margin + 5, yPos);
@@ -754,11 +907,11 @@ export async function exportPracticeReportToPdf(
       checkPageBreak(15);
       setFont('bold', 10);
       doc.setTextColor(...colors.black);
-      doc.text(`Intonation: ${analysis.pronunciation.intonation.pattern}`, margin, yPos);
+      doc.text(`${t('Intonation')}: ${analysis.pronunciation.intonation.pattern}`, margin, yPos);
       yPos += 6;
 
       if (analysis.pronunciation.intonation.feedback) {
-        setFont('normal', 10);
+        setFontForText(analysis.pronunciation.intonation.feedback, 'normal', 10);
         doc.setTextColor(...colors.darkGray);
         const intoLines = doc.splitTextToSize(analysis.pronunciation.intonation.feedback, contentWidth - 5);
         doc.text(intoLines, margin + 5, yPos);
@@ -775,7 +928,7 @@ export async function exportPracticeReportToPdf(
           checkPageBreak(15);
           setFont('bold', 10);
           doc.setTextColor(...colors.black);
-          doc.text('Words to Practice:', margin, yPos);
+          doc.text(`${t('Words to Practice')}:`, margin, yPos);
           yPos += 6;
 
           for (const wordObj of wordsNeedingAttention) {
@@ -796,9 +949,9 @@ export async function exportPracticeReportToPdf(
 
             // Feedback/tip from tooltip if available
             if (wordObj.feedback) {
-              setFont('italic', 9);
+              setFontForText(wordObj.feedback, 'normal', 9);
               doc.setTextColor(...colors.darkGray);
-              const feedbackLines = doc.splitTextToSize(`→ ${wordObj.feedback}`, contentWidth - 15);
+              const feedbackLines = doc.splitTextToSize(wordObj.feedback, contentWidth - 15);
               doc.text(feedbackLines, margin + 10, yPos + 2);
               yPos += feedbackLines.length * 4.5 + 3;
             }
@@ -811,7 +964,7 @@ export async function exportPracticeReportToPdf(
 
     // ==================== 4. STRENGTHS ====================
     if (analysis.feedback?.strengths && analysis.feedback.strengths.length > 0) {
-      drawSectionHeader('Strengths');
+      drawSectionHeader(t('Strengths'));
 
       for (const strength of analysis.feedback.strengths) {
         drawBulletItem(strength, colors.strong);
@@ -821,7 +974,7 @@ export async function exportPracticeReportToPdf(
 
     // ==================== 5. AREAS FOR IMPROVEMENT ====================
     if (analysis.feedback?.weaknesses && analysis.feedback.weaknesses.length > 0) {
-      drawSectionHeader('Areas for Improvement');
+      drawSectionHeader(t('Areas for Improvement'));
 
       for (const weakness of analysis.feedback.weaknesses) {
         drawBulletItem(weakness, colors.weak);
@@ -831,7 +984,7 @@ export async function exportPracticeReportToPdf(
 
     // ==================== 6. ACTIONABLE TIPS ====================
     if (analysis.feedback?.suggestions && analysis.feedback.suggestions.length > 0) {
-      drawSectionHeader('Actionable Tips');
+      drawSectionHeader(t('Actionable Tips'));
 
       for (let i = 0; i < analysis.feedback.suggestions.length; i++) {
         drawNumberedItem(i + 1, analysis.feedback.suggestions[i]);
@@ -843,13 +996,13 @@ export async function exportPracticeReportToPdf(
     const detectedFramework = analysis.detected_framework || '';
 
     if (analysis.structure?.conclusion && analysis.structure?.arguments) {
-      drawGraph(analysis.structure, 'Your Logic Structure', false, detectedFramework);
+      drawGraph(analysis.structure, t('Your Logic Structure'), false, detectedFramework);
     }
 
     // ==================== 8. AI IMPROVED STRUCTURE ====================
     if (analysis.improved_structure?.conclusion && analysis.improved_structure?.arguments) {
       const improvedFramework = analysis.improved_structure.recommended_framework || detectedFramework;
-      drawGraph(analysis.improved_structure, 'Improved Structure', true, improvedFramework);
+      drawGraph(analysis.improved_structure, t('Improved Structure'), true, improvedFramework);
     }
 
     // ==================== HEADER & FOOTER ON ALL PAGES ====================
