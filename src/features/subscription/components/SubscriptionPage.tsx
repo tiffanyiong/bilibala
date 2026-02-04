@@ -19,6 +19,7 @@ const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ onOpenAuthModal }) 
     aiTutorMinutesLimit,
     aiTutorCreditMinutes,
     practiceSessionCredits,
+    videoCredits,
     createCheckout,
     createCreditCheckout,
     createPortal,
@@ -37,7 +38,7 @@ const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ onOpenAuthModal }) 
     });
   };
 
-  const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
+  const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('annual');
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [creditCheckoutLoading, setCreditCheckoutLoading] = useState<string | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);

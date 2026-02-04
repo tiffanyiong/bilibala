@@ -246,6 +246,7 @@ export interface DbUserSubscription {
   // Credit pack purchases (never expire, don't reset monthly)
   ai_tutor_credit_minutes: number;
   practice_session_credits: number;
+  video_credits: number;
   created_at: string;
   updated_at: string;
 }
@@ -277,7 +278,7 @@ export const TIER_LIMITS = {
     videoLibraryMax: 10,
   },
   pro: {
-    videosPerMonth: Infinity,
+    videosPerMonth: 50,
     practiceSessionsPerMonth: Infinity,
     aiTutorMinutesPerMonth: MONTHLY_MAX_MINUTES,
     pdfExport: true,

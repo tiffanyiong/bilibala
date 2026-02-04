@@ -187,6 +187,26 @@ export async function deductPracticeCredits(
 }
 
 /**
+ * Deduct video credits from user's balance.
+ * Called when user analyzes a video and has exceeded monthly limit.
+ * Returns 1 if deducted, 0 if no credits available.
+ */
+export async function deductVideoCredits(
+  userId: string
+): Promise<number> {
+  const { data, error } = await supabase.rpc('deduct_video_credits', {
+    p_user_id: userId,
+  });
+
+  if (error) {
+    console.error('Error deducting video credits:', error);
+    return 0;
+  }
+
+  return data || 0;
+}
+
+/**
  * Check if a specific action is allowed based on tier and usage
  */
 export async function checkActionAllowed(

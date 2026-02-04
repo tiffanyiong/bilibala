@@ -12,7 +12,7 @@ import { updateMaxDuration } from '../../features/practice/config/audioConfig';
 
 // --- Fallback defaults (used until server config loads) ---
 export let SESSION_MAX_MINUTES = 40;
-export let MONTHLY_MAX_MINUTES = 60;
+export let MONTHLY_MAX_MINUTES = 45;
 export let WARNING_BEFORE_END_SECONDS = 60;
 
 // --- Free tier fallback defaults ---
