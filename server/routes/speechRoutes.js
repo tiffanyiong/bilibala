@@ -31,15 +31,37 @@ router.post('/analyze-speech', async (req, res) => {
       - **Question:** "${question}"
       - **User Level:** ${level}
       - **Target Language:** ${targetLang || 'English'}
-      - **Native Language:** ${nativeLang || 'Chinese (Mandarin - 中文)'}
+      - **Native Language:** ${nativeLang || 'English'}
 
-      # CRITICAL LANGUAGE REQUIREMENT
+      # CRITICAL LANGUAGE REQUIREMENT - READ CAREFULLY
       ${level === 'Easy' ? `
-      FOR BEGINNER (EASY) LEVEL:
-      - Graph content (conclusion, argument points, headlines, elaborations, critiques, evidence) MUST be in ${targetLang || 'English'}
-      - Coach's Feedback (strengths, weaknesses, suggestions) MUST be in ${nativeLang || 'English)'} to help beginners understand better
-      - Word improvements (original, improved, explanation) MUST be in ${targetLang || 'English'}
-      - The transcription field must remain as-is (user's actual speech in ${targetLang || 'English'})
+      ⚠️ IMPORTANT: This is a BEGINNER learning ${targetLang || 'English'}. Their NATIVE language is ${nativeLang || 'English'}.
+
+      ALL EXPLANATORY TEXT must be written in ${nativeLang || 'English'} so the beginner can understand.
+
+      FIELD-BY-FIELD LANGUAGE REQUIREMENTS:
+
+      📌 FIELDS THAT MUST BE IN ${targetLang || 'English'} (the language being learned):
+      - transcription: Keep as-is (user's actual speech)
+      - structure.conclusion: User's main point in ${targetLang || 'English'}
+      - structure.arguments[].point: User's argument points in ${targetLang || 'English'}
+      - improved_structure.conclusion: Improved conclusion in ${targetLang || 'English'}
+      - improved_structure.arguments[].headline: Step headlines in ${targetLang || 'English'}
+      - improvements[].original: Original phrase in ${targetLang || 'English'}
+      - improvements[].improved: Improved phrase in ${targetLang || 'English'}
+
+      📌 FIELDS THAT MUST BE IN ${nativeLang || 'English'} (native language for explanations):
+      - structure.arguments[].critique: Write critique in ${nativeLang || 'English'}
+      - improved_structure.arguments[].elaboration: Write elaboration/explanation in ${nativeLang || 'English'}
+      - feedback.strengths[]: Write each strength in ${nativeLang || 'English'}
+      - feedback.weaknesses[]: Write each weakness in ${nativeLang || 'English'}
+      - feedback.suggestions[]: Write each suggestion in ${nativeLang || 'English'}
+      - improvements[].explanation: Write explanation WHY in ${nativeLang || 'English'}
+      - pronunciation.summary: Write summary in ${nativeLang || 'English'}
+      - pronunciation.intonation.feedback: Write feedback in ${nativeLang || 'English'}
+      - pronunciation.words[].feedback: Write word feedback in ${nativeLang || 'English'}
+
+      ⚠️ DO NOT write critique, elaboration, explanation, or feedback fields in ${targetLang || 'English'}. The beginner needs to understand these in their native language.
       ` : `
       FOR INTERMEDIATE/ADVANCED LEVEL:
       ALL text content in your response MUST be in ${targetLang || 'English'}. This includes:
@@ -47,6 +69,7 @@ router.post('/analyze-speech', async (req, res) => {
       - All argument points, headlines, elaborations, critiques, and evidence MUST be in ${targetLang || 'English'}.
       - All feedback (strengths, weaknesses, suggestions) MUST be in ${targetLang || 'English'}.
       - All improvement suggestions (original, improved, explanation) MUST be in ${targetLang || 'English'}
+      - Pronunciation feedback (summary, intonation feedback, word-level feedback) MUST be in ${targetLang || 'English'}
       - The transcription field must remain as-is (user's actual speech)
       `}
 

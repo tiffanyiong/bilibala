@@ -52,6 +52,7 @@ import {
 } from './shared/services/usageTracking';
 import { AppState, PracticeTopic, TopicPoint, TopicQuestion, VideoData, VocabularyItem } from './shared/types';
 import { TIER_LIMITS, VideoHistoryItem } from './shared/types/database';
+import { UI_TRANSLATIONS } from './shared/constants';
 
 const App: React.FC = () => {
   // Reveal body after mount to prevent FOUC with Tailwind CDN
@@ -465,6 +466,8 @@ const App: React.FC = () => {
               } else {
                 setDiscussionTopics(analysis.discussionTopics || []);
               }
+              // Clear selected topics to prevent stale selection
+              setSelectedTopics([]);
 
               setLibraryEntry({
                 libraryId: videoInLibrary.libraryId,
@@ -519,6 +522,8 @@ const App: React.FC = () => {
           } else {
             setDiscussionTopics(analysis.discussionTopics || []);
           }
+          // Clear selected topics to prevent stale selection
+          setSelectedTopics([]);
 
           // Don't auto-add to library - let user choose to save it
           // This shows "Save to Library" button instead of "Favorite"
@@ -1093,6 +1098,8 @@ const App: React.FC = () => {
         // Fallback to what was in the analysis JSON if DB is empty
         setDiscussionTopics(analysis.discussionTopics || []);
       }
+      // Clear selected topics to prevent stale selection
+      setSelectedTopics([]);
 
         // Update last_accessed_at and set library entry
         if (user) {
@@ -1184,6 +1191,8 @@ const App: React.FC = () => {
       } else {
         setDiscussionTopics([]);
       }
+      // Clear selected topics to prevent stale selection
+      setSelectedTopics([]);
 
       // Check if this video is already in the user's library
       if (user) {
@@ -1305,10 +1314,14 @@ const App: React.FC = () => {
     setShowTutorWindow(true);
   };
 
-  const StartCallButton = () => (
+  const StartCallButton = () => {
+    const isEasy = level.toLowerCase() === 'easy';
+    const uiLang = isEasy ? nativeLang : targetLang;
+    const uiText = UI_TRANSLATIONS[uiLang] || UI_TRANSLATIONS['English'];
+    return (
     <button
       onClick={handleStartTutor}
-      className="fixed bottom-8 right-8 z-50 group flex items-center gap-2 bg-zinc-900 text-white border border-zinc-700 p-4 rounded-full shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden max-w-[60px] hover:max-w-[200px]"
+      className="fixed bottom-8 right-8 z-50 group flex items-center gap-2 bg-zinc-900 text-white border border-zinc-700 p-4 rounded-full shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden max-w-[60px] hover:max-w-[220px]"
       aria-label="Start Chatting"
     >
       <div className="w-6 h-6 flex items-center justify-center shrink-0">
@@ -1319,10 +1332,11 @@ const App: React.FC = () => {
          </svg>
       </div>
       <span className="font-medium text-sm whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300 delay-75">
-        Start Conversation
+        {uiText.startConversation}
       </span>
     </button>
-  );
+    );
+  };
 
   // Compute the actual translation target language for the popup
   // If user has a custom setting, use that; otherwise use video's native language
@@ -1389,7 +1403,12 @@ const App: React.FC = () => {
                  <h1 className="text-lg md:text-xl font-medium text-stone-800 line-clamp-2">
                    {videoData.title}
                  </h1>
-                 {user && (
+                 {user && (() => {
+                   // Compute UI text based on level
+                   const isEasy = level.toLowerCase() === 'easy';
+                   const uiLang = isEasy ? nativeLang : targetLang;
+                   const uiText = UI_TRANSLATIONS[uiLang] || UI_TRANSLATIONS['English'];
+                   return (
                    <div className="flex items-center gap-2 shrink-0">
                      {libraryEntry ? (
                        <button
@@ -1403,7 +1422,7 @@ const App: React.FC = () => {
                          <svg width="16" height="16" viewBox="0 0 24 24" fill={libraryEntry.isFavorite ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
                          </svg>
-                         {libraryEntry.isFavorite ? 'Favorited' : 'Favorite'}
+                         {libraryEntry.isFavorite ? uiText.favorited : uiText.favorite}
                        </button>
                      ) : (
                        <button
@@ -1413,11 +1432,12 @@ const App: React.FC = () => {
                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
                          </svg>
-                         Save to Library
+                         {uiText.saveToLibrary}
                        </button>
                      )}
                    </div>
-                 )}
+                   );
+                 })()}
                </div>
 
                <TopicSelector
@@ -1426,6 +1446,9 @@ const App: React.FC = () => {
                   onTopicToggle={handleTopicToggle}
                   isLoading={isAnalysisLoading}
                   onStartPractice={handleStartPractice}
+                  level={level}
+                  nativeLang={nativeLang}
+                  targetLang={targetLang}
                />
            </div>
 
@@ -1441,6 +1464,7 @@ const App: React.FC = () => {
                   isLoading={isAnalysisLoading}
                   targetLang={targetLang}
                   nativeLang={nativeLang}
+                  level={level}
                   layoutMode="fixed"
                   currentTime={currentTime}
                   transcriptLangMismatch={transcriptLangMismatch}

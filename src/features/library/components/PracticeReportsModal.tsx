@@ -7,6 +7,7 @@ import { useSubscription } from '../../../shared/context/SubscriptionContext';
 import PracticeReportCard, { PracticeReportCardSkeleton } from './PracticeReportCard';
 import PyramidFeedback from '../../practice/components/PyramidFeedback';
 import { exportPracticeReportToPdf } from '../../../shared/utils/pdfExport';
+import { getBackendOrigin } from '../../../shared/services/backend';
 
 // Stable default labels object to prevent infinite re-renders in PyramidFeedback
 const DEFAULT_LABELS = {
@@ -42,7 +43,27 @@ const DEFAULT_LABELS = {
   scoreExcellent: 'Excellent',
   scoreGreatJob: 'Great Job',
   scoreGoodStart: 'Good Start',
-  scoreKeepGrowing: 'Keep Growing'
+  scoreKeepGrowing: 'Keep Growing',
+  // Pronunciation Analysis labels
+  pronunciationIntonation: 'Pronunciation & Intonation',
+  overallPronunciation: 'Overall Pronunciation',
+  intonation: 'Intonation',
+  wordPronunciation: 'Word Pronunciation',
+  pronunciationNativeLike: 'native-like',
+  pronunciationClear: 'clear',
+  pronunciationAccented: 'accented',
+  pronunciationNeedsWork: 'needs work',
+  intonationNatural: 'natural',
+  intonationFlat: 'flat',
+  intonationMonotone: 'monotone',
+  intonationOverlyExpressive: 'overly-expressive',
+  pronunciationGood: 'Good',
+  pronunciationNeedsWorkLabel: 'Needs Work',
+  pronunciationUnclear: 'Unclear',
+  // Header labels
+  topic: 'Topic',
+  question: 'Question',
+  video: 'Video',
 };
 
 // Error boundary to catch PyramidFeedback crashes
@@ -193,6 +214,47 @@ const PracticeReportsModal: React.FC<PracticeReportsModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [selectedSession, setSelectedSession] = useState<DbPracticeSession | null>(null);
+  const [translatedLabels, setTranslatedLabels] = useState<typeof DEFAULT_LABELS>(DEFAULT_LABELS);
+
+  // Fetch translated labels based on level
+  useEffect(() => {
+    if (!selectedSession) return;
+
+    const isEasy = level.toLowerCase() === 'easy';
+    const nativeLang = selectedSession.native_lang || 'English';
+    const languageToUse = isEasy ? nativeLang : targetLang;
+
+    // Skip translation if using English
+    if (!languageToUse || languageToUse.toLowerCase().includes('english')) {
+      setTranslatedLabels(DEFAULT_LABELS);
+      return;
+    }
+
+    // Check cache first
+    const cacheKey = `ui-labels-${languageToUse}-${isEasy}`;
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        setTranslatedLabels({ ...DEFAULT_LABELS, ...JSON.parse(cached) });
+        return;
+      }
+    } catch {}
+
+    // Fetch translations from backend
+    fetch(`${getBackendOrigin()}/api/translate-ui-labels`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ language: languageToUse, isEasyLevel: isEasy, sourceLabels: DEFAULT_LABELS })
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data?.labels) {
+          setTranslatedLabels({ ...DEFAULT_LABELS, ...data.labels });
+          localStorage.setItem(cacheKey, JSON.stringify(data.labels));
+        }
+      })
+      .catch(err => console.error('Translation error:', err));
+  }, [selectedSession, level, targetLang]);
 
   // Fetch sessions when modal opens
   useEffect(() => {
@@ -285,6 +347,7 @@ const PracticeReportsModal: React.FC<PracticeReportsModalProps> = ({
         questionText: selectedSession.question_text || undefined,
         date: formatDate(selectedSession.created_at),
         targetLang: targetLang,
+        nativeLang: selectedSession.native_lang || 'English',
         level: level,
       });
       recordAction('pdf_export');
@@ -458,7 +521,7 @@ const PracticeReportsModal: React.FC<PracticeReportsModalProps> = ({
                     level={level}
                     nativeLang={selectedSession.native_lang || 'English'}
                     targetLang={targetLang}
-                    preFetchedLabels={DEFAULT_LABELS}
+                    preFetchedLabels={translatedLabels}
                     showRetry={false}
                   />
                 </ReportErrorBoundary>
