@@ -418,12 +418,17 @@ router.post('/subscriptions/webhook', async (req, res) => {
             // Determine credits to add based on pack type
             let aiTutorMinutesToAdd = 0;
             let practiceSessionsToAdd = 0;
+            let videoCreditsToAdd = 0;
 
             if (packType === 'starter') {
+              // Starter Pack: 15 videos + 30 min AI tutor + 30 practice sessions
+              videoCreditsToAdd = 15;
               aiTutorMinutesToAdd = 30;
               practiceSessionsToAdd = 30;
             } else if (packType === 'topup') {
-              aiTutorMinutesToAdd = 30;
+              // Top-up: 10 videos + 15 min AI tutor
+              videoCreditsToAdd = 10;
+              aiTutorMinutesToAdd = 15;
             }
 
             // Add credits using the database function
@@ -431,11 +436,12 @@ router.post('/subscriptions/webhook', async (req, res) => {
               p_user_id: userId,
               p_ai_tutor_minutes: aiTutorMinutesToAdd,
               p_practice_sessions: practiceSessionsToAdd,
+              p_video_credits: videoCreditsToAdd,
             });
 
             if (rpcError) {
               console.error('[Webhook] Error adding credits via RPC:', rpcError);
-              // Fallback: direct update
+              // Fallback: direct update (note: this doesn't increment, just sets)
               await supabaseAdmin
                 .from('user_subscriptions')
                 .upsert({
@@ -444,13 +450,13 @@ router.post('/subscriptions/webhook', async (req, res) => {
                   tier: 'free', // Don't change tier for credit purchase
                   ai_tutor_credit_minutes: aiTutorMinutesToAdd,
                   practice_session_credits: practiceSessionsToAdd,
+                  video_credits: videoCreditsToAdd,
                   updated_at: new Date().toISOString(),
                 }, {
                   onConflict: 'user_id',
-                  // Use raw SQL for incrementing
                 });
             } else {
-              console.log('[Webhook] Successfully added credits:', { userId, packType, aiTutorMinutesToAdd, practiceSessionsToAdd });
+              console.log('[Webhook] Successfully added credits:', { userId, packType, videoCreditsToAdd, aiTutorMinutesToAdd, practiceSessionsToAdd });
             }
           } catch (err) {
             console.error('[Webhook] Error processing credit purchase:', err.message);

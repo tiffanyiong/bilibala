@@ -13,6 +13,7 @@ import {
   recordUsage,
   deductAiTutorCredits,
   deductPracticeCredits,
+  deductVideoCredits,
 } from '../services/subscriptionDatabase';
 import { getBackendOrigin } from '../services/backend';
 import { fetchAppConfig } from '../config/aiTutorConfig';
@@ -29,6 +30,7 @@ interface SubscriptionContextType {
   // Credit balances (purchased, never expire)
   aiTutorCreditMinutes: number;
   practiceSessionCredits: number;
+  videoCredits: number;
 
   // Computed permissions
   canAddVideo: boolean;
@@ -190,6 +192,23 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
     if (!user) return false;
     const success = await recordUsage(user.id, actionType, metadata);
     if (success) {
+      // Handle credit deduction for video analysis
+      if (actionType === 'video_analysis') {
+        const currentMonthlyRemaining = limits.videosPerMonth - usage.videosUsed;
+
+        // If usage exceeds monthly allowance, deduct from credits
+        if (currentMonthlyRemaining <= 0) {
+          const deducted = await deductVideoCredits(user.id);
+          if (deducted > 0) {
+            // Update local subscription state to reflect credit deduction
+            setSubscription(prev => prev ? {
+              ...prev,
+              video_credits: Math.max(0, (prev.video_credits || 0) - 1),
+            } : null);
+          }
+        }
+      }
+
       // Handle credit deduction for AI tutor
       if (actionType === 'ai_tutor') {
         const minutesUsed = (metadata.minutes_used as number) || 0;
@@ -310,9 +329,10 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
   // Credit balances from subscription
   const aiTutorCreditMinutes = subscription?.ai_tutor_credit_minutes || 0;
   const practiceSessionCredits = subscription?.practice_session_credits || 0;
+  const videoCredits = subscription?.video_credits || 0;
 
   // Computed permissions (now credit-aware)
-  const canAddVideo = usage.videosUsed < limits.videosPerMonth;
+  const canAddVideo = usage.videosUsed < limits.videosPerMonth || videoCredits > 0;
   // Free users can use credits for practice; Pro users have unlimited
   const canStartPractice = usage.practiceSessionsUsed < limits.practiceSessionsPerMonth || practiceSessionCredits > 0;
   // Users can use AI tutor if they have monthly allowance remaining OR have credits
@@ -330,6 +350,7 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
       usage,
       aiTutorCreditMinutes,
       practiceSessionCredits,
+      videoCredits,
       canAddVideo,
       canStartPractice,
       canUseAiTutor,
