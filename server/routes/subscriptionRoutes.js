@@ -2,7 +2,7 @@ import express from 'express';
 import Stripe from 'stripe';
 import { config } from '../config/env.js';
 import { supabaseAdmin, getUserFromToken } from '../services/supabaseAdmin.js';
-import { getAllConfig } from '../services/configService.js';
+import { getAllConfig, getConfigNumber } from '../services/configService.js';
 
 const router = express.Router();
 
@@ -415,20 +415,20 @@ router.post('/subscriptions/webhook', async (req, res) => {
         // Handle one-time credit pack purchase
         if (session.mode === 'payment' && userId && packType) {
           try {
-            // Determine credits to add based on pack type
+            // Determine credits to add based on pack type (from config)
             let aiTutorMinutesToAdd = 0;
             let practiceSessionsToAdd = 0;
             let videoCreditsToAdd = 0;
 
             if (packType === 'starter') {
-              // Starter Pack: 15 videos + 30 min AI tutor + 30 practice sessions
-              videoCreditsToAdd = 15;
-              aiTutorMinutesToAdd = 30;
-              practiceSessionsToAdd = 30;
+              // Starter Pack credits from config
+              videoCreditsToAdd = getConfigNumber('starter_pack_video_credits', 15);
+              aiTutorMinutesToAdd = getConfigNumber('starter_pack_ai_tutor_minutes', 30);
+              practiceSessionsToAdd = getConfigNumber('starter_pack_practice_sessions', 30);
             } else if (packType === 'topup') {
-              // Top-up: 10 videos + 15 min AI tutor
-              videoCreditsToAdd = 10;
-              aiTutorMinutesToAdd = 15;
+              // Top-up credits from config
+              videoCreditsToAdd = getConfigNumber('topup_video_credits', 10);
+              aiTutorMinutesToAdd = getConfigNumber('topup_ai_tutor_minutes', 15);
             }
 
             // Add credits using the database function

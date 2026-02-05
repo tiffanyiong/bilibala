@@ -1,10 +1,15 @@
 import cors from 'cors';
 import express from 'express';
 import http from 'node:http';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 
 // Import configuration
 import { config } from './config/env.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const isProduction = process.env.NODE_ENV === 'production';
 
 // Import routes
 import videoRoutes from './routes/videoRoutes.js';
@@ -42,6 +47,17 @@ app.use('/api', translationRoutes);
 app.use('/api', subscriptionRoutes);
 app.use('/api', deeplRoutes);
 app.use('/api', exploreRoutes);
+
+// Serve static files in production (Vite build output)
+if (isProduction) {
+  const distPath = path.join(__dirname, '../dist');
+  app.use(express.static(distPath));
+
+  // SPA fallback - serve index.html for all non-API routes
+  app.get('*', (_req, res) => {
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+}
 
 // Create HTTP server and WebSocket server
 const server = http.createServer(app);

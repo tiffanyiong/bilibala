@@ -1,4 +1,15 @@
 import React, { useEffect, useState } from 'react';
+import {
+  PRO_ANNUAL_PRICE,
+  PRO_MONTHLY_PRICE,
+  STARTER_PACK_AI_TUTOR_MINUTES,
+  STARTER_PACK_PRACTICE_SESSIONS,
+  STARTER_PACK_PRICE,
+  STARTER_PACK_VIDEO_CREDITS,
+  TOPUP_AI_TUTOR_MINUTES,
+  TOPUP_PRICE,
+  TOPUP_VIDEO_CREDITS,
+} from '../../../shared/config/aiTutorConfig';
 import { useAuth } from '../../../shared/context/AuthContext';
 import { useSubscription } from '../../../shared/context/SubscriptionContext';
 import { TIER_LIMITS } from '../../../shared/types/database';
@@ -6,6 +17,78 @@ import { TIER_LIMITS } from '../../../shared/types/database';
 interface SubscriptionPageProps {
   onOpenAuthModal: () => void;
 }
+
+// Icons as components for cleaner code
+const VideoIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18" />
+    <line x1="7" y1="2" x2="7" y2="22" />
+    <line x1="17" y1="2" x2="17" y2="22" />
+    <line x1="2" y1="12" x2="22" y2="12" />
+    <line x1="2" y1="7" x2="7" y2="7" />
+    <line x1="2" y1="17" x2="7" y2="17" />
+    <line x1="17" y1="17" x2="22" y2="17" />
+    <line x1="17" y1="7" x2="22" y2="7" />
+  </svg>
+);
+
+const WaveformIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M2 12h2" />
+    <path d="M6 8v8" />
+    <path d="M10 4v16" />
+    <path d="M14 6v12" />
+    <path d="M18 9v6" />
+    <path d="M22 12h-2" />
+  </svg>
+);
+
+const ChatIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+  </svg>
+);
+
+const InfinityIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18.178 8c5.096 0 5.096 8 0 8-5.095 0-7.133-8-12.739-8-4.585 0-4.585 8 0 8 5.606 0 7.644-8 12.74-8z" />
+  </svg>
+);
+
+const StarIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+  </svg>
+);
+
+const LayersIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <polygon points="12 2 2 7 12 12 22 7 12 2" />
+    <polyline points="2 17 12 22 22 17" />
+    <polyline points="2 12 12 17 22 12" />
+  </svg>
+);
+
+const TranslateIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M5 8l6 6" />
+    <path d="M4 14l6-6 2-3" />
+    <path d="M2 5h12" />
+    <path d="M7 2v3" />
+    <path d="M22 22l-5-10-5 10" />
+    <path d="M14 18h6" />
+  </svg>
+);
+
+const FileTextIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <polyline points="14 2 14 8 20 8" />
+    <line x1="16" y1="13" x2="8" y2="13" />
+    <line x1="16" y1="17" x2="8" y2="17" />
+    <polyline points="10 9 9 9 8 9" />
+  </svg>
+);
 
 const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ onOpenAuthModal }) => {
   const { user } = useAuth();
@@ -105,48 +188,10 @@ const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ onOpenAuthModal }) 
   const freeLimits = TIER_LIMITS.free;
   const proLimits = TIER_LIMITS.pro;
 
-  const features = [
-    {
-      name: 'Videos per month',
-      free: `${freeLimits.videosPerMonth}`,
-      pro: 'Unlimited',
-    },
-    {
-      name: 'Practice sessions',
-      free: `${freeLimits.practiceSessionsPerMonth}/month`,
-      pro: 'Unlimited',
-    },
-    {
-      name: 'AI Tutor',
-      free: '—',
-      pro: `${proLimits.aiTutorMinutesPerMonth} min/month`,
-    },
-    {
-      name: 'AI feedback',
-      free: `${freeLimits.practiceSessionsPerMonth} total`,
-      pro: 'Unlimited',
-    },
-    {
-      name: 'PDF export',
-      free: '—',
-      pro: '✓',
-    },
-    {
-      name: 'Video library',
-      free: `Up to ${freeLimits.videoLibraryMax} videos`,
-      pro: 'Unlimited',
-    },
-    {
-      name: 'Text translator',
-      free: '—',
-      pro: '✓',
-    },
-  ];
-
   return (
     <div className="min-h-screen pt-20 pb-12 px-4">
-      <div className="max-w-3xl mx-auto">
-        {/* Success banner */}
+      <div className="max-w-4xl mx-auto">
+        {/* Success banners */}
         {showSuccess && (
           <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-xl mb-6 text-sm flex items-center gap-2">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -156,40 +201,41 @@ const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ onOpenAuthModal }) 
           </div>
         )}
 
-        {/* Credit success banner */}
         {showCreditSuccess && (
           <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-xl mb-6 text-sm flex items-center gap-2">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
             </svg>
-            {showCreditSuccess === 'topup' ? 'AI Tutor top-up added!' : 'Starter Pack purchased!'} Your credits are ready to use.
+            {showCreditSuccess === 'topup' ? 'Top-up added!' : 'Starter Pack purchased!'} Your credits are ready to use.
           </div>
         )}
 
         {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-serif text-stone-800 mb-2">Subscription Plan</h1>
-          <p className="text-sm text-stone-500">Choose the plan that works for you</p>
+        <div className="text-center mb-10">
+          <h1 className="text-3xl font-serif text-stone-800 mb-2">Plan</h1>
+          <p className="text-stone-500">
+            You're currently on a {tier === 'pro' ? 'Pro' : 'free'} plan. Select any of the plans or top-up options that fits your needs.
+          </p>
         </div>
 
         {/* Current usage (if logged in) */}
         {user && !isLoading && (
-          <div className="bg-[#FAF9F6] border border-stone-200 rounded-xl p-5 mb-8">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-stone-400 mb-3">
+          <div className="bg-white border border-stone-200 rounded-2xl p-6 mb-8">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-stone-400 mb-4">
               Current Usage — {tier === 'pro' ? 'Pro' : 'Free'} Plan
             </h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
               <UsageMeter
-                label="Videos"
+                label="Video"
                 used={usage.videosUsed}
                 limit={videosLimit}
+                credits={videoCredits}
               />
               <UsageMeter
-                label="Practice"
+                label="AI Report"
                 used={usage.practiceSessionsUsed}
                 limit={practiceSessionsLimit}
                 credits={practiceSessionCredits}
-                creditText={practiceSessionCredits > 0 ? `You have ${practiceSessionCredits} credits` : undefined}
               />
               <UsageMeter
                 label="AI Tutor"
@@ -197,8 +243,6 @@ const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ onOpenAuthModal }) 
                 limit={aiTutorMinutesLimit}
                 unit="min"
                 credits={aiTutorCreditMinutes}
-                color="amber"
-                creditText={aiTutorCreditMinutes > 0 ? `You have ${aiTutorCreditMinutes} min credits` : undefined}
               />
               <UsageMeter
                 label="PDF Export"
@@ -210,210 +254,195 @@ const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ onOpenAuthModal }) 
           </div>
         )}
 
-        {/* Billing cycle toggle */}
-        {tier === 'free' && (
-          <div className="flex justify-center mb-6">
-            <div className="bg-stone-100 rounded-lg p-1 flex gap-1">
-              <button
-                onClick={() => setBillingCycle('monthly')}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                  billingCycle === 'monthly'
-                    ? 'bg-white text-stone-800 shadow-sm'
-                    : 'text-stone-500 hover:text-stone-700'
-                }`}
-              >
-                Monthly
-              </button>
-              <button
-                onClick={() => setBillingCycle('annual')}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                  billingCycle === 'annual'
-                    ? 'bg-white text-stone-800 shadow-sm'
-                    : 'text-stone-500 hover:text-stone-700'
-                }`}
-              >
-                Annual
-                <span className="ml-1 text-xs text-green-600 font-semibold">Save 22%</span>
-              </button>
-            </div>
-          </div>
-        )}
-
         {/* Pricing cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-          {/* Free Plan */}
-          <div className={`bg-[#FAF9F6] border rounded-xl p-6 relative ${
-            tier === 'free' ? 'border-stone-400 ring-1 ring-stone-300' : 'border-stone-200'
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+
+          {/* Basic/Free Plan */}
+          <div className={`bg-white border rounded-2xl p-6 flex flex-col ${
+            tier === 'free' ? 'border-stone-300 shadow-sm' : 'border-stone-200'
           }`}>
-            {tier === 'free' && (
-              <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-stone-600 text-white text-xs font-medium px-3 py-1 rounded-full">
-                Current
+            <div className="mb-6">
+              <h2 className="text-lg font-medium text-stone-800 mb-4">Basic</h2>
+              <div className="mb-2">
+                <span className="text-4xl font-semibold text-stone-800">Free</span>
               </div>
-            )}
-            <div className="mb-4">
-              <h2 className="text-lg font-medium text-stone-800">Free</h2>
-              <div className="mt-2">
-                <span className="text-3xl font-bold text-stone-800">$0</span>
-                <span className="text-sm text-stone-500">/month</span>
-              </div>
-              <p className="text-xs text-stone-500 mt-1">Get started for free</p>
+              <p className="text-sm text-stone-500">Try Bilibala for free, no card required</p>
             </div>
 
-
-            <ul className="mt-5 space-y-2.5">
-              {features.map(f => (
-                <li key={f.name} className="flex items-center gap-2 text-sm text-stone-600">
-                  <span className={f.free === '—' ? 'text-stone-300' : 'text-stone-500'}>
-                    {f.free === '—' ? '✗' : '✓'}
-                  </span>
-                  <span className={f.free === '—' ? 'text-stone-400' : ''}>
-                    {f.name}: {f.free}
-                  </span>
-                </li>
-              ))}
+            <ul className="space-y-4 flex-1">
+              <li className="flex items-center gap-3 text-sm text-stone-600">
+                <span className="text-stone-400"><VideoIcon /></span>
+                <span>{freeLimits.videosPerMonth} videos / month</span>
+              </li>
+              <li className="flex items-center gap-3 text-sm text-stone-600">
+                <span className="text-stone-400"><WaveformIcon /></span>
+                <span>{freeLimits.practiceSessionsPerMonth} AI Report</span>
+              </li>
+              <li className="flex items-center gap-3 text-sm text-stone-600">
+                <span className="text-stone-400"><LayersIcon /></span>
+                <span>Save up to {freeLimits.videoLibraryMax} videos</span>
+              </li>
             </ul>
+
+            <button
+              disabled
+              className="w-full mt-6 bg-stone-100 text-stone-500 py-3 rounded-full text-sm font-medium cursor-not-allowed"
+            >
+              {tier === 'free' ? 'Current plan' : 'Downgrade'}
+            </button>
           </div>
 
           {/* Pro Plan */}
-          <div className={`bg-[#FAF9F6] border rounded-xl p-6 relative ${
-            tier === 'pro' ? 'border-stone-800 ring-1 ring-stone-600' : 'border-stone-300'
+          <div className={`relative bg-white border rounded-2xl p-6 flex flex-col ${
+            tier === 'pro'
+              ? 'border-stone-800 ring-1 ring-stone-600 shadow-sm'
+              : 'border-stone-400 shadow-sm'
           }`}>
-            {tier === 'pro' ? (
-              <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-stone-800 text-white text-xs font-medium px-3 py-1 rounded-full">
-                Current
-              </div>
-            ) : (
-              <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-stone-800 text-white text-xs font-medium px-3 py-1 rounded-full">
-                Recommended
-              </div>
-            )}
-
-            <div className="mb-4">
-              <h2 className="text-lg font-medium text-stone-800">Pro</h2>
-              <div className="mt-2">
-                <span className="text-3xl font-bold text-stone-800">
-                  ${billingCycle === 'annual' ? '7' : '9'}
-                </span>
-                <span className="text-sm text-stone-500">/month</span>
-                {billingCycle === 'annual' && (
-                  <span className="text-xs text-stone-400 block">Billed annually ($84/year)</span>
-                )}
-              </div>
-              <p className="text-xs text-stone-500 mt-1">For serious language learners</p>
+            {/* Badge */}
+            <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-stone-800 text-white text-xs font-medium px-3 py-1 rounded-full">
+              {tier === 'pro' ? 'Current' : 'Recommended'}
             </div>
 
+            {/* Toggle inside card */}
+            <div className="flex items-center justify-between mb-4 mt-2">
+              <h2 className="text-lg font-medium text-stone-800">Pro</h2>
+              {tier !== 'pro' && (
+                <div className="flex items-center gap-2 text-xs">
+                  <span className={billingCycle === 'monthly' ? 'text-stone-800' : 'text-stone-400'}>Monthly</span>
+                  <button
+                    onClick={() => setBillingCycle(billingCycle === 'annual' ? 'monthly' : 'annual')}
+                    className={`relative w-11 h-6 rounded-full transition-colors ${
+                      billingCycle === 'annual' ? 'bg-stone-800' : 'bg-stone-300'
+                    }`}
+                  >
+                    <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${
+                      billingCycle === 'annual' ? 'left-6' : 'left-1'
+                    }`} />
+                  </button>
+                  <span className={billingCycle === 'annual' ? 'text-stone-800 font-medium' : 'text-stone-400'}>Annual</span>
+                </div>
+              )}
+            </div>
+
+            <div className="mb-6">
+              <div className="flex items-baseline gap-2 mb-1">
+                {billingCycle === 'annual' && tier !== 'pro' && (
+                  <span className="text-lg text-stone-400 line-through">${PRO_MONTHLY_PRICE}</span>
+                )}
+                <span className="text-4xl font-semibold text-stone-800">
+                  ${tier === 'pro' ? PRO_MONTHLY_PRICE : (billingCycle === 'annual' ? PRO_ANNUAL_PRICE : PRO_MONTHLY_PRICE)}
+                </span>
+                <span className="text-stone-500">/ month</span>
+              </div>
+              <p className="text-sm text-stone-500">
+                {tier === 'pro'
+                  ? 'Your current plan'
+                  : billingCycle === 'annual'
+                    ? `Billed annually, save $${(PRO_MONTHLY_PRICE - PRO_ANNUAL_PRICE) * 12}/year`
+                    : 'Billed monthly'
+                }
+              </p>
+            </div>
+
+            <ul className="space-y-4 flex-1">
+              <li className="flex items-center gap-3 text-sm text-stone-700">
+                <span className="text-stone-500"><VideoIcon /></span>
+                <span>{proLimits.videosPerMonth} videos / month</span>
+              </li>
+      
+              <li className="flex items-center gap-3 text-sm text-stone-700">
+                <span className="text-stone-500"><ChatIcon /></span>
+                <span>{proLimits.aiTutorMinutesPerMonth} min AI Tutor / month</span>
+              </li>
+              <li className="flex items-center gap-3 text-sm text-stone-700">
+                <span className="text-stone-500"><WaveformIcon /></span>
+                <span>Unlimited AI Report</span>
+              </li>
+              <li className="flex items-center gap-3 text-sm text-stone-700">
+                <span className="text-stone-500"><TranslateIcon /></span>
+                <span>Text highlight translation</span>
+              </li>
+              <li className="flex items-center gap-3 text-sm text-stone-700">
+                <span className="text-stone-500"><FileTextIcon /></span>
+                <span>PDF export</span>
+              </li>
+            </ul>
+
             {tier === 'pro' ? (
-              <>
-                <button
-                  onClick={handleManageBilling}
-                  className="w-full bg-stone-200 text-stone-700 py-2.5 rounded-lg text-sm font-medium hover:bg-stone-300 transition-all"
-                >
-                  Manage Billing
-                </button>
+              <div className="mt-6">
+          
                 {subscription?.current_period_end && (
                   <p className="text-xs text-stone-500 mt-2 text-center">
-                    {status === 'canceled' ? 'Access until: ' : 'Renews on: '}
+                    {status === 'canceled' ? 'Access until: ' : 'Renews: '}
                     {formatDate(subscription.current_period_end)}
                   </p>
                 )}
-              </>
+                <button
+                  onClick={handleManageBilling}
+                  className="w-full bg-white text-stone-700 py-3 rounded-full text-sm font-medium hover:bg-stone-50 transition-all border border-stone-200"
+                >
+                  Manage Billing
+                </button>
+              </div>
             ) : (
               <button
                 onClick={handleUpgrade}
                 disabled={checkoutLoading}
-                className="w-full bg-stone-800 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-stone-900 transition-all disabled:opacity-50"
+                className="w-full mt-6 bg-stone-800 text-white py-3 rounded-full text-sm font-medium hover:bg-stone-900 transition-all disabled:opacity-50"
               >
-                {checkoutLoading ? 'Loading...' : 'Upgrade to Pro'}
+                {checkoutLoading ? 'Loading...' : 'Upgrade'}
               </button>
             )}
-
-            <ul className="mt-5 space-y-2.5">
-              {features.map(f => (
-                <li key={f.name} className="flex items-center gap-2 text-sm text-stone-700">
-                  <span className="text-green-600">✓</span>
-                  <span>{f.name}: {f.pro}</span>
-                </li>
-              ))}
-            </ul>
           </div>
 
-          {/* Starter Pack - only for free users */}
-          {tier === 'free' && (
-            <div className="bg-[#FAF9F6] border border-stone-200 rounded-xl p-6">
-              <div className="mb-4">
-                <h2 className="text-lg font-medium text-stone-800">Starter Pack</h2>
-                <div className="mt-2">
-                  <span className="text-3xl font-bold text-stone-800">$5</span>
-                  <span className="text-sm text-stone-500"> one-time</span>
-                </div>
-                <p className="text-xs text-stone-500 mt-1">Try premium features</p>
+          {/* Top Up / Starter Pack */}
+          <div className="bg-white border border-stone-200 rounded-2xl p-6 flex flex-col">
+            <div className="mb-6">
+              <h2 className="text-lg font-medium text-stone-800 mb-4">
+                {tier === 'pro' ? 'Top Up' : 'Starter Pack'}
+              </h2>
+              <div className="mb-1">
+                <span className="text-4xl font-semibold text-stone-800">
+                  ${tier === 'pro' ? TOPUP_PRICE : STARTER_PACK_PRICE}
+                </span>
               </div>
-
-              <button
-                onClick={() => handleBuyCredits('starter')}
-                disabled={creditCheckoutLoading === 'starter'}
-                className="w-full bg-stone-100 text-stone-700 py-2.5 rounded-lg text-sm font-medium hover:bg-stone-200 transition-all disabled:opacity-50"
-              >
-                {creditCheckoutLoading === 'starter' ? 'Loading...' : 'Buy Starter Pack'}
-              </button>
-
-              <ul className="mt-5 space-y-2.5">
-                <li className="flex items-center gap-2 text-sm text-stone-700">
-                  <span className="text-green-600">✓</span>
-                  <span>30 min AI Tutor</span>
-                </li>
-                <li className="flex items-center gap-2 text-sm text-stone-700">
-                  <span className="text-green-600">✓</span>
-                  <span>30 practice sessions</span>
-                </li>
-                <li className="flex items-center gap-2 text-sm text-stone-700">
-                  <span className="text-green-600">✓</span>
-                  <span>Never expires</span>
-                </li>
-              </ul>
+              <p className="text-sm text-stone-500">Pay as you go, one-time payment</p>
             </div>
-          )}
 
-          {/* AI Tutor Top-up - only for pro users */}
-          {tier === 'pro' && (
-            <div className="bg-[#FAF9F6] border border-stone-200 rounded-xl p-6">
-              <div className="mb-4">
-                <h2 className="text-lg font-medium text-stone-800">AI Tutor Top-up</h2>
-                <div className="mt-2">
-                  <span className="text-3xl font-bold text-stone-800">$3</span>
-                  <span className="text-sm text-stone-500"> one-time</span>
-                </div>
-                <p className="text-xs text-stone-500 mt-1">Need more AI time?</p>
-              </div>
+            <ul className="space-y-4 flex-1">
+              <li className="flex items-center gap-3 text-sm text-stone-600">
+                <span className="text-stone-400"><VideoIcon /></span>
+                <span>{tier === 'pro' ? TOPUP_VIDEO_CREDITS : STARTER_PACK_VIDEO_CREDITS} videos per pack</span>
+              </li>
+              <li className="flex items-center gap-3 text-sm text-stone-600">
+                <span className="text-stone-400"><ChatIcon /></span>
+                <span>{tier === 'pro' ? TOPUP_AI_TUTOR_MINUTES : STARTER_PACK_AI_TUTOR_MINUTES} min AI Tutor</span>
+              </li>
+              {tier === 'free' && (
+                <li className="flex items-center gap-3 text-sm text-stone-600">
+                  <span className="text-stone-400"><WaveformIcon /></span>
+                  <span>{STARTER_PACK_PRACTICE_SESSIONS} AI Report</span>
+                </li>
+              )}
+              <li className="flex items-center gap-3 text-sm text-stone-600">
+                <span className="text-stone-400"><InfinityIcon /></span>
+                <span>Never expires</span>
+              </li>
+       
+            </ul>
 
-              <button
-                onClick={() => handleBuyCredits('topup')}
-                disabled={creditCheckoutLoading === 'topup'}
-                className="w-full bg-stone-100 text-stone-700 py-2.5 rounded-lg text-sm font-medium hover:bg-stone-200 transition-all disabled:opacity-50"
-              >
-                {creditCheckoutLoading === 'topup' ? 'Loading...' : 'Buy Top-up'}
-              </button>
-
-              <ul className="mt-5 space-y-2.5">
-                <li className="flex items-center gap-2 text-sm text-stone-700">
-                  <span className="text-green-600">✓</span>
-                  <span>+30 min AI Tutor</span>
-                </li>
-                <li className="flex items-center gap-2 text-sm text-stone-700">
-                  <span className="text-green-600">✓</span>
-                  <span>Never expires</span>
-                </li>
-                <li className="flex items-center gap-2 text-sm text-stone-700">
-                  <span className="text-green-600">✓</span>
-                  <span>Stack with monthly limit</span>
-                </li>
-              </ul>
-            </div>
-          )}
+            <button
+              onClick={() => handleBuyCredits(tier === 'pro' ? 'topup' : 'starter')}
+              disabled={creditCheckoutLoading !== null}
+              className="w-full mt-6 bg-white text-stone-700 py-3 rounded-full text-sm font-medium hover:bg-stone-50 transition-all border border-stone-300 disabled:opacity-50"
+            >
+              {creditCheckoutLoading ? 'Loading...' : 'Buy Credits'}
+            </button>
+          </div>
         </div>
 
         {/* FAQ */}
-        <div className="bg-[#FAF9F6] border border-stone-200 rounded-xl p-6">
+        <div className="bg-white border border-stone-200 rounded-2xl p-6">
           <h3 className="text-sm font-semibold text-stone-700 mb-4">Frequently Asked Questions</h3>
           <div className="space-y-4">
             <FaqItem
@@ -426,7 +455,7 @@ const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ onOpenAuthModal }) 
             />
             <FaqItem
               q="How does the AI Tutor limit work?"
-              a="Pro users get 60 minutes of AI Tutor conversation per month. You can buy additional minutes anytime with the top-up pack."
+              a="Pro users get 60 minutes of AI Tutor conversation per month. You can buy additional credits anytime with the top-up pack."
             />
             <FaqItem
               q="Do credits expire?"
@@ -450,9 +479,7 @@ const UsageMeter: React.FC<{
   unit?: string;
   showAsEnabled?: boolean;
   credits?: number;
-  color?: 'stone' | 'amber';
-  creditText?: string;
-}> = ({ label, used, limit, unit = '', showAsEnabled, credits = 0, color = 'stone', creditText }) => {
+}> = ({ label, used, limit, unit = '', showAsEnabled, credits = 0 }) => {
   const hasCredits = credits > 0;
 
   if (showAsEnabled) {
@@ -487,7 +514,7 @@ const UsageMeter: React.FC<{
           {credits}{unit} <span className="text-green-600 text-xs">credits</span>
         </div>
       ) : (
-        <div className={`text-sm font-medium ${color === 'amber' ? 'text-amber-600' : (isNearLimit && !hasCredits ? 'text-amber-600' : 'text-stone-700')}`}>
+        <div className={`text-sm font-medium ${isNearLimit && !hasCredits ? 'text-amber-600' : 'text-stone-700'}`}>
           {isUnlimited ? `${used}${unit} used` : `${used}${unit} / ${limit}${unit}`}
           {hasCredits && (
             <span className="text-green-600 text-xs ml-1">+{credits}</span>
@@ -495,17 +522,12 @@ const UsageMeter: React.FC<{
         </div>
       )}
       {!isUnlimited && limit > 0 && (
-        <div className="mt-1 h-1.5 bg-stone-200 rounded-full overflow-hidden">
+        <div className="mt-1.5 h-1.5 bg-stone-100 rounded-full overflow-hidden">
           <div
-            className={`h-full rounded-full transition-all ${
-              color === 'amber' ? 'bg-amber-500' : (isNearLimit ? 'bg-amber-500' : 'bg-stone-500')
-            }`}
+            className={`h-full rounded-full transition-all ${isNearLimit ? 'bg-amber-500' : 'bg-stone-400'}`}
             style={{ width: `${percentage}%` }}
           />
         </div>
-      )}
-      {creditText && (
-        <p className="text-xs text-green-600 mt-1">{creditText}</p>
       )}
     </div>
   );

@@ -12,10 +12,24 @@ const DEFAULTS = {
   free_videos_per_month: '3',
   free_practice_sessions_per_month: '5',
   free_video_library_max: '10',
+  pro_videos_per_month: '100',
   anonymous_video_limit: '2',
   anonymous_practice_limit: '2',
   practice_recording_max_seconds: '240',
   speech_analysis_timeout_seconds: '150',
+  // Starter Pack credits
+  starter_pack_video_credits: '15',
+  starter_pack_ai_tutor_minutes: '30',
+  starter_pack_practice_sessions: '30',
+  // Top-up Pack credits
+  topup_video_credits: '10',
+  topup_ai_tutor_minutes: '15',
+  // Prices (for UI display only - actual prices come from Stripe)
+  pro_monthly_price: '9',
+  pro_annual_price: '7',
+  pro_annual_total: '84',
+  starter_pack_price: '5',
+  topup_price: '3',
 };
 
 /**
