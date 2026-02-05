@@ -1,0 +1,121 @@
+name: Auto Release
+
+on:
+  push:
+    branches:
+      - beta
+      - production
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for tags
+
+      - name: Get latest tag
+        id: get_tag
+        run: |
+          BRANCH="${{ github.ref_name }}"
+
+          if [[ "$BRANCH" == "production" ]]; then
+            # Get latest production tag (v*.*.* without -beta)
+            LATEST_TAG=$(git tag -l "v[0-9]*.[0-9]*.[0-9]*" --sort=-v:refname | grep -v beta | head -n1)
+
+            if [[ -z "$LATEST_TAG" ]]; then
+              NEW_TAG="v1.0.0"
+            else
+              # Extract version numbers
+              VERSION=${LATEST_TAG#v}
+              MAJOR=$(echo $VERSION | cut -d. -f1)
+              MINOR=$(echo $VERSION | cut -d. -f2)
+              PATCH=$(echo $VERSION | cut -d. -f3)
+
+              # Increment patch version
+              PATCH=$((PATCH + 1))
+              NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
+            fi
+
+            echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
+            echo "prerelease=false" >> $GITHUB_OUTPUT
+            echo "name=Release $NEW_TAG" >> $GITHUB_OUTPUT
+
+          elif [[ "$BRANCH" == "beta" ]]; then
+            # Get latest production version for base
+            LATEST_PROD=$(git tag -l "v[0-9]*.[0-9]*.[0-9]*" --sort=-v:refname | grep -v beta | head -n1)
+
+            if [[ -z "$LATEST_PROD" ]]; then
+              BASE_VERSION="1.0.0"
+            else
+              BASE_VERSION=${LATEST_PROD#v}
+              # Increment minor for beta
+              MAJOR=$(echo $BASE_VERSION | cut -d. -f1)
+              MINOR=$(echo $BASE_VERSION | cut -d. -f2)
+              MINOR=$((MINOR + 1))
+              BASE_VERSION="${MAJOR}.${MINOR}.0"
+            fi
+
+            # Get latest beta tag for this version
+            LATEST_BETA=$(git tag -l "v${BASE_VERSION}-beta.*" --sort=-v:refname | head -n1)
+
+            if [[ -z "$LATEST_BETA" ]]; then
+              NEW_TAG="v${BASE_VERSION}-beta.1"
+            else
+              # Extract beta number and increment
+              BETA_NUM=$(echo $LATEST_BETA | sed 's/.*-beta\.//')
+              BETA_NUM=$((BETA_NUM + 1))
+              NEW_TAG="v${BASE_VERSION}-beta.${BETA_NUM}"
+            fi
+
+            echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
+            echo "prerelease=true" >> $GITHUB_OUTPUT
+            echo "name=Beta $NEW_TAG" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          BRANCH="${{ github.ref_name }}"
+
+          # Get commits since last tag
+          if [[ "$BRANCH" == "production" ]]; then
+            PREV_TAG=$(git tag -l "v[0-9]*.[0-9]*.[0-9]*" --sort=-v:refname | grep -v beta | head -n1)
+          else
+            PREV_TAG=$(git tag -l "v*-beta.*" --sort=-v:refname | head -n1)
+          fi
+
+          if [[ -z "$PREV_TAG" ]]; then
+            COMMITS=$(git log --oneline -10)
+          else
+            COMMITS=$(git log --oneline ${PREV_TAG}..HEAD)
+          fi
+
+          # Write to file for multiline support
+          echo "## What's Changed" > release_notes.md
+          echo "" >> release_notes.md
+          echo "$COMMITS" | while read line; do
+            echo "- $line" >> release_notes.md
+          done
+          echo "" >> release_notes.md
+          echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${{ steps.get_tag.outputs.tag }}" >> release_notes.md
+
+      - name: Create tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.get_tag.outputs.tag }}" -m "${{ steps.get_tag.outputs.name }}"
+          git push origin "${{ steps.get_tag.outputs.tag }}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.get_tag.outputs.tag }}
+          name: ${{ steps.get_tag.outputs.name }}
+          body_path: release_notes.md
+          prerelease: ${{ steps.get_tag.outputs.prerelease }}
+          generate_release_notes: false
