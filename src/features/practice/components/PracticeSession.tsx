@@ -1,5 +1,5 @@
 import { TIER_LIMITS } from '@/shared/types/database';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../../shared/context/AuthContext';
 import { useSubscription } from '../../../shared/context/SubscriptionContext';
 import { getBackendOrigin } from '../../../shared/services/backend';
@@ -22,6 +22,8 @@ interface PracticeSessionProps {
   nativeLang: string;
   targetLang: string;
   analysisId?: string | null;
+  videoTitle?: string;
+  videoId?: string;
   onExit: () => void;
   onRequireAuth?: () => void;
 }
@@ -98,6 +100,8 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
   nativeLang,
   targetLang,
   analysisId,
+  videoTitle,
+  videoId,
   onExit,
   onRequireAuth
 }) => {
@@ -123,6 +127,35 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
   }>>({});
 
   const AI_GENERATED_LIMIT = 3;
+
+  // Swipe/drag gesture handling for question navigation (mobile + desktop)
+  const dragStart = useRef<{ x: number; y: number } | null>(null);
+
+  const handleSwipeNavigation = (endX: number, endY: number) => {
+    if (dragStart.current === null || allQuestions.length <= 1 || isAnalyzing) return;
+    const diffX = dragStart.current.x - endX;
+    const diffY = dragStart.current.y - endY;
+    const minSwipeDistance = 50;
+    // Only trigger if horizontal swipe is greater than vertical
+    if (Math.abs(diffX) > minSwipeDistance && Math.abs(diffX) > Math.abs(diffY)) {
+      if (diffX > 0) {
+        // Swipe/drag left -> next question
+        handleQuestionSwitch(allQuestions[currentQuestionIndex < allQuestions.length - 1 ? currentQuestionIndex + 1 : 0]);
+      } else {
+        // Swipe/drag right -> previous question
+        handleQuestionSwitch(allQuestions[currentQuestionIndex > 0 ? currentQuestionIndex - 1 : allQuestions.length - 1]);
+      }
+    }
+    dragStart.current = null;
+  };
+
+  // Touch events (mobile only - desktop keeps text selectable)
+  const handleTouchStart = (e: React.TouchEvent) => {
+    dragStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  };
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    handleSwipeNavigation(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+  };
 
   // --- EFFECT: SYNC UI WITH CACHE ON QUESTION CHANGE ---
  useEffect(() => {
@@ -395,28 +428,92 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
             </div>
 
             {/* Question Navigation */}
-            <div className="flex items-center justify-center gap-4">
-              {allQuestions.length > 1 && (
-                <button onClick={() => handleQuestionSwitch(allQuestions[currentQuestionIndex > 0 ? currentQuestionIndex - 1 : allQuestions.length - 1])} disabled={isAnalyzing} className="text-stone-300 hover:text-stone-500 p-1 disabled:opacity-30">
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><polyline points="15 18 9 12 15 6" /></svg>
-                </button>
-              )}
-              <div className="flex flex-col items-center gap-2 flex-1 max-w-3xl">
-                <h1 className="text-3xl md:text-4xl font-serif text-stone-900 leading-tight">
+            <div
+              className="flex flex-col items-center w-full touch-pan-y"
+              onTouchStart={handleTouchStart}
+              onTouchEnd={handleTouchEnd}
+            >
+              <div className="flex flex-col items-center gap-2 max-w-3xl px-4 md:px-12">
+                <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-serif text-stone-900 leading-relaxed sm:leading-snug md:leading-tight">
                   {topic.question}
-                  
+
                   {/* AI Generate Button */}
                   {onGenerateQuestion && (
-                    <button onClick={handleGenerateQuestion} disabled={!canGenerate || isGenerating} className="ml-2 align-middle text-stone-400 hover:text-stone-700 disabled:opacity-30">
-                      {isGenerating ? <div className="w-5 h-5 border-2 border-stone-400 border-t-transparent animate-spin rounded-full"/> : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6l2.1 2.1M5.6 18.4l2.1-2.1m8.6-8.6l2.1-2.1" /></svg>}
+                    <button
+                      onClick={handleGenerateQuestion}
+                      disabled={!canGenerate || isGenerating}
+                      className={`group inline-flex items-center gap-1 ml-2 align-middle rounded-full transition-all duration-300 ease-out ${
+                        !canGenerate
+                          ? 'text-stone-300 cursor-not-allowed'
+                          : isGenerating
+                            ? 'text-stone-500'
+                            : 'text-stone-400 hover:text-stone-700'
+                      }`}
+                    >
+                      <span className="flex-shrink-0">
+                        {isGenerating ? (
+                          <div className="w-5 h-5 border-2 border-stone-400 border-t-transparent animate-spin rounded-full"/>
+                        ) : (
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                            <path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6l2.1 2.1M5.6 18.4l2.1-2.1m8.6-8.6l2.1-2.1" />
+                          </svg>
+                        )}
+                      </span>
+                      <span
+                        className={`grid transition-all duration-300 ease-out ${
+                          isGenerating
+                            ? 'grid-cols-[1fr] opacity-100'
+                            : 'grid-cols-[0fr] opacity-0 group-hover:grid-cols-[1fr] group-hover:opacity-100'
+                        }`}
+                      >
+                        <span className="overflow-hidden whitespace-nowrap text-xs font-medium">
+                          {isGenerating ? 'Generating...' : 'Generate'}
+                        </span>
+                      </span>
                     </button>
                   )}
                 </h1>
+                {/* Video Source Reference */}
+                {(() => {
+                  // Get the current question's source info from allQuestions
+                  const currentQuestion = allQuestions.find(q => q.questionId === topic.questionId);
+                  const sourceTitle = currentQuestion?.videoTitle || videoTitle;
+                  // Use the question's source video ID, or fall back to current video
+                  const linkVideoId = currentQuestion?.youtubeId || videoId;
+
+                  if (sourceTitle) {
+                    return (
+                      <p className="text-xs text-stone-400 mt-1">
+                        <span className="italic">Source: </span>
+                        {linkVideoId ? (
+                          <a
+                            href={`/${linkVideoId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="hover:text-stone-600 hover:underline transition-colors"
+                          >
+                            {sourceTitle}
+                          </a>
+                        ) : (
+                          <span>{sourceTitle}</span>
+                        )}
+                      </p>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
+              {/* Question Arrow Navigation - below source */}
               {allQuestions.length > 1 && (
-                <button onClick={() => handleQuestionSwitch(allQuestions[currentQuestionIndex < allQuestions.length - 1 ? currentQuestionIndex + 1 : 0])} disabled={isAnalyzing} className="text-stone-300 hover:text-stone-500 p-1 disabled:opacity-30">
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><polyline points="9 18 15 12 9 6" /></svg>
-                </button>
+                <div className="flex items-center justify-center gap-4 mt-4">
+                  <button onClick={() => handleQuestionSwitch(allQuestions[currentQuestionIndex > 0 ? currentQuestionIndex - 1 : allQuestions.length - 1])} disabled={isAnalyzing} className="text-stone-300 hover:text-stone-500 p-1 disabled:opacity-30">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><polyline points="15 18 9 12 15 6" /></svg>
+                  </button>
+                  <span className="text-xs text-stone-400">{currentQuestionIndex + 1} / {allQuestions.length}</span>
+                  <button onClick={() => handleQuestionSwitch(allQuestions[currentQuestionIndex < allQuestions.length - 1 ? currentQuestionIndex + 1 : 0])} disabled={isAnalyzing} className="text-stone-300 hover:text-stone-500 p-1 disabled:opacity-30">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><polyline points="9 18 15 12 9 6" /></svg>
+                  </button>
+                </div>
               )}
             </div>
         </div>
