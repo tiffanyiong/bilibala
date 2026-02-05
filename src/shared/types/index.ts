@@ -155,5 +155,7 @@ export enum AppState {
   SUBSCRIPTION,           // Subscription management page: /subscription
   PROFILE,                // Profile page: /profile
   SETTINGS,               // Settings page: /settings
+  PRIVACY,                // Privacy Policy page: /privacy
+  TERMS,                  // Terms of Service page: /terms
   ERROR
 }

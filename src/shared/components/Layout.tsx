@@ -1,5 +1,6 @@
 import React, { ReactNode, useEffect, useRef, useState } from 'react';
 import AuthModal from './AuthModal';
+import Footer from './Footer';
 import UserMenu from './UserMenu';
 import { DEEPL_SUPPORTED_LANGUAGES } from '../constants';
 
@@ -15,12 +16,15 @@ interface LayoutProps {
   onOpenSubscription?: () => void;
   onOpenProfile?: () => void;
   onOpenSettings?: () => void;
+  onOpenPrivacy?: () => void;
+  onOpenTerms?: () => void;
   // Translator language selector
   translatorLang?: string; // Current effective translator language (e.g., "Chinese (Mandarin - 中文)")
   onTranslatorLangChange?: (lang: string) => void;
+  showFooter?: boolean;
 }
 
-const Layout: React.FC<LayoutProps> = ({ children, onLogoClick, targetLang, level, isScrollable = false, authModalOpen, onAuthModalClose, onOpenVideoLibrary, onOpenSubscription, onOpenProfile, onOpenSettings, translatorLang, onTranslatorLangChange }) => {
+const Layout: React.FC<LayoutProps> = ({ children, onLogoClick, targetLang, level, isScrollable = false, authModalOpen, onAuthModalClose, onOpenVideoLibrary, onOpenSubscription, onOpenProfile, onOpenSettings, onOpenPrivacy, onOpenTerms, translatorLang, onTranslatorLangChange, showFooter = false }) => {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isTranslatorOpen, setIsTranslatorOpen] = useState(false);
   const translatorRef = useRef<HTMLDivElement>(null);
@@ -161,6 +165,9 @@ const Layout: React.FC<LayoutProps> = ({ children, onLogoClick, targetLang, leve
       <main className={`${classes.main} pt-20`}>
         {children}
       </main>
+      {showFooter && (
+        <Footer onOpenPrivacy={onOpenPrivacy} onOpenTerms={onOpenTerms} />
+      )}
     </div>
   );
 };
