@@ -611,16 +611,15 @@ export async function getQuestionsForTopic(
       use_count,
       cached_analyses (
         id,
-        global_videos ( title )
+        global_videos ( title, youtube_id )
       )
     `)
     .eq('topic_id', topicId)
     .eq('is_public', true);
 
-  // Filter by difficulty level if provided
-  // Show questions matching user's level OR questions with no level set (legacy data)
+  // Filter by difficulty level if provided (strict matching only)
   if (userLevel) {
-    query = query.or(`difficulty_level.eq.${userLevel.toLowerCase()},difficulty_level.is.null`);
+    query = query.eq('difficulty_level', userLevel.toLowerCase());
   }
 
   const { data, error } = await query.order('use_count', { ascending: false });
@@ -638,6 +637,7 @@ export async function getQuestionsForTopic(
     useCount: q.use_count,
     videoTitle: q.cached_analyses?.global_videos?.title || null,
     analysisId: q.analysis_id || null,
+    youtubeId: q.cached_analyses?.global_videos?.youtube_id || null,
   }));
 }
 
@@ -813,6 +813,31 @@ export async function getPracticeTopicsForAnalysis(
   console.log('[DB] Practice topics with questionId:', result.map(t => ({ topic: t.topic, topicId: t.id, questionId: t.questionId, question: t.question?.substring(0, 30) })));
 
   return result;
+}
+
+/**
+ * Get topic IDs that have at least one question at a specific difficulty level.
+ * Used to filter out topics with no questions for the user's selected level.
+ */
+export async function getTopicIdsWithQuestionsAtLevel(
+  topicIds: string[],
+  level: string
+): Promise<Set<string>> {
+  if (topicIds.length === 0) return new Set();
+
+  const { data, error } = await supabase
+    .from('topic_questions')
+    .select('topic_id')
+    .in('topic_id', topicIds)
+    .eq('difficulty_level', level.toLowerCase())
+    .eq('is_public', true);
+
+  if (error) {
+    console.error('Error fetching topics with questions:', error);
+    return new Set(topicIds); // On error, don't filter out any topics
+  }
+
+  return new Set((data || []).map((q: any) => q.topic_id));
 }
 
 /**
