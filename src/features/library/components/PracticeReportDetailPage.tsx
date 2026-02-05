@@ -1,13 +1,12 @@
-import React, { useEffect, useState, useMemo, Component, ErrorInfo, ReactNode } from 'react';
-import { VideoHistoryItem, DbPracticeSession } from '../../../shared/types/database';
-import { SpeechAnalysisResult } from '../../../shared/types';
-import { getPracticeSessionById } from '../../../shared/services/database';
+import React, { Component, ErrorInfo, ReactNode, useEffect, useState } from 'react';
 import { useAuth } from '../../../shared/context/AuthContext';
 import { useSubscription } from '../../../shared/context/SubscriptionContext';
-import PyramidFeedback from '../../practice/components/PyramidFeedback';
-import { exportPracticeReportToPdf } from '../../../shared/utils/pdfExport';
 import { getBackendOrigin } from '../../../shared/services/backend';
-import { UI_TRANSLATIONS } from '../../../shared/constants';
+import { getPracticeSessionById } from '../../../shared/services/database';
+import { SpeechAnalysisResult } from '../../../shared/types';
+import { DbPracticeSession, VideoHistoryItem } from '../../../shared/types/database';
+import { exportPracticeReportToPdf } from '../../../shared/utils/pdfExport';
+import PyramidFeedback from '../../practice/components/PyramidFeedback';
 
 // Stable default labels object to prevent infinite re-renders in PyramidFeedback
 const DEFAULT_LABELS = {
@@ -64,6 +63,10 @@ const DEFAULT_LABELS = {
   topic: 'Topic',
   question: 'Question',
   video: 'Video',
+  source: 'Source',
+  // Button labels
+  downloadPdf: 'Download PDF',
+  exporting: 'Exporting...',
 };
 
 // Error boundary to catch PyramidFeedback crashes
@@ -214,8 +217,8 @@ const PracticeReportDetailPage: React.FC<PracticeReportDetailPageProps> = ({
       return;
     }
 
-    // Check cache first
-    const cacheKey = `ui-labels-${languageToUse}-${isEasy}`;
+    // Check cache first (v3 adds downloadPdf/exporting labels)
+    const cacheKey = `ui-labels-v3-${languageToUse}-${isEasy}`;
     try {
       const cached = localStorage.getItem(cacheKey);
       if (cached) {
@@ -287,19 +290,6 @@ const PracticeReportDetailPage: React.FC<PracticeReportDetailPageProps> = ({
     });
   };
 
-  // Get header labels based on level (Easy = native lang, Med/Hard = target lang)
-  const headerLabels = useMemo(() => {
-    const isEasy = video.level.toLowerCase() === 'easy';
-    const nativeLang = session?.native_lang || 'English';
-    const langToUse = isEasy ? nativeLang : video.targetLang;
-    const uiText = UI_TRANSLATIONS[langToUse] || UI_TRANSLATIONS['English'];
-    return {
-      topic: uiText.topic || 'Topic',
-      question: uiText.question || 'Question',
-      video: uiText.video || 'Video',
-    };
-  }, [video.level, video.targetLang, session?.native_lang]);
-
   // Handle PDF export
   const [isExporting, setIsExporting] = useState(false);
 
@@ -332,88 +322,69 @@ const PracticeReportDetailPage: React.FC<PracticeReportDetailPageProps> = ({
   return (
     <div className="min-h-full bg-[#FAF9F6]">
       {/* Header */}
-      <div className="bg-[#FAF9F6] border-b border-stone-200">
+      <div className="bg-[#FAF9F6]">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-5">
-          {/* Breadcrumb */}
-          <div className="flex items-center gap-2 text-sm mb-4">
-            <button
-              onClick={onBack}
-              className="text-stone-500 hover:text-stone-700 transition-colors flex items-center gap-1"
-            >
-              <BackIcon />
-              <span>Reports</span>
-            </button>
-            <span className="text-stone-300">/</span>
-            <span className="text-stone-700 font-medium">Feedback</span>
-          </div>
-
-          {/* Session Info */}
-          <div className="flex items-start gap-4">
-            <div className="flex-1 min-w-0">
-              {/* Topic */}
-              <div className="flex items-baseline gap-2 mb-1">
-                <span className="text-xs font-medium text-stone-400 uppercase tracking-wide">{headerLabels.topic}:</span>
-                <h1 className="text-lg font-medium text-stone-800 leading-snug">
-                  {session?.topic_text || 'Practice Session'}
-                </h1>
-              </div>
-              {/* Question */}
-              {session?.question_text && (
-                <div className="flex items-baseline gap-2 mb-1">
-                  <span className="text-xs font-medium text-stone-400 uppercase tracking-wide">{headerLabels.question}:</span>
-                  <p className="text-sm text-stone-700">{session.question_text}</p>
-                </div>
-              )}
-              {/* Video */}
-              <div className="flex items-baseline gap-2">
-                <span className="text-xs font-medium text-stone-400 uppercase tracking-wide">{headerLabels.video}:</span>
-                <p className="text-sm text-stone-500 line-clamp-1">{video.title}</p>
-              </div>
-              {session && (
-                <div className="flex items-center gap-3 mt-2">
-                  <span className="text-xs text-stone-400">
-                    {formatDate(session.created_at)}
-                  </span>
-                </div>
-              )}
+          {/* Breadcrumb and Export button */}
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2 text-sm">
+              <button
+                onClick={onBack}
+                className="text-stone-500 hover:text-stone-700 transition-colors flex items-center gap-1"
+              >
+                <BackIcon />
+                <span>Reports</span>
+              </button>
+              <span className="text-stone-300">/</span>
+              <span className="text-stone-700 font-medium">Feedback</span>
             </div>
             {/* Export PDF button */}
             {analysisData && canRenderPyramid && (
               <button
                 onClick={handleExportPdf}
                 disabled={isExporting || !canExportPdf}
-                className={`flex items-center gap-2 px-3 py-2 text-sm font-medium bg-white border border-stone-200 rounded-lg transition-colors ${
+                className={`group flex items-center gap-1.5 rounded-full transition-all duration-300 ease-out ${
                   !canExportPdf
-                    ? 'text-stone-400 cursor-not-allowed opacity-60'
-                    : isExporting ? 'text-stone-400 cursor-wait' : 'text-stone-600 hover:bg-stone-50'
+                    ? 'text-stone-300 cursor-not-allowed p-1.5 pr-1.5 hover:pr-3'
+                    : isExporting
+                      ? 'text-stone-700 p-1.5 pr-3 cursor-wait'
+                      : 'text-stone-700 hover:text-stone-900 p-1.5 pr-1.5 hover:pr-3'
                 }`}
                 title={!canExportPdf ? 'PDF export requires Pro plan' : undefined}
               >
-                {isExporting ? (
-                  <>
-                    <SpinnerIcon />
-                    Exporting...
-                  </>
-                ) : !canExportPdf ? (
-                  <>
-                    <DownloadIcon />
-                    Export PDF
-                    <span className="text-[10px] bg-stone-200 text-stone-500 px-1.5 py-0.5 rounded-full ml-1">PRO</span>
-                  </>
-                ) : (
-                  <>
-                    <DownloadIcon />
-                    Export PDF
-                  </>
+                <span className="flex-shrink-0 flex items-center justify-center">
+                  {isExporting ? <SpinnerIcon /> : <DownloadIcon />}
+                </span>
+                <span
+                  className={`grid transition-all duration-300 ease-out ${
+                    isExporting
+                      ? 'grid-cols-[1fr] opacity-100'
+                      : 'grid-cols-[0fr] opacity-0 group-hover:grid-cols-[1fr] group-hover:opacity-100'
+                  }`}
+                >
+                  <span className="overflow-hidden whitespace-nowrap text-sm font-medium">
+                    {isExporting ? translatedLabels.exporting : translatedLabels.downloadPdf}
+                  </span>
+                </span>
+                {!canExportPdf && (
+                  <span className="grid grid-cols-[0fr] opacity-0 group-hover:grid-cols-[1fr] group-hover:opacity-100 transition-all duration-300 ease-out">
+                    <span className="overflow-hidden whitespace-nowrap text-[10px] bg-stone-200 text-stone-500 px-1.5 py-0.5 rounded-full">
+                      PRO
+                    </span>
+                  </span>
                 )}
               </button>
             )}
           </div>
+
+          {/* Topic */}
+          <h1 className="text-xl font-semibold text-stone-800">
+            {session?.topic_text || 'Practice Session'}
+          </h1>
         </div>
       </div>
 
       {/* Content */}
-      <div className="py-8">
+      <div className="pb-8">
         {/* Loading state */}
         {loading && (
           <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -446,6 +417,37 @@ const PracticeReportDetailPage: React.FC<PracticeReportDetailPageProps> = ({
         {/* Report content */}
         {!loading && !error && session && (
           <>
+            {/* Question Card - Frosted Glass Design */}
+            {session.question_text && (
+              <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mb-6">
+                <div className="p-4 bg-gradient-to-br from-blue-50/80 to-indigo-50/60 backdrop-blur-md rounded-xl border border-white/40 shadow-sm">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="flex-shrink-0 w-6 h-6 bg-white/60 backdrop-blur-sm rounded-md flex items-center justify-center border border-white/50 shadow-sm">
+                      <QuestionIcon />
+                    </div>
+                    <p className="text-xs font-medium text-stone-800 uppercase tracking-wide">{translatedLabels.question}</p>
+                  </div>
+                  <p className="text-stone-700 leading-relaxed">{session.question_text}</p>
+                  {/* Metadata */}
+                  <div className="mt-3 space-y-2 text-xs">
+                    <p className="text-stone-400 italic">{translatedLabels.source}: {video.title}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-stone-400">
+                        {formatDate(session.created_at)}
+                      </span>
+                      <span className="text-stone-300">•</span>
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-white/50 text-stone-500 font-medium">
+                        {video.targetLang}
+                      </span>
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-white/50 text-stone-500 font-medium">
+                        {video.level}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {canRenderPyramid ? (
               <ReportErrorBoundary
                 fallback={
@@ -498,6 +500,14 @@ const BackIcon = () => (
   </svg>
 );
 
+const QuestionIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500">
+    <circle cx="12" cy="12" r="10"></circle>
+    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+    <line x1="12" y1="17" x2="12.01" y2="17"></line>
+  </svg>
+);
+
 const ErrorIcon = () => (
   <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-red-400">
     <circle cx="12" cy="12" r="10"></circle>
@@ -515,7 +525,7 @@ const WarningIcon = () => (
 );
 
 const DownloadIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="block">
     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
     <polyline points="7 10 12 15 17 10"></polyline>
     <line x1="12" y1="15" x2="12" y2="3"></line>
@@ -523,7 +533,7 @@ const DownloadIcon = () => (
 );
 
 const SpinnerIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="block animate-spin">
     <circle cx="12" cy="12" r="10" strokeOpacity="0.25"></circle>
     <path d="M12 2a10 10 0 0 1 10 10" strokeOpacity="1"></path>
   </svg>

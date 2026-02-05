@@ -4,7 +4,7 @@ import { SpeechAnalysisResult } from '../../../shared/types';
 import { getPracticeSessionsForAnalysis } from '../../../shared/services/database';
 import { useAuth } from '../../../shared/context/AuthContext';
 import { useSubscription } from '../../../shared/context/SubscriptionContext';
-import PracticeReportCard, { PracticeReportCardSkeleton } from './PracticeReportCard';
+import { PracticeReportTable, PracticeReportTableSkeleton } from './PracticeReportCard';
 import PyramidFeedback from '../../practice/components/PyramidFeedback';
 import { exportPracticeReportToPdf } from '../../../shared/utils/pdfExport';
 import { getBackendOrigin } from '../../../shared/services/backend';
@@ -64,6 +64,10 @@ const DEFAULT_LABELS = {
   topic: 'Topic',
   question: 'Question',
   video: 'Video',
+  source: 'Source',
+  // Button labels
+  downloadPdf: 'Download PDF',
+  exporting: 'Exporting...',
 };
 
 // Error boundary to catch PyramidFeedback crashes
@@ -230,8 +234,8 @@ const PracticeReportsModal: React.FC<PracticeReportsModalProps> = ({
       return;
     }
 
-    // Check cache first
-    const cacheKey = `ui-labels-${languageToUse}-${isEasy}`;
+    // Check cache first (v3 adds downloadPdf/exporting labels)
+    const cacheKey = `ui-labels-v3-${languageToUse}-${isEasy}`;
     try {
       const cached = localStorage.getItem(cacheKey);
       if (cached) {
@@ -387,26 +391,28 @@ const PracticeReportsModal: React.FC<PracticeReportsModalProps> = ({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-stone-200">
-          <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between p-4 sm:p-6 border-b border-stone-200 gap-3">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
             {viewMode === 'report' && (
               <button
                 onClick={handleBackToList}
-                className="text-stone-500 hover:text-stone-700 transition-colors"
+                className="text-stone-500 hover:text-stone-700 transition-colors flex-shrink-0"
               >
                 <BackIcon />
               </button>
             )}
-            <div>
-              <h2 className="text-xl font-semibold text-stone-800">
-                {viewMode === 'list' ? 'Practice Reports' : 'Feedback Report'}
+            <div className="min-w-0 flex-1">
+              <h2 className="text-lg sm:text-xl font-semibold text-stone-800">
+                {viewMode === 'list' ? 'Practice Reports' : (selectedSession?.topic_text || 'Feedback Report')}
               </h2>
-              <p className="text-sm text-stone-500 truncate max-w-md">
-                {videoTitle}
-              </p>
+              {viewMode === 'list' && (
+                <p className="text-sm text-stone-500 truncate">
+                  {videoTitle}
+                </p>
+              )}
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-shrink-0">
             {/* Export PDF button - only show when viewing a report */}
             {viewMode === 'report' && selectedSession && analysisData && (
               <button
@@ -449,13 +455,7 @@ const PracticeReportsModal: React.FC<PracticeReportsModalProps> = ({
           {viewMode === 'list' && (
             <>
               {/* Loading state */}
-              {loading && (
-                <div className="space-y-4">
-                  {[1, 2, 3].map((i) => (
-                    <PracticeReportCardSkeleton key={i} />
-                  ))}
-                </div>
-              )}
+              {loading && <PracticeReportTableSkeleton />}
 
               {/* Error state */}
               {!loading && error && (
@@ -482,17 +482,12 @@ const PracticeReportsModal: React.FC<PracticeReportsModalProps> = ({
                 </div>
               )}
 
-              {/* Sessions list */}
+              {/* Sessions table */}
               {!loading && !error && sessions.length > 0 && (
-                <div className="space-y-4">
-                  {sessions.map((session) => (
-                    <PracticeReportCard
-                      key={session.id}
-                      session={session}
-                      onClick={() => handleViewReport(session)}
-                    />
-                  ))}
-                </div>
+                <PracticeReportTable
+                  sessions={sessions}
+                  onViewReport={handleViewReport}
+                />
               )}
             </>
           )}
@@ -500,6 +495,39 @@ const PracticeReportsModal: React.FC<PracticeReportsModalProps> = ({
           {/* Report View */}
           {viewMode === 'report' && selectedSession && (
             <div className="min-h-[400px]">
+              {/* Question Card - Frosted Glass Design */}
+              {selectedSession.question_text && (
+                <div className="mb-6 mx-4 sm:mx-6 p-4 bg-gradient-to-br from-blue-50/80 to-indigo-50/60 backdrop-blur-md rounded-xl border border-white/40 shadow-sm">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="flex-shrink-0 w-6 h-6 bg-white/60 backdrop-blur-sm rounded-md flex items-center justify-center border border-white/50 shadow-sm">
+                      <QuestionIcon />
+                    </div>
+                    <p className="text-xs font-medium text-stone-800 uppercase tracking-wide">{translatedLabels.question}</p>
+                  </div>
+                  <p className="text-stone-700 leading-relaxed">{selectedSession.question_text}</p>
+                  {/* Metadata */}
+                  <div className="mt-3 space-y-2 text-xs">
+                    <p className="text-stone-400 italic">{translatedLabels.source}: {videoTitle}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-stone-400">
+                        {new Date(selectedSession.created_at).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                        })}
+                      </span>
+                      <span className="text-stone-300">•</span>
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-white/50 text-stone-500 font-medium">
+                        {targetLang}
+                      </span>
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-white/50 text-stone-500 font-medium">
+                        {level}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {analysisData &&
                analysisData.structure &&
                analysisData.structure.conclusion &&
@@ -577,6 +605,14 @@ const MicIcon = () => (
     <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
     <line x1="12" y1="19" x2="12" y2="23"></line>
     <line x1="8" y1="23" x2="16" y2="23"></line>
+  </svg>
+);
+
+const QuestionIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500">
+    <circle cx="12" cy="12" r="10"></circle>
+    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+    <line x1="12" y1="17" x2="12.01" y2="17"></line>
   </svg>
 );
 
