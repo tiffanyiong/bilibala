@@ -5,6 +5,7 @@ import { CubeCarousel } from './features/explore';
 import PracticeReportDetailPage from './features/library/components/PracticeReportDetailPage';
 import PracticeReportsPage from './features/library/components/PracticeReportsPage';
 import VideoLibraryPage from './features/library/components/VideoLibraryPage';
+import { PrivacyPage, TermsPage } from './features/legal';
 import FloatingTutorWindow from './features/live-voice/components/FloatingTutorWindow';
 import PracticeSession from './features/practice/components/PracticeSession';
 import { ProfilePage } from './features/profile';
@@ -228,6 +229,12 @@ const App: React.FC = () => {
     if (parts[0] === 'settings') {
       return { type: 'settings' as const };
     }
+    if (parts[0] === 'privacy') {
+      return { type: 'privacy' as const };
+    }
+    if (parts[0] === 'terms') {
+      return { type: 'terms' as const };
+    }
     // Assume first part is video ID (which is actually analysisId for reports)
     const videoId = parts[0];
     if (parts[1] === 'practice') {
@@ -253,6 +260,10 @@ const App: React.FC = () => {
         setAppState(AppState.PROFILE);
       } else if (route.type === 'settings') {
         setAppState(AppState.SETTINGS);
+      } else if (route.type === 'privacy') {
+        setAppState(AppState.PRIVACY);
+      } else if (route.type === 'terms') {
+        setAppState(AppState.TERMS);
       } else if (route.type === 'library') {
         setCurrentReportsVideo(null);
         setCurrentReportSessionId(null);
@@ -324,6 +335,10 @@ const App: React.FC = () => {
       targetPath = '/profile';
     } else if (appState === AppState.SETTINGS) {
       targetPath = '/settings';
+    } else if (appState === AppState.PRIVACY) {
+      targetPath = '/privacy';
+    } else if (appState === AppState.TERMS) {
+      targetPath = '/terms';
     } else if (appState === AppState.VIDEO_LIBRARY) {
       targetPath = '/library';
     } else if (appState === AppState.PRACTICE_REPORTS && currentReportsVideo) {
@@ -368,6 +383,20 @@ const App: React.FC = () => {
     // Handle settings route directly
     if (route.type === 'settings') {
       setAppState(AppState.SETTINGS);
+      isInitializedRef.current = true;
+      return;
+    }
+
+    // Handle privacy route directly
+    if (route.type === 'privacy') {
+      setAppState(AppState.PRIVACY);
+      isInitializedRef.current = true;
+      return;
+    }
+
+    // Handle terms route directly
+    if (route.type === 'terms') {
+      setAppState(AppState.TERMS);
       isInitializedRef.current = true;
       return;
     }
@@ -1385,7 +1414,8 @@ const App: React.FC = () => {
   const translationPopupTargetLang = translatorTargetLang || nativeLang;
 
   const shouldShowHeader = appState === AppState.DASHBOARD || appState === AppState.PRACTICE_SESSION;
-  const isScrollable = appState === AppState.DASHBOARD || appState === AppState.PRACTICE_SESSION || appState === AppState.VIDEO_LIBRARY || appState === AppState.PRACTICE_REPORTS || appState === AppState.PRACTICE_REPORT_DETAIL || appState === AppState.SUBSCRIPTION || appState === AppState.PROFILE || appState === AppState.SETTINGS;
+  const isScrollable = appState === AppState.DASHBOARD || appState === AppState.PRACTICE_SESSION || appState === AppState.VIDEO_LIBRARY || appState === AppState.PRACTICE_REPORTS || appState === AppState.PRACTICE_REPORT_DETAIL || appState === AppState.SUBSCRIPTION || appState === AppState.PROFILE || appState === AppState.SETTINGS || appState === AppState.PRIVACY || appState === AppState.TERMS;
+  const shouldShowFooter = appState === AppState.LANDING || appState === AppState.PRIVACY || appState === AppState.TERMS || appState === AppState.SUBSCRIPTION;
 
   return (
     <Layout
@@ -1399,8 +1429,11 @@ const App: React.FC = () => {
         onOpenSubscription={() => setAppState(AppState.SUBSCRIPTION)}
         onOpenProfile={() => setAppState(AppState.PROFILE)}
         onOpenSettings={() => setAppState(AppState.SETTINGS)}
+        onOpenPrivacy={() => setAppState(AppState.PRIVACY)}
+        onOpenTerms={() => setAppState(AppState.TERMS)}
         translatorLang={shouldShowHeader && tier === 'pro' ? translationPopupTargetLang : undefined}
         onTranslatorLangChange={shouldShowHeader && tier === 'pro' ? setTranslatorTargetLang : undefined}
+        showFooter={shouldShowFooter}
     >
       {/* 1. LANDING PAGE */}
       {appState === AppState.LANDING && (
@@ -1597,6 +1630,16 @@ const App: React.FC = () => {
       {/* 10. SETTINGS PAGE */}
       {appState === AppState.SETTINGS && (
         <SettingsPage />
+      )}
+
+      {/* 11. PRIVACY PAGE */}
+      {appState === AppState.PRIVACY && (
+        <PrivacyPage />
+      )}
+
+      {/* 12. TERMS PAGE */}
+      {appState === AppState.TERMS && (
+        <TermsPage />
       )}
 
       {/* Translation Popup - Pro only, active on all content pages */}
