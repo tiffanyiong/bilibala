@@ -42,6 +42,7 @@ export interface TopicQuestion {
   useCount: number;
   videoTitle?: string | null;
   analysisId?: string | null;
+  youtubeId?: string | null; // YouTube video ID for linking to the source video
 }
 
 export interface ContentAnalysis {
