@@ -31,6 +31,7 @@ import {
   getOrCreateVideo,
   getPracticeTopicsForAnalysis,
   getQuestionsForTopic,
+  getTopicIdsWithQuestionsAtLevel,
   getUserVideoLibrary,
   getVideoByYoutubeId,
   incrementVideoView,
@@ -152,6 +153,7 @@ const App: React.FC = () => {
   const [transcript, setTranscript] = useState<{ text: string; duration: number; offset: number }[]>([]);
   const [transcriptLangMismatch, setTranscriptLangMismatch] = useState(false);
   const [discussionTopics, setDiscussionTopics] = useState<PracticeTopic[]>([]);
+  const [filteredDiscussionTopics, setFilteredDiscussionTopics] = useState<PracticeTopic[]>([]);
   const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
   const [activePracticeTopic, setActivePracticeTopic] = useState<PracticeTopic | null>(null);
   const [allSelectedPracticeTopics, setAllSelectedPracticeTopics] = useState<PracticeTopic[]>([]);
@@ -170,6 +172,40 @@ const App: React.FC = () => {
   const [currentReportSessionId, setCurrentReportSessionId] = useState<string | null>(null);
 
   const [errorMsg, setErrorMsg] = useState('');
+
+  // Filter discussion topics to only show those with questions at the user's level
+  useEffect(() => {
+    const filterTopics = async () => {
+      if (discussionTopics.length === 0) {
+        setFilteredDiscussionTopics([]);
+        return;
+      }
+
+      // Get topic IDs that have questions at the user's level
+      const topicIds = discussionTopics
+        .map(t => t.topicId)
+        .filter((id): id is string => !!id);
+
+      if (topicIds.length === 0) {
+        // No topics have IDs yet (fresh analysis), show all
+        setFilteredDiscussionTopics(discussionTopics);
+        return;
+      }
+
+      const topicsWithQuestions = await getTopicIdsWithQuestionsAtLevel(topicIds, level);
+      const filtered = discussionTopics.filter(t =>
+        !t.topicId || topicsWithQuestions.has(t.topicId)
+      );
+      setFilteredDiscussionTopics(filtered);
+
+      // Clear selection if selected topic no longer has questions at this level
+      setSelectedTopics(prev => prev.filter(topic =>
+        filtered.some(t => t.topic === topic)
+      ));
+    };
+
+    filterTopics();
+  }, [discussionTopics, level]);
 
   // --- History / Navigation Logic ---
   // Helper to parse path-based routes
@@ -456,7 +492,9 @@ const App: React.FC = () => {
               const dbTopics = await getPracticeTopicsForAnalysis(videoInLibrary.analysisId);
               if (dbTopics.length > 0 && analysis.discussionTopics) {
                 const topicsWithIds = analysis.discussionTopics.map(topic => {
-                  const dbTopic = dbTopics.find(dt => dt.topic === topic.topic);
+                  // Match by question text (more reliable) or topic name as fallback
+                  const dbTopic = dbTopics.find(dt => dt.question === topic.question) ||
+                                  dbTopics.find(dt => dt.topic === topic.topic);
                   if (dbTopic) {
                     return { ...topic, topicId: dbTopic.id, questionId: dbTopic.questionId };
                   }
@@ -512,7 +550,9 @@ const App: React.FC = () => {
           const dbTopics = await getPracticeTopicsForAnalysis(globalAnalysis.id);
           if (dbTopics.length > 0 && analysis.discussionTopics) {
             const topicsWithIds = analysis.discussionTopics.map(topic => {
-              const dbTopic = dbTopics.find(dt => dt.topic === topic.topic);
+              // Match by question text (more reliable) or topic name as fallback
+              const dbTopic = dbTopics.find(dt => dt.question === topic.question) ||
+                              dbTopics.find(dt => dt.topic === topic.topic);
               if (dbTopic) {
                 return { ...topic, topicId: dbTopic.id, questionId: dbTopic.questionId };
               }
@@ -835,7 +875,9 @@ const App: React.FC = () => {
         if (dbTopics.length > 0 && analysis.discussionTopics) {
           // Merge database IDs into discussion topics
           const topicsWithIds = analysis.discussionTopics.map(topic => {
-            const dbTopic = dbTopics.find(dt => dt.topic === topic.topic);
+            // Match by question text (more reliable) or topic name as fallback
+            const dbTopic = dbTopics.find(dt => dt.question === topic.question) ||
+                            dbTopics.find(dt => dt.topic === topic.topic);
             if (dbTopic) {
               return {
                 ...topic,
@@ -1441,7 +1483,7 @@ const App: React.FC = () => {
                </div>
 
                <TopicSelector
-                  topics={discussionTopics}
+                  topics={filteredDiscussionTopics}
                   selectedTopics={selectedTopics}
                   onTopicToggle={handleTopicToggle}
                   isLoading={isAnalysisLoading}
@@ -1504,6 +1546,8 @@ const App: React.FC = () => {
             nativeLang={nativeLang}
             targetLang={targetLang}
             analysisId={currentAnalysisId}
+            videoTitle={videoData.title}
+            videoId={videoData.id}
             onExit={() => setAppState(AppState.DASHBOARD)}
             onRequireAuth={() => setShowAuthModal(true)}
           />
