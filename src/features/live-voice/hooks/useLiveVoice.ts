@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getBackendOrigin } from '../../../shared/services/backend';
+import { getBackendOrigin, getBackendWsOrigin } from '../../../shared/services/backend';
 import { generateConversationHints } from '../../../shared/services/geminiService';
 import { HistoryItem, VocabularyItem } from '../../../shared/types';
 
@@ -334,7 +334,7 @@ export function useLiveVoice(config: UseLiveVoiceConfig): UseLiveVoiceReturn {
         return;
       }
 
-      const wsUrl = `ws://127.0.0.1:3001/live`;
+      const wsUrl = `${getBackendWsOrigin()}/live`;
       const ws = new WebSocket(wsUrl);
       ws.binaryType = 'arraybuffer';
       wsRef.current = ws;

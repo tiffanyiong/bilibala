@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { getBackendOrigin } from '../../../shared/services/backend';
+import { getBackendOrigin, getBackendWsOrigin } from '../../../shared/services/backend';
 import { generateConversationHints } from '../../../shared/services/geminiService';
 import { HistoryItem, VocabularyItem } from '../../../shared/types';
 
@@ -323,8 +323,8 @@ const LiveVoiceInterface: React.FC<LiveVoiceInterfaceProps> = ({
         return;
       }
 
-      // FIX: Force IPv4 for WebSocket connection
-      const wsUrl = `ws://127.0.0.1:3001/live`;
+      // Use dynamic backend origin for Safari/production compatibility
+      const wsUrl = `${getBackendWsOrigin()}/live`;
       console.log("Connecting to WS:", wsUrl);
       
       const ws = new WebSocket(wsUrl);
@@ -526,12 +526,12 @@ const LiveVoiceInterface: React.FC<LiveVoiceInterfaceProps> = ({
     
                 if (currentInputRef.current.trim()) {
                      const userText = currentInputRef.current.trim();
-                     setHistory(prev => [...prev, { role: 'user', text: userText }]);
+                     setHistory(prev => [...prev, { role: 'user', text: userText, timestamp: Date.now() }]);
                 }
-                
+
                 if (currentOutputRef.current.trim()) {
                      const modelText = currentOutputRef.current.trim();
-                     setHistory(prev => [...prev, { role: 'model', text: modelText }]);
+                     setHistory(prev => [...prev, { role: 'model', text: modelText, timestamp: Date.now() }]);
                 }
                 
                 currentInputRef.current = '';

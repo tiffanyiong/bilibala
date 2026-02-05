@@ -132,9 +132,12 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       streamRef.current = rawStream;
       setPermissionError(false);
 
+      // Safari doesn't support webm, so we check mp4/aac as fallbacks
       let mimeType = '';
-      if (MediaRecorder.isTypeSupported('audio/webm')) mimeType = 'audio/webm'; 
-      else if (MediaRecorder.isTypeSupported('audio/mp4')) mimeType = 'audio/mp4'; 
+      if (MediaRecorder.isTypeSupported('audio/webm')) mimeType = 'audio/webm';
+      else if (MediaRecorder.isTypeSupported('audio/mp4')) mimeType = 'audio/mp4';
+      else if (MediaRecorder.isTypeSupported('audio/aac')) mimeType = 'audio/aac';
+      else if (MediaRecorder.isTypeSupported('audio/mpeg')) mimeType = 'audio/mpeg'; 
 
       const mediaRecorder = new MediaRecorder(rawStream, mimeType ? { mimeType } : undefined);
       mediaRecorderRef.current = mediaRecorder;

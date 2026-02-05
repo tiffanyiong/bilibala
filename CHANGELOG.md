@@ -33,6 +33,12 @@
 
 ### Fixed
 
+- **Safari Browser Compatibility for AI Tutor**:
+  - Fixed hardcoded WebSocket URL (`ws://127.0.0.1:3001`) that prevented Safari from connecting
+  - Now uses dynamic `getBackendWsOrigin()` which properly handles `wss://` for HTTPS pages
+  - Added Safari-compatible audio MIME types (`audio/aac`, `audio/mpeg`) as fallbacks in AudioRecorder
+  - Files changed: `LiveVoiceInterface.tsx`, `useLiveVoice.ts`, `AudioRecorder.tsx`
+
 - **Easy Level Language Rules for AI-Generated Content** (`server/routes/speechRoutes.js`):
   - Graph critiques and elaborations now display in native language for Easy level
   - Word improvement explanations now display in native language for Easy level
