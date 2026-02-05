@@ -1,0 +1,46 @@
+name: Branch Protection
+
+on:
+  pull_request:
+    branches:
+      - production
+      - beta
+
+jobs:
+  check-source-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check allowed source branches
+        run: |
+          TARGET="${{ github.base_ref }}"
+          SOURCE="${{ github.head_ref }}"
+
+          echo "PR: $SOURCE → $TARGET"
+
+          # Rules:
+          # - production can only receive from: beta, production, hotfix/*
+          # - beta can only receive from: main, beta, hotfix/*
+
+          if [[ "$TARGET" == "production" ]]; then
+            if [[ "$SOURCE" == "beta" || "$SOURCE" == "production" || "$SOURCE" == hotfix/* ]]; then
+              echo "✅ Allowed: $SOURCE → $TARGET"
+              exit 0
+            else
+              echo "❌ Blocked: $SOURCE → $TARGET"
+              echo "Production only accepts merges from: beta, production, or hotfix/*"
+              exit 1
+            fi
+          fi
+
+          if [[ "$TARGET" == "beta" ]]; then
+            if [[ "$SOURCE" == "main" || "$SOURCE" == "beta" || "$SOURCE" == hotfix/* ]]; then
+              echo "✅ Allowed: $SOURCE → $TARGET"
+              exit 0
+            else
+              echo "❌ Blocked: $SOURCE → $TARGET"
+              echo "Beta only accepts merges from: main, beta, or hotfix/*"
+              exit 1
+            fi
+          fi
+
+          echo "✅ No restrictions for this target branch"
