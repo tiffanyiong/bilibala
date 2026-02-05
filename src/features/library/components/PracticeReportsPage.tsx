@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { VideoHistoryItem, DbPracticeSession } from '../../../shared/types/database';
 import { getPracticeSessionsForAnalysis } from '../../../shared/services/database';
 import { useAuth } from '../../../shared/context/AuthContext';
-import PracticeReportCard, { PracticeReportCardSkeleton } from './PracticeReportCard';
+import { PracticeReportTable, PracticeReportTableSkeleton } from './PracticeReportCard';
 
 interface PracticeReportsPageProps {
   video: VideoHistoryItem;
@@ -86,13 +86,7 @@ const PracticeReportsPage: React.FC<PracticeReportsPageProps> = ({
       {/* Content */}
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Loading state */}
-        {loading && (
-          <div className="space-y-4">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <PracticeReportCardSkeleton key={i} />
-            ))}
-          </div>
-        )}
+        {loading && <PracticeReportTableSkeleton />}
 
         {/* Error state */}
         {!loading && error && (
@@ -137,19 +131,16 @@ const PracticeReportsPage: React.FC<PracticeReportsPageProps> = ({
           </div>
         )}
 
-        {/* Sessions list */}
+        {/* Sessions table */}
         {!loading && !error && sessions.length > 0 && (
-          <div className="space-y-4">
-            <p className="text-sm text-stone-500 mb-6">
+          <div>
+            <p className="text-sm text-stone-500 mb-4">
               {sessions.length} practice session{sessions.length !== 1 ? 's' : ''}
             </p>
-            {sessions.map((session) => (
-              <PracticeReportCard
-                key={session.id}
-                session={session}
-                onClick={() => onViewReport(session)}
-              />
-            ))}
+            <PracticeReportTable
+              sessions={sessions}
+              onViewReport={onViewReport}
+            />
           </div>
         )}
       </div>
