@@ -230,7 +230,7 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
 
   const handleStartRecording = () => setState(SessionState.RECORDING);
 
-  const handleRecordingComplete = async (audioData: string) => {
+  const handleRecordingComplete = async (audioData: string, mimeType: string = 'audio/webm') => {
     setState(SessionState.ANALYZING);
     setError('');
 
@@ -240,7 +240,7 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
         const byteNumbers = new Array(byteCharacters.length);
         for (let i = 0; i < byteCharacters.length; i++) byteNumbers[i] = byteCharacters.charCodeAt(i);
         const byteArray = new Uint8Array(byteNumbers);
-        const blob = new Blob([byteArray], { type: 'audio/mp3' });
+        const blob = new Blob([byteArray], { type: mimeType });
         newAudioUrl = URL.createObjectURL(blob);
         if (currentAudioUrl) URL.revokeObjectURL(currentAudioUrl);
         setCurrentAudioUrl(newAudioUrl);
@@ -287,7 +287,7 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
         const isLibraryFull = !isAlreadyInLibrary && currentLibrary.length >= libraryLimit;
         (async () => {
           try {
-            const audioUrl = await uploadPracticeAudio(user.id, audioData);
+            const audioUrl = await uploadPracticeAudio(user.id, audioData, mimeType);
             const savedSession = await savePracticeSession({
               user_id: user.id,
               analysis_id: analysisId || null,

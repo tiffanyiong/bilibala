@@ -86,7 +86,7 @@ interface PyramidFeedbackProps {
     analysis: SpeechAnalysisResult;
     onRetry: () => void;
     audioUrl?: string | null;
-    startRetake: (audioData: string) => void;
+    startRetake: (audioData: string, mimeType?: string) => void;
     level: string;
     nativeLang: string;
     targetLang: string;
@@ -212,7 +212,7 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
 
   const onNodeClick = (_: React.MouseEvent, node: Node) => { if ((viewMode === 'user' && node.data.critique) || (viewMode === 'ai' && node.data.elaboration)) setSelectedNodeId(node.id); else setSelectedNodeId(null); };
   const selectedNodeData = useMemo(() => { if (!selectedNodeId) return null; return nodes.find(n => n.id === selectedNodeId)?.data; }, [selectedNodeId, nodes]);
-  const handleRetakeComplete = (audioData: string) => { startRetake(audioData); setShowRetakeModal(false); };
+  const handleRetakeComplete = (audioData: string, mimeType?: string) => { startRetake(audioData, mimeType); setShowRetakeModal(false); };
   const handleOpenRetake = async () => {
     if (onRequireAuth) {
       const practiceStatus = await checkAnonymousPracticeLimit();
