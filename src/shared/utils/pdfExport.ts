@@ -26,6 +26,7 @@ const HEADING_TRANSLATIONS: Record<string, Record<string, string>> = {
     'Language Polish': '语言润色',
     'Before': '修改前',
     'After': '修改后',
+    'AI Improved Transcription': 'AI改进版本',
     'Pronunciation & Intonation': '发音与语调',
     'Overall': '总体',
     'Intonation': '语调',
@@ -45,6 +46,7 @@ const HEADING_TRANSLATIONS: Record<string, Record<string, string>> = {
     'Language Polish': '言語の改善',
     'Before': '修正前',
     'After': '修正後',
+    'AI Improved Transcription': 'AI改善版',
     'Pronunciation & Intonation': '発音とイントネーション',
     'Overall': '総合',
     'Intonation': 'イントネーション',
@@ -64,6 +66,7 @@ const HEADING_TRANSLATIONS: Record<string, Record<string, string>> = {
     'Language Polish': '언어 교정',
     'Before': '수정 전',
     'After': '수정 후',
+    'AI Improved Transcription': 'AI 개선 버전',
     'Pronunciation & Intonation': '발음과 억양',
     'Overall': '전체',
     'Intonation': '억양',
@@ -83,6 +86,7 @@ const HEADING_TRANSLATIONS: Record<string, Record<string, string>> = {
     'Language Polish': 'Mejora del Lenguaje',
     'Before': 'Antes',
     'After': 'Después',
+    'AI Improved Transcription': 'Transcripción Mejorada por IA',
     'Pronunciation & Intonation': 'Pronunciación y Entonación',
     'Overall': 'General',
     'Intonation': 'Entonación',
@@ -102,6 +106,7 @@ const HEADING_TRANSLATIONS: Record<string, Record<string, string>> = {
     'Language Polish': 'Amélioration Linguistique',
     'Before': 'Avant',
     'After': 'Après',
+    'AI Improved Transcription': 'Transcription Améliorée par IA',
     'Pronunciation & Intonation': 'Prononciation et Intonation',
     'Overall': 'Global',
     'Intonation': 'Intonation',
@@ -121,6 +126,7 @@ const HEADING_TRANSLATIONS: Record<string, Record<string, string>> = {
     'Language Polish': 'Sprachliche Verbesserung',
     'Before': 'Vorher',
     'After': 'Nachher',
+    'AI Improved Transcription': 'KI-Verbesserte Transkription',
     'Pronunciation & Intonation': 'Aussprache und Intonation',
     'Overall': 'Gesamt',
     'Intonation': 'Intonation',
@@ -1003,6 +1009,16 @@ export async function exportPracticeReportToPdf(
     if (analysis.improved_structure?.conclusion && analysis.improved_structure?.arguments) {
       const improvedFramework = analysis.improved_structure.recommended_framework || detectedFramework;
       drawGraph(analysis.improved_structure, t('Improved Structure'), true, improvedFramework);
+    }
+
+    // ==================== 9. AI IMPROVED TRANSCRIPTION ====================
+    if (analysis.improved_transcription) {
+      drawSectionHeader(t('AI Improved Transcription'));
+
+      // Draw in a highlighted callout box (light green background)
+      const highlightColor: [number, number, number] = [240, 253, 244]; // Very light green
+      drawCallout(analysis.improved_transcription, highlightColor);
+      yPos += 4;
     }
 
     // ==================== HEADER & FOOTER ON ALL PAGES ====================
