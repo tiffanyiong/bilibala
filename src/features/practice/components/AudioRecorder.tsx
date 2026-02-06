@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { audioConfig } from '../config/audioConfig';
 
 interface AudioRecorderProps {
-  onRecordingComplete: (audioData: string) => void;
+  onRecordingComplete: (audioData: string, mimeType?: string) => void;
   onCancel: () => void;
   isMinimized?: boolean;
   onToggleMinimize?: () => void;
@@ -54,6 +54,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
   
   // Data Refs
   const base64Ref = useRef<string | null>(null);
+  const mimeTypeRef = useRef<string>('audio/webm');
   const startTimeRef = useRef<number>(0);
   const pausedDurationRef = useRef<number>(0);
   const pauseStartTimeRef = useRef<number>(0);
@@ -137,7 +138,10 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       if (MediaRecorder.isTypeSupported('audio/webm')) mimeType = 'audio/webm';
       else if (MediaRecorder.isTypeSupported('audio/mp4')) mimeType = 'audio/mp4';
       else if (MediaRecorder.isTypeSupported('audio/aac')) mimeType = 'audio/aac';
-      else if (MediaRecorder.isTypeSupported('audio/mpeg')) mimeType = 'audio/mpeg'; 
+      else if (MediaRecorder.isTypeSupported('audio/mpeg')) mimeType = 'audio/mpeg';
+
+      // Store the detected MIME type for later use
+      mimeTypeRef.current = mimeType || 'audio/webm';
 
       const mediaRecorder = new MediaRecorder(rawStream, mimeType ? { mimeType } : undefined);
       mediaRecorderRef.current = mediaRecorder;
@@ -252,11 +256,11 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
 
   const handleSubmit = () => {
       if (base64Ref.current) {
-          onRecordingComplete(base64Ref.current);
+          onRecordingComplete(base64Ref.current, mimeTypeRef.current);
           return;
       }
       if (chunksRef.current.length > 0) {
-          const type = mediaRecorderRef.current?.mimeType || 'audio/webm';
+          const type = mediaRecorderRef.current?.mimeType || mimeTypeRef.current;
           const blob = new Blob(chunksRef.current, { type });
           const reader = new FileReader();
           reader.readAsDataURL(blob);
@@ -264,7 +268,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
               if (typeof reader.result === 'string') {
                   const base64 = reader.result.split(',')[1];
                   base64Ref.current = base64;
-                  onRecordingComplete(base64);
+                  onRecordingComplete(base64, mimeTypeRef.current);
               }
           };
       }

@@ -2,10 +2,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import ContentTabs from './features/content/components/ContentTabs';
 import TopicSelector from './features/content/components/TopicSelector';
 import { CubeCarousel } from './features/explore';
+import { PrivacyPage, TermsPage } from './features/legal';
 import PracticeReportDetailPage from './features/library/components/PracticeReportDetailPage';
 import PracticeReportsPage from './features/library/components/PracticeReportsPage';
 import VideoLibraryPage from './features/library/components/VideoLibraryPage';
-import { PrivacyPage, TermsPage } from './features/legal';
 import FloatingTutorWindow from './features/live-voice/components/FloatingTutorWindow';
 import PracticeSession from './features/practice/components/PracticeSession';
 import { ProfilePage } from './features/profile';
@@ -17,6 +17,7 @@ import VideoPlayer, { VideoPlayerRef } from './features/video/components/VideoPl
 import { extractVideoId, fetchVideoMetadata } from './features/video/services/youtubeService';
 import Layout from './shared/components/Layout';
 import UsageLimitModal from './shared/components/UsageLimitModal';
+import { DEEPL_SUPPORTED_LANGUAGES, UI_TRANSLATIONS } from './shared/constants';
 import { useAuth } from './shared/context/AuthContext';
 import { useSubscription } from './shared/context/SubscriptionContext';
 import { getBackendOrigin } from './shared/services/backend';
@@ -54,7 +55,75 @@ import {
 } from './shared/services/usageTracking';
 import { AppState, PracticeTopic, TopicPoint, TopicQuestion, VideoData, VocabularyItem } from './shared/types';
 import { TIER_LIMITS, VideoHistoryItem } from './shared/types/database';
-import { UI_TRANSLATIONS } from './shared/constants';
+
+// Mobile-only translator selector component
+const MobileTranslatorSelector: React.FC<{
+  translatorLang: string;
+  onTranslatorLangChange: (lang: string) => void;
+}> = ({ translatorLang, onTranslatorLangChange }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [isOpen]);
+
+  const getShortLabel = (langName: string) => {
+    const match = langName.match(/[-–]\s*(.+?)\)?$/);
+    if (match) return match[1].replace(')', '');
+    return langName.split(' ')[0];
+  };
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center gap-1.5 bg-[#FAF9F6] border border-stone-200 text-stone-600 px-2.5 py-1 rounded-md shadow-sm text-[11px] font-medium uppercase tracking-wide"
+      >
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M5 8l6 6" />
+          <path d="M4 14l6-6 2-3" />
+          <path d="M2 5h12" />
+          <path d="M7 2h1" />
+          <path d="M22 22l-5-10-5 10" />
+          <path d="M14 18h6" />
+        </svg>
+        {getShortLabel(translatorLang)}
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform ${isOpen ? 'rotate-180' : ''}`}>
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </button>
+
+      {isOpen && (
+        <div className="absolute left-0 mt-2 w-52 bg-[#FAF9F6] rounded-xl border border-stone-200 shadow-lg py-1 z-[300] max-h-64 overflow-y-auto">
+          {DEEPL_SUPPORTED_LANGUAGES.map((lang) => (
+            <button
+              key={lang.code}
+              onClick={() => {
+                onTranslatorLangChange(lang.name);
+                setIsOpen(false);
+              }}
+              className={`w-full px-3 py-2 text-left text-sm transition-colors ${
+                translatorLang === lang.name
+                  ? 'bg-stone-100 text-stone-900 font-medium'
+                  : 'text-stone-600 hover:bg-stone-50'
+              }`}
+            >
+              {lang.name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 const App: React.FC = () => {
   // Reveal body after mount to prevent FOUC with Tailwind CDN
@@ -1466,9 +1535,27 @@ const App: React.FC = () => {
 
       {/* 3. DASHBOARD VIEW */}
       {appState === AppState.DASHBOARD && videoData && (
-        <div className="flex flex-col lg:grid lg:grid-cols-12 gap-6 p-4 md:p-6 pt-24 max-w-[1600px] mx-auto min-h-screen">
-           {/* Left Column: Video & Highlights */}
-           <div className="lg:col-span-7 flex flex-col gap-6">
+        <div className="flex flex-col lg:grid lg:grid-cols-12 lg:items-start gap-6 p-4 md:p-6 pt-2 max-w-[1600px] mx-auto min-h-screen">
+           {/* Video Section - Order 1 on mobile, spans left column on desktop */}
+           <div className="lg:col-span-7 flex flex-col gap-4 md:gap-6 order-1">
+               {/* Mobile-only: Language, Level, and Translator badges */}
+               <div className="flex md:hidden items-center gap-2 flex-wrap">
+                 <span className="flex items-center gap-1.5 bg-[#FAF9F6] border border-stone-200 text-stone-600 px-2.5 py-1 rounded-md shadow-sm text-[11px] font-medium uppercase tracking-wide">
+                   <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 border border-yellow-600"></span>
+                   {targetLang}
+                 </span>
+                 <span className="flex items-center gap-1.5 bg-[#FAF9F6] border border-stone-200 text-stone-600 px-2.5 py-1 rounded-md shadow-sm text-[11px] font-medium uppercase tracking-wide">
+                   <span className="w-1.5 h-1.5 rounded-full bg-stone-400"></span>
+                   {level}
+                 </span>
+                 {tier === 'pro' && (
+                   <MobileTranslatorSelector
+                     translatorLang={translationPopupTargetLang}
+                     onTranslatorLangChange={setTranslatorTargetLang}
+                   />
+                 )}
+               </div>
+
                <div className="w-full aspect-video shrink-0 rounded-xl overflow-hidden shadow-sm border border-stone-200 bg-black">
                    <VideoPlayer ref={playerRef} url={videoData.url} onError={handleVideoError} onTimeUpdate={setCurrentTime} />
                </div>
@@ -1515,20 +1602,23 @@ const App: React.FC = () => {
                  })()}
                </div>
 
-               <TopicSelector
-                  topics={filteredDiscussionTopics}
-                  selectedTopics={selectedTopics}
-                  onTopicToggle={handleTopicToggle}
-                  isLoading={isAnalysisLoading}
-                  onStartPractice={handleStartPractice}
-                  level={level}
-                  nativeLang={nativeLang}
-                  targetLang={targetLang}
-               />
+               {/* TopicSelector - Only show here on desktop */}
+               <div className="hidden lg:block">
+                 <TopicSelector
+                    topics={filteredDiscussionTopics}
+                    selectedTopics={selectedTopics}
+                    onTopicToggle={handleTopicToggle}
+                    isLoading={isAnalysisLoading}
+                    onStartPractice={handleStartPractice}
+                    level={level}
+                    nativeLang={nativeLang}
+                    targetLang={targetLang}
+                 />
+               </div>
            </div>
 
-           {/* Right Column: Transcript & Vocabulary */}
-           <div className="lg:col-span-5 h-[500px] lg:h-[calc(100vh-140px)]"> 
+           {/* ContentTabs - Order 2 on mobile (before topics), right column on desktop */}
+           <div className="lg:col-span-5 h-[500px] lg:h-[720px] order-2">
                <ContentTabs
                   summary={summary}
                   translatedSummary={translatedSummary}
@@ -1544,6 +1634,20 @@ const App: React.FC = () => {
                   currentTime={currentTime}
                   transcriptLangMismatch={transcriptLangMismatch}
                 />
+           </div>
+
+           {/* TopicSelector - Order 3 on mobile only (after ContentTabs) */}
+           <div className="lg:hidden order-3">
+             <TopicSelector
+                topics={filteredDiscussionTopics}
+                selectedTopics={selectedTopics}
+                onTopicToggle={handleTopicToggle}
+                isLoading={isAnalysisLoading}
+                onStartPractice={handleStartPractice}
+                level={level}
+                nativeLang={nativeLang}
+                targetLang={targetLang}
+             />
            </div>
 
            {/* Start Conversation Button */}

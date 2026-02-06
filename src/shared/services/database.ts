@@ -864,30 +864,42 @@ export async function updateVideoCategory(
 /**
  * Upload practice audio to Supabase Storage
  * Returns the public URL of the uploaded audio
+ * @param mimeType - The actual MIME type of the audio (e.g., 'audio/webm', 'audio/mp4')
  */
 export async function uploadPracticeAudio(
   userId: string,
-  audioBase64: string
+  audioBase64: string,
+  mimeType: string = 'audio/webm'
 ): Promise<string | null> {
   try {
-    // Convert base64 to blob
+    // Convert base64 to blob with the correct MIME type
     const byteCharacters = atob(audioBase64);
     const byteNumbers = new Array(byteCharacters.length);
     for (let i = 0; i < byteCharacters.length; i++) {
       byteNumbers[i] = byteCharacters.charCodeAt(i);
     }
     const byteArray = new Uint8Array(byteNumbers);
-    const blob = new Blob([byteArray], { type: 'audio/mp3' });
+    const blob = new Blob([byteArray], { type: mimeType });
 
-    // Generate unique filename
+    // Determine file extension based on MIME type
+    const extensionMap: Record<string, string> = {
+      'audio/webm': 'webm',
+      'audio/mp4': 'm4a',
+      'audio/aac': 'aac',
+      'audio/mpeg': 'mp3',
+      'audio/mp3': 'mp3',
+    };
+    const extension = extensionMap[mimeType] || 'webm';
+
+    // Generate unique filename with correct extension
     const timestamp = Date.now();
-    const filename = `${userId}/${timestamp}.mp3`;
+    const filename = `${userId}/${timestamp}.${extension}`;
 
-    // Upload to Supabase Storage
+    // Upload to Supabase Storage with correct content type
     const { data, error } = await supabase.storage
       .from('practice-recordings')
       .upload(filename, blob, {
-        contentType: 'audio/mp3',
+        contentType: mimeType,
         upsert: false,
       });
 
