@@ -230,7 +230,9 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
 
   const handleStartRecording = () => setState(SessionState.RECORDING);
 
-  const handleRecordingComplete = async (audioData: string, mimeType: string = 'audio/webm') => {
+  // referenceTranscript: If provided, this is a "retake" where user is practicing the improved version
+  // The backend will focus on delivery scoring rather than content restructuring
+  const handleRecordingComplete = async (audioData: string, mimeType: string = 'audio/webm', referenceTranscript?: string) => {
     setState(SessionState.ANALYZING);
     setError('');
 
@@ -251,10 +253,19 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
       const languageToUse = isEasy ? nativeLang : targetLang;
       const isEnglish = languageToUse && languageToUse.toLowerCase().includes('english');
 
+      // Include referenceTranscript for retake mode (practicing improved version)
       const analysisPromise = fetch(`${getBackendOrigin()}/api/analyze-speech`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ audioData, topic: topic.topic, question: topic.question, level, targetLang, nativeLang }),
+        body: JSON.stringify({
+          audioData,
+          topic: topic.topic,
+          question: topic.question,
+          level,
+          targetLang,
+          nativeLang,
+          ...(referenceTranscript && { referenceTranscript }) // Only include if it's a retake
+        }),
       }).then(res => res.json());
 
       let translationPromise = Promise.resolve({ labels: null });
