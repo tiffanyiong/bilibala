@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { UI_TRANSLATIONS } from '../../../shared/constants';
+import { useTTS } from '../../../shared/hooks/useTTS';
 import { TopicPoint, VocabularyItem } from '../../../shared/types';
 import DinoGame from './DinoGame';
 
@@ -42,12 +43,12 @@ const BilingualText: React.FC<{
         >
             <span className={isBlock ? "block" : "inline"}>
                {main}
-               {hasTranslation && (
-                   <span className="ml-1.5 opacity-0 group-hover/trans:opacity-100 transition-opacity text-[10px] text-gray-400 border border-gray-200 px-1 rounded hover:bg-gray-50">
-                       {label || "文"}
-                   </span>
-               )}
             </span>
+            {hasTranslation && (
+                <span className="absolute left-full top-1/2 -translate-y-1/2 ml-1 opacity-0 group-hover/trans:opacity-100 transition-opacity text-[10px] text-gray-400 border border-gray-200 px-1 rounded hover:bg-gray-50 whitespace-nowrap">
+                    {label || "文"}
+                </span>
+            )}
             
             {showTranslation && hasTranslation && (
                 <div className="mt-1.5 p-2 bg-gray-50 border border-gray-100 rounded text-gray-600 text-[12px] animate-in fade-in slide-in-from-top-1 duration-200">
@@ -73,6 +74,7 @@ const parseTimestamp = (ts: string): number => {
 
 const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, topics, vocabulary, transcript, onTimestampClick, isLoading, targetLang, nativeLang, level = 'Medium', layoutMode = 'fixed', currentTime = 0, transcriptLangMismatch = false }) => {
   const [activeTab, setActiveTab] = useState<'outline' | 'vocab' | 'transcript'>('outline');
+  const { speak, currentText } = useTTS(targetLang);
 
   // Determine which language to use for UI based on level
   const isEasy = level.toLowerCase() === 'easy';
@@ -101,6 +103,20 @@ const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, t
   const isUserScrolling = useRef(false);
 
   // --- CUSTOM SVG ICONS ---
+  const SpeakerIcon: React.FC<{ isPlaying?: boolean }> = ({ isPlaying }) => (
+    <svg className={`w-4 h-4 ${isPlaying ? 'text-blue-500' : 'text-gray-400 group-hover:text-gray-600'}`} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M11 5L6 9H2V15H6L11 19V5Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      {isPlaying ? (
+        <>
+          <path d="M15.54 8.46C16.4774 9.39764 17.0039 10.6692 17.0039 11.995C17.0039 13.3208 16.4774 14.5924 15.54 15.53" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M19.07 4.93C20.9447 6.80528 21.9979 9.34836 21.9979 12C21.9979 14.6516 20.9447 17.1947 19.07 19.07" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        </>
+      ) : (
+        <path d="M15.54 8.46C16.4774 9.39764 17.0039 10.6692 17.0039 11.995C17.0039 13.3208 16.4774 14.5924 15.54 15.53" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      )}
+    </svg>
+  );
+
   const StarfishIcon = () => (
     <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
        <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -351,14 +367,24 @@ const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, t
                   <div className="grid grid-cols-1 gap-2 px-2 py-2">
                     {vocabulary.map((item, index) => (
                       <div key={index} className="group p-3 rounded-lg border border-transparent hover:border-gray-200 hover:bg-white hover:shadow-sm transition-all">
-                        <div className="flex justify-between items-baseline mb-1">
-                          <BilingualText 
-                              main={item.word} 
-                              translated={item.translatedWord || ''}
-                              className="font-medium text-gray-800 text-[15px]" 
-                          />
-                          <div className="text-gray-300 group-hover:text-gray-400 transition-colors shrink-0">
-                            {/* <StarfishIcon />  TODO: Will display it when we have vocab feature*/}
+                        <div className="flex justify-between items-center mb-1">
+                          <div className="flex items-center">
+                            <BilingualText
+                                main={item.word}
+                                translated={item.translatedWord || ''}
+                                className="font-medium text-gray-800 text-[15px]"
+                            />
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                speak(item.word);
+                              }}
+                              className="ml-2 p-1.5 rounded-full hover:bg-gray-100 transition-colors relative z-10"
+                              title="Listen to pronunciation"
+                            >
+                              <SpeakerIcon isPlaying={currentText === item.word} />
+                            </button>
+                          
                           </div>
                         </div>
                         <div className="text-gray-600 text-[13px] mb-2 leading-relaxed">
