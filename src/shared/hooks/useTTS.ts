@@ -4,6 +4,7 @@ const API_BASE = import.meta.env.VITE_API_URL || '';
 
 export function useTTS(language: string) {
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [currentText, setCurrentText] = useState<string | null>(null);
   const [progress, setProgress] = useState(0); // 0-100
   const [duration, setDuration] = useState(0); // in seconds
@@ -123,6 +124,30 @@ export function useTTS(language: string) {
     }
   }, [language, currentText, isSpeaking]);
 
+  const pause = useCallback(() => {
+    if (audioRef.current && !audioRef.current.paused) {
+      audioRef.current.pause();
+      setIsSpeaking(false);
+      setIsPaused(true);
+    }
+  }, []);
+
+  const resume = useCallback(() => {
+    if (audioRef.current && audioRef.current.paused) {
+      audioRef.current.play();
+      setIsSpeaking(true);
+      setIsPaused(false);
+    }
+  }, []);
+
+  const togglePlayPause = useCallback(() => {
+    if (isSpeaking) {
+      pause();
+    } else if (isPaused && audioRef.current) {
+      resume();
+    }
+  }, [isSpeaking, isPaused, pause, resume]);
+
   const stop = useCallback(() => {
     if (audioRef.current) {
       audioRef.current.pause();
@@ -133,6 +158,7 @@ export function useTTS(language: string) {
     }
     window.speechSynthesis?.cancel();
     setIsSpeaking(false);
+    setIsPaused(false);
     setCurrentText(null);
     setProgress(0);
     setCurrentTime(0);
@@ -158,8 +184,12 @@ export function useTTS(language: string) {
   return {
     speak,
     stop,
+    pause,
+    resume,
+    togglePlayPause,
     seek,
     isSpeaking,
+    isPaused,
     currentText,
     progress,
     duration,
