@@ -108,6 +108,9 @@ export interface SpeechAnalysisResult {
     arguments: ImprovedArgumentNode[]; // Updated to use recursive type
   };
 
+  // Fluent speech version of improved_structure (no framework labels, natural flow)
+  improved_transcription?: string;
+
   feedback: {
     score: number;
     strengths: string[];

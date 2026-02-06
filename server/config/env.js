@@ -36,6 +36,9 @@ export const config = {
   deepl: {
     apiKey: process.env.DEEPL_API_KEY,
   },
+  google: {
+    ttsApiKey: process.env.GOOGLE_TTS_API_KEY,
+  },
 };
 
 // Validate required environment variables
