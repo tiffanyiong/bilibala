@@ -2,6 +2,7 @@ import PerformanceCard from '@/features/practice/components/PerformanceCard';
 import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
 import ReactFlow, { Background, Controls, Handle, MiniMap, Node, Position, ReactFlowProvider, useEdgesState, useNodesState, useReactFlow } from 'reactflow';
 import 'reactflow/dist/style.css';
+import { useTTS } from '../../../shared/hooks/useTTS';
 import { checkAnonymousPracticeLimit } from '../../../shared/services/usageTracking';
 import { SpeechAnalysisResult } from '../../../shared/types';
 import { generateFlowData } from '../utils/transformPyramid';
@@ -86,7 +87,7 @@ interface PyramidFeedbackProps {
     analysis: SpeechAnalysisResult;
     onRetry: () => void;
     audioUrl?: string | null;
-    startRetake: (audioData: string, mimeType?: string) => void;
+    startRetake: (audioData: string, mimeType?: string, referenceTranscript?: string) => void;
     level: string;
     nativeLang: string;
     targetLang: string;
@@ -107,14 +108,16 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
     showRetry = true,
     onRequireAuth,
 }) => {
-  const { structure, improved_structure, feedback, transcription, detected_framework, improvements, pronunciation } = analysis;
+  const { structure, improved_structure, improved_transcription, feedback, transcription, detected_framework, improvements, pronunciation } = analysis;
   const [viewMode, setViewMode] = useState<'user' | 'ai'>('user');
+  const [transcriptViewMode, setTranscriptViewMode] = useState<'user' | 'ai'>('user');
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [showRetakeModal, setShowRetakeModal] = useState(false);
   const [isRecorderMinimized, setIsRecorderMinimized] = useState(false);
   const [isMapVisible, setIsMapVisible] = useState(false);
   const { fitView } = useReactFlow();
+  const { speak, stop, seek, isSpeaking, progress, currentTime, duration, formatTime } = useTTS(targetLang);
 
   const labels = preFetchedLabels || {
     communicationLogic: 'Communication Logic',
@@ -212,7 +215,40 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
 
   const onNodeClick = (_: React.MouseEvent, node: Node) => { if ((viewMode === 'user' && node.data.critique) || (viewMode === 'ai' && node.data.elaboration)) setSelectedNodeId(node.id); else setSelectedNodeId(null); };
   const selectedNodeData = useMemo(() => { if (!selectedNodeId) return null; return nodes.find(n => n.id === selectedNodeId)?.data; }, [selectedNodeId, nodes]);
-  const handleRetakeComplete = (audioData: string, mimeType?: string) => { startRetake(audioData, mimeType); setShowRetakeModal(false); };
+
+  // Use improved_transcription if available (fluent AI-generated speech),
+  // fallback to concatenated structure for backward compatibility
+  const aiImprovedText = useMemo(() => {
+    // Prefer the fluent improved_transcription from the API
+    if (improved_transcription) return improved_transcription;
+
+    // Fallback: concatenate improved_structure for older data
+    if (!improved_structure) return null;
+    const parts: string[] = [];
+    if (improved_structure.conclusion) {
+      parts.push(improved_structure.conclusion);
+    }
+    if (improved_structure.arguments && improved_structure.arguments.length > 0) {
+      improved_structure.arguments.forEach((arg) => {
+        if (arg.headline) parts.push(arg.headline);
+        if (arg.elaboration) parts.push(arg.elaboration);
+        if (arg.sub_points) {
+          arg.sub_points.forEach((sub) => {
+            if (sub.headline) parts.push(sub.headline);
+            if (sub.elaboration) parts.push(sub.elaboration);
+          });
+        }
+      });
+    }
+    return parts.join(' ');
+  }, [improved_transcription, improved_structure]);
+
+  // Pass the improved transcription as reference so backend knows this is a "practice" session
+  // and should focus on delivery scoring, not content restructuring
+  const handleRetakeComplete = (audioData: string, mimeType?: string) => {
+    startRetake(audioData, mimeType, aiImprovedText || undefined);
+    setShowRetakeModal(false);
+  };
   const handleOpenRetake = async () => {
     if (onRequireAuth) {
       const practiceStatus = await checkAnonymousPracticeLimit();
@@ -242,11 +278,6 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
                   <h2 className="text-base md:text-xl font-serif font-black text-stone-800 tracking-tight">
                     {labels.communicationLogic}
                   </h2>
-                  {detected_framework && (
-                      <span className="text-[10px] text-indigo-500 font-black uppercase tracking-[0.2em]">
-                          {labels.detected}: {detected_framework.replace(/_/g, ' ')}
-                      </span>
-                  )}
               </div>
 
               <div className="bg-stone-200/50 p-1 rounded-full border border-stone-100 inline-flex shadow-inner">
@@ -457,17 +488,95 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
         
           </div>
           <div className="space-y-4">
-              <h3 className="text-lg font-bold text-stone-800 font-serif border-b border-stone-200 pb-2">{labels.transcription}</h3>
-              {audioUrl && (
-                  <div className="bg-stone-50 p-3 rounded-lg border border-stone-200 flex items-center gap-3 mb-2">
-                      <div className="flex-1">
-                          <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wide mb-0.5">{labels.yourRecording}</p>
-                          <audio controls src={audioUrl} className="w-full h-6" />
+              <div className="flex items-center justify-between border-b border-stone-200 pb-2">
+                  <h3 className="text-lg font-bold text-stone-800 font-serif">{labels.transcription}</h3>
+                  {aiImprovedText && (
+                      <div className="bg-stone-200/50 p-0.5 rounded-full border border-stone-100 inline-flex shadow-inner">
+                          <button
+                              onClick={() => setTranscriptViewMode('user')}
+                              className={`px-3 py-1 rounded-full text-[9px] md:text-[10px] font-bold uppercase tracking-wider transition-all ${transcriptViewMode === 'user' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-400 hover:text-stone-600'}`}
+                          >
+                              {labels.original}
+                          </button>
+                          <button
+                              onClick={() => setTranscriptViewMode('ai')}
+                              className={`px-3 py-1 rounded-full text-[9px] md:text-[10px] font-bold uppercase tracking-wider transition-all ${transcriptViewMode === 'ai' ? 'bg-white text-sky-700 shadow-sm' : 'text-stone-400 hover:text-stone-600'}`}
+                          >
+                              {labels.aiImproved}
+                          </button>
                       </div>
-                  </div>
+                  )}
+              </div>
+              {/* Audio Player - switches between user recording and AI TTS */}
+              {transcriptViewMode === 'user' ? (
+                  audioUrl && (
+                      <div className="bg-stone-50 p-3 rounded-lg border border-stone-200 flex items-center gap-3 mb-2">
+                          <div className="flex-1">
+                              <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wide mb-0.5">{labels.yourRecording}</p>
+                              <audio controls src={audioUrl} className="w-full h-6" />
+                          </div>
+                      </div>
+                  )
+              ) : (
+                  aiImprovedText && (
+                      <div className="bg-white rounded-xl border border-sky-200 shadow-sm overflow-hidden mb-2">
+                          <div className="flex items-center px-3 py-2.5 gap-3">
+                              <button
+                                  onClick={() => isSpeaking ? stop() : speak(aiImprovedText)}
+                                  className={`w-9 h-9 flex items-center justify-center rounded-full transition-all ${isSpeaking ? 'bg-sky-500 hover:bg-sky-600' : 'bg-sky-100 hover:bg-sky-200'}`}
+                              >
+                                  {isSpeaking ? (
+                                      <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor">
+                                          <rect x="6" y="4" width="4" height="16" rx="1" />
+                                          <rect x="14" y="4" width="4" height="16" rx="1" />
+                                      </svg>
+                                  ) : (
+                                      <svg className="w-4 h-4 text-sky-600 ml-0.5" viewBox="0 0 24 24" fill="currentColor">
+                                          <path d="M8 5v14l11-7z" />
+                                      </svg>
+                                  )}
+                              </button>
+                              <div className="flex-1">
+                                  <div className="flex items-center justify-between mb-1.5">
+                                      <div className="flex items-center gap-2">
+                                          <span className="text-xs font-semibold text-sky-700">AI Voice</span>
+                                          {isSpeaking && (
+                                              <div className="flex items-center gap-0.5">
+                                                  {[3,5,4,6,3,5].map((h, i) => (
+                                                      <div key={i} className="w-0.5 bg-sky-400 rounded-full animate-pulse" style={{ height: `${h * 2}px`, animationDelay: `${i * 0.08}s` }} />
+                                                  ))}
+                                              </div>
+                                          )}
+                                      </div>
+                                      <span className="text-[10px] text-sky-400 font-medium tabular-nums">
+                                          {formatTime(currentTime)} / {duration > 0 ? formatTime(duration) : '--:--'}
+                                      </span>
+                                  </div>
+                                  {/* Clickable progress bar */}
+                                  <div
+                                      className="h-2 bg-sky-100 rounded-full overflow-hidden cursor-pointer group"
+                                      onClick={(e) => {
+                                          const rect = e.currentTarget.getBoundingClientRect();
+                                          const percent = ((e.clientX - rect.left) / rect.width) * 100;
+                                          seek(Math.max(0, Math.min(100, percent)));
+                                      }}
+                                  >
+                                      <div
+                                          className="h-full bg-gradient-to-r from-sky-400 to-sky-500 rounded-full transition-all duration-100 relative"
+                                          style={{ width: `${progress}%` }}
+                                      >
+                                          {/* Playhead dot */}
+                                          <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-md border-2 border-sky-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                      </div>
+                                  </div>
+                              </div>
+                          </div>
+                      </div>
+                  )
               )}
-              <p className="text-stone-600 leading-relaxed text-sm bg-stone-50 p-4 rounded-lg min-h-[150px]">{transcription}</p>
-
+              <div className={`leading-relaxed text-sm p-4 rounded-lg min-h-[150px] ${transcriptViewMode === 'ai' ? 'bg-sky-50 text-sky-900 border border-sky-100' : 'bg-stone-50 text-stone-600'}`}>
+                  {transcriptViewMode === 'ai' && aiImprovedText ? aiImprovedText : transcription}
+              </div>
           </div>
 
         
