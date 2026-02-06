@@ -76,9 +76,11 @@ router.post('/analyze-speech', async (req, res) => {
       - improvements array: Include language polish suggestions
 
       ${level === 'Easy' ? `
-      Write all feedback in ${nativeLang || 'English'} (the learner's native language) so they can understand.
+      LANGUAGE REQUIREMENTS:
+      - Elaborations, headlines, and improved content: ALWAYS in ${targetLang || 'English'} (target language - this is what they practice)
+      - Feedback, critiques, explanations: Write in ${nativeLang || 'English'} (native language - so they can understand WHY)
       ` : `
-      Write all feedback in ${targetLang || 'English'}.
+      Write all content in ${targetLang || 'English'}.
       `}
 
       # Output Format:
@@ -112,12 +114,12 @@ router.post('/analyze-speech', async (req, res) => {
       - structure.arguments[].point: User's argument points in ${targetLang || 'English'}
       - improved_structure.conclusion: Improved conclusion in ${targetLang || 'English'}
       - improved_structure.arguments[].headline: Step headlines in ${targetLang || 'English'}
+      - improved_structure.arguments[].elaboration: Model sentences/content to practice in ${targetLang || 'English'}
       - improvements[].original: Original phrase in ${targetLang || 'English'}
       - improvements[].improved: Improved phrase in ${targetLang || 'English'}
 
       📌 FIELDS THAT MUST BE IN ${nativeLang || 'English'} (native language for explanations):
-      - structure.arguments[].critique: Write critique in ${nativeLang || 'English'}
-      - improved_structure.arguments[].elaboration: Write elaboration/explanation in ${nativeLang || 'English'}
+      - structure.arguments[].critique: Write critique/explanation WHY in ${nativeLang || 'English'}
       - feedback.strengths[]: Write each strength in ${nativeLang || 'English'}
       - feedback.weaknesses[]: Write each weakness in ${nativeLang || 'English'}
       - feedback.suggestions[]: Write each suggestion in ${nativeLang || 'English'}
@@ -126,7 +128,8 @@ router.post('/analyze-speech', async (req, res) => {
       - pronunciation.intonation.feedback: Write feedback in ${nativeLang || 'English'}
       - pronunciation.words[].feedback: Write word feedback in ${nativeLang || 'English'}
 
-      ⚠️ DO NOT write critique, elaboration, explanation, or feedback fields in ${targetLang || 'English'}. The beginner needs to understand these in their native language.
+      ⚠️ DO NOT write critique, explanation, or feedback fields in ${targetLang || 'English'}. The beginner needs to understand these in their native language.
+      ⚠️ ELABORATIONS must ALWAYS be in ${targetLang || 'English'} - they are model content for the learner to practice.
       ` : `
       FOR INTERMEDIATE/ADVANCED LEVEL:
       ALL text content in your response MUST be in ${targetLang || 'English'}. This includes:
