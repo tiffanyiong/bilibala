@@ -62,6 +62,7 @@ router.post('/translate-ui-labels', async (req, res) => {
       "actionableTips": "Actionable Tips",
       "transcription": "Transcription",
       "yourRecording": "Your Recording",
+      "aiVoice": "AI Voice",
       "recordAnswer": "Record Answer",
       "reviewAnswer": "Review Answer",
       "takeYourTime": "Take your time",

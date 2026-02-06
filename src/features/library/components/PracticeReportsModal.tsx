@@ -29,6 +29,7 @@ const DEFAULT_LABELS = {
   actionableTips: 'Actionable Tips',
   transcription: 'Transcription',
   yourRecording: 'Your Recording',
+  aiVoice: 'AI Voice',
   recordAnswer: 'Record Answer',
   reviewAnswer: 'Review Answer',
   takeYourTime: 'Take your time',

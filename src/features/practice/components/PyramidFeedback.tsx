@@ -3,6 +3,7 @@ import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
 import ReactFlow, { Background, Controls, Handle, MiniMap, Node, Position, ReactFlowProvider, useEdgesState, useNodesState, useReactFlow } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { useTTS } from '../../../shared/hooks/useTTS';
+import { useAudioPlayer } from '../../../shared/hooks/useAudioPlayer';
 import { checkAnonymousPracticeLimit } from '../../../shared/services/usageTracking';
 import { SpeechAnalysisResult } from '../../../shared/types';
 import { generateFlowData } from '../utils/transformPyramid';
@@ -117,7 +118,8 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
   const [isRecorderMinimized, setIsRecorderMinimized] = useState(false);
   const [isMapVisible, setIsMapVisible] = useState(false);
   const { fitView } = useReactFlow();
-  const { speak, stop, seek, isSpeaking, progress, currentTime, duration, formatTime } = useTTS(targetLang);
+  const { speak, stop: stopTTS, togglePlayPause: toggleTTS, seek: seekTTS, isSpeaking, isPaused: isTTSPaused, progress: ttsProgress, currentTime: ttsCurrentTime, duration: ttsDuration, formatTime: formatTTSTime } = useTTS(targetLang);
+  const { stop: stopUserAudio, togglePlayPause: toggleUserAudio, seek: seekUserAudio, isPlaying: userAudioPlaying, progress: userProgress, currentTime: userCurrentTime, duration: userDuration, formatTime: formatUserTime } = useAudioPlayer(audioUrl);
 
   const labels = preFetchedLabels || {
     communicationLogic: 'Communication Logic',
@@ -138,6 +140,7 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
     actionableTips: 'Actionable Tips',
     transcription: 'Transcription',
     yourRecording: 'Your Recording',
+    aiVoice: 'AI Voice',
     recordAnswer: 'Record Answer',
     reviewAnswer: 'Review Answer',
     takeYourTime: 'Take your time',
@@ -195,12 +198,18 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
   const hideMap = () => setIsMapVisible(false);
 
 
-  useEffect(() => { 
-      const checkMobile = () => setIsMobile(window.innerWidth < 768); 
-      checkMobile(); 
-      window.addEventListener('resize', checkMobile); 
-      return () => window.removeEventListener('resize', checkMobile); 
+  useEffect(() => {
+      const checkMobile = () => setIsMobile(window.innerWidth < 768);
+      checkMobile();
+      window.addEventListener('resize', checkMobile);
+      return () => window.removeEventListener('resize', checkMobile);
   }, []);
+
+  // Stop audio when switching between tabs
+  useEffect(() => {
+      stopTTS();
+      stopUserAudio();
+  }, [transcriptViewMode, stopTTS, stopUserAudio]);
 
   const { nodes: initialNodes, edges: initialEdges } = useMemo(() => {
       const targetStructure = viewMode === 'ai' && improved_structure ? improved_structure : structure;
@@ -510,10 +519,57 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
               {/* Audio Player - switches between user recording and AI TTS */}
               {transcriptViewMode === 'user' ? (
                   audioUrl && (
-                      <div className="bg-stone-50 p-3 rounded-lg border border-stone-200 flex items-center gap-3 mb-2">
-                          <div className="flex-1">
-                              <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wide mb-0.5">{labels.yourRecording}</p>
-                              <audio controls src={audioUrl} className="w-full h-6" />
+                      <div className="bg-white rounded-xl border border-stone-200 shadow-sm overflow-hidden mb-2">
+                          <div className="flex items-center px-3 py-2.5 gap-3">
+                              <button
+                                  onClick={toggleUserAudio}
+                                  className={`w-9 h-9 flex items-center justify-center rounded-full transition-all ${userAudioPlaying ? 'bg-stone-500 hover:bg-stone-600' : 'bg-stone-100 hover:bg-stone-200'}`}
+                              >
+                                  {userAudioPlaying ? (
+                                      <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor">
+                                          <rect x="6" y="4" width="4" height="16" rx="1" />
+                                          <rect x="14" y="4" width="4" height="16" rx="1" />
+                                      </svg>
+                                  ) : (
+                                      <svg className="w-4 h-4 text-stone-600 ml-0.5" viewBox="0 0 24 24" fill="currentColor">
+                                          <path d="M8 5v14l11-7z" />
+                                      </svg>
+                                  )}
+                              </button>
+                              <div className="flex-1">
+                                  <div className="flex items-center justify-between mb-1.5">
+                                      <div className="flex items-center gap-2">
+                                          <span className="text-xs font-semibold text-stone-700">{labels.yourRecording}</span>
+                                          {userAudioPlaying && (
+                                              <div className="flex items-center gap-0.5">
+                                                  {[3,5,4,6,3,5].map((h, i) => (
+                                                      <div key={i} className="w-0.5 bg-stone-400 rounded-full animate-pulse" style={{ height: `${h * 2}px`, animationDelay: `${i * 0.08}s` }} />
+                                                  ))}
+                                              </div>
+                                          )}
+                                      </div>
+                                      <span className="text-[10px] text-stone-400 font-medium tabular-nums">
+                                          {formatUserTime(userCurrentTime)} / {userDuration > 0 ? formatUserTime(userDuration) : '--:--'}
+                                      </span>
+                                  </div>
+                                  {/* Clickable progress bar */}
+                                  <div
+                                      className="h-2 bg-stone-100 rounded-full overflow-hidden cursor-pointer group"
+                                      onClick={(e) => {
+                                          const rect = e.currentTarget.getBoundingClientRect();
+                                          const percent = ((e.clientX - rect.left) / rect.width) * 100;
+                                          seekUserAudio(Math.max(0, Math.min(100, percent)));
+                                      }}
+                                  >
+                                      <div
+                                          className="h-full bg-gradient-to-r from-stone-400 to-stone-500 rounded-full transition-all duration-100 relative"
+                                          style={{ width: `${userProgress}%` }}
+                                      >
+                                          {/* Playhead dot */}
+                                          <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-md border-2 border-stone-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                      </div>
+                                  </div>
+                              </div>
                           </div>
                       </div>
                   )
@@ -522,7 +578,13 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
                       <div className="bg-white rounded-xl border border-sky-200 shadow-sm overflow-hidden mb-2">
                           <div className="flex items-center px-3 py-2.5 gap-3">
                               <button
-                                  onClick={() => isSpeaking ? stop() : speak(aiImprovedText)}
+                                  onClick={() => {
+                                      if (isSpeaking || isTTSPaused) {
+                                          toggleTTS();
+                                      } else {
+                                          speak(aiImprovedText);
+                                      }
+                                  }}
                                   className={`w-9 h-9 flex items-center justify-center rounded-full transition-all ${isSpeaking ? 'bg-sky-500 hover:bg-sky-600' : 'bg-sky-100 hover:bg-sky-200'}`}
                               >
                                   {isSpeaking ? (
@@ -539,7 +601,7 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
                               <div className="flex-1">
                                   <div className="flex items-center justify-between mb-1.5">
                                       <div className="flex items-center gap-2">
-                                          <span className="text-xs font-semibold text-sky-700">AI Voice</span>
+                                          <span className="text-xs font-semibold text-sky-700">{labels.aiVoice}</span>
                                           {isSpeaking && (
                                               <div className="flex items-center gap-0.5">
                                                   {[3,5,4,6,3,5].map((h, i) => (
@@ -549,7 +611,7 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
                                           )}
                                       </div>
                                       <span className="text-[10px] text-sky-400 font-medium tabular-nums">
-                                          {formatTime(currentTime)} / {duration > 0 ? formatTime(duration) : '--:--'}
+                                          {formatTTSTime(ttsCurrentTime)} / {ttsDuration > 0 ? formatTTSTime(ttsDuration) : '--:--'}
                                       </span>
                                   </div>
                                   {/* Clickable progress bar */}
@@ -558,12 +620,12 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
                                       onClick={(e) => {
                                           const rect = e.currentTarget.getBoundingClientRect();
                                           const percent = ((e.clientX - rect.left) / rect.width) * 100;
-                                          seek(Math.max(0, Math.min(100, percent)));
+                                          seekTTS(Math.max(0, Math.min(100, percent)));
                                       }}
                                   >
                                       <div
                                           className="h-full bg-gradient-to-r from-sky-400 to-sky-500 rounded-full transition-all duration-100 relative"
-                                          style={{ width: `${progress}%` }}
+                                          style={{ width: `${ttsProgress}%` }}
                                       >
                                           {/* Playhead dot */}
                                           <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-md border-2 border-sky-500 opacity-0 group-hover:opacity-100 transition-opacity" />
