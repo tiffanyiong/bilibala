@@ -1,10 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { getBackendOrigin } from '../../../shared/services/backend';
 import { ExploreVideo } from '../../../shared/types/database';
 import ExploreVideoCard from './ExploreVideoCard';
 import LandingFormCard from './LandingFormCard';
 import LineIndicators from './LineIndicators';
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 interface CubeCarouselProps {
   videoUrl: string;
@@ -53,7 +52,7 @@ const CubeCarousel: React.FC<CubeCarouselProps> = ({
     const fetchVideos = async () => {
       try {
         const params = new URLSearchParams({ targetLang, level, limit: '5' });
-        const response = await fetch(`${API_BASE}/api/explore?${params}`);
+        const response = await fetch(`${getBackendOrigin()}/api/explore?${params}`);
         if (response.ok) {
           const data = await response.json();
           setExploreVideos(data.videos || []);
