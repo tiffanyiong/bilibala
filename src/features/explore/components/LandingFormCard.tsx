@@ -33,7 +33,7 @@ const LandingFormCard: React.FC<LandingFormCardProps> = ({
     <div className="w-full bg-white/50 backdrop-blur-2xl p-4 sm:p-5 border border-white/60 shadow-[0_4px_24px_rgba(0,0,0,0.06)] ring-1 ring-black/[0.03] rounded-2xl space-y-3 sm:space-y-3.5 text-left">
       {/* Header */}
       <div className="text-center space-y-0.5 pb-0.5">
-        <h2 className="text-lg sm:text-xl md:text-2xl font-serif text-stone-800 tracking-tight">
+        <h2 className="text-2xl sm:text-xl md:text-2xl font-serif text-stone-800 tracking-tight">
           Bilibala
         </h2>
         <p className="text-[11px] sm:text-xs text-stone-500 leading-relaxed">
@@ -42,7 +42,7 @@ const LandingFormCard: React.FC<LandingFormCardProps> = ({
       </div>
 
       {/* Language Selectors */}
-      <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
         <div className="space-y-0.5 sm:space-y-1">
           <label className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-stone-400 ml-1">
             I Speak
@@ -66,7 +66,7 @@ const LandingFormCard: React.FC<LandingFormCardProps> = ({
         </div>
 
         {/* Depth Level - full width on all screens */}
-        <div className="col-span-2 space-y-0.5 sm:space-y-1">
+        <div className="col-span-1 sm:col-span-2 space-y-0.5 sm:space-y-1">
           <label className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-stone-400 ml-1">
             Depth Level
           </label>
@@ -75,7 +75,7 @@ const LandingFormCard: React.FC<LandingFormCardProps> = ({
               <button
                 key={l.id}
                 onClick={() => setLevel(l.id)}
-                className={`flex-1 py-1 sm:py-1.5 rounded-lg text-[11px] sm:text-xs font-medium transition-all ${
+                className={`flex-1 py-2 sm:py-1.5 rounded-lg text-sm sm:text-xs font-medium transition-all ${
                   level === l.id
                     ? 'bg-white/70 backdrop-blur-sm text-stone-800 shadow-sm ring-1 ring-black/[0.04]'
                     : 'text-stone-500 hover:text-stone-700 hover:bg-white/40'
