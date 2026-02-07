@@ -1483,7 +1483,7 @@ const App: React.FC = () => {
   const translationPopupTargetLang = translatorTargetLang || nativeLang;
 
   const shouldShowHeader = appState === AppState.DASHBOARD || appState === AppState.PRACTICE_SESSION;
-  const isScrollable = appState === AppState.DASHBOARD || appState === AppState.PRACTICE_SESSION || appState === AppState.VIDEO_LIBRARY || appState === AppState.PRACTICE_REPORTS || appState === AppState.PRACTICE_REPORT_DETAIL || appState === AppState.SUBSCRIPTION || appState === AppState.PROFILE || appState === AppState.SETTINGS || appState === AppState.PRIVACY || appState === AppState.TERMS;
+  const isScrollable = appState === AppState.LANDING || appState === AppState.DASHBOARD || appState === AppState.PRACTICE_SESSION || appState === AppState.VIDEO_LIBRARY || appState === AppState.PRACTICE_REPORTS || appState === AppState.PRACTICE_REPORT_DETAIL || appState === AppState.SUBSCRIPTION || appState === AppState.PROFILE || appState === AppState.SETTINGS || appState === AppState.PRIVACY || appState === AppState.TERMS;
   const shouldShowFooter = appState === AppState.LANDING || appState === AppState.PRIVACY || appState === AppState.TERMS || appState === AppState.SUBSCRIPTION;
 
   return (
@@ -1506,7 +1506,7 @@ const App: React.FC = () => {
     >
       {/* 1. LANDING PAGE */}
       {appState === AppState.LANDING && (
-        <div className="h-full flex flex-col items-center justify-center p-4 overflow-y-auto">
+        <div className="min-h-[calc(100vh-5rem)] flex flex-col items-center justify-center p-4">
           <CubeCarousel
             videoUrl={videoUrl}
             setVideoUrl={setVideoUrl}
