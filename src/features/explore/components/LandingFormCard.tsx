@@ -1,5 +1,6 @@
 import React from 'react';
 import { LANGUAGES, LEVELS } from '../../../shared/constants';
+import GlassDropdown from '../../../shared/components/GlassDropdown';
 
 interface LandingFormCardProps {
   videoUrl: string;
@@ -14,16 +15,7 @@ interface LandingFormCardProps {
   errorMsg: string;
 }
 
-const ChevronDownIcon = () => (
-  <svg
-    className="w-4 h-4 text-zinc-500 pointer-events-none absolute right-3 sm:right-4 top-1/2 -translate-y-1/2"
-    fill="none"
-    stroke="currentColor"
-    viewBox="0 0 24 24"
-  >
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-  </svg>
-);
+const languageOptions = LANGUAGES.map((l) => ({ value: l.name, label: l.name }));
 
 const LandingFormCard: React.FC<LandingFormCardProps> = ({
   videoUrl,
@@ -38,73 +30,55 @@ const LandingFormCard: React.FC<LandingFormCardProps> = ({
   errorMsg,
 }) => {
   return (
-    <div className="w-full h-full bg-[#FAF9F6] p-4 sm:p-6 md:p-8 border border-stone-200 shadow-sm rounded-xl sm:rounded-2xl space-y-4 sm:space-y-5 text-left overflow-y-auto">
+    <div className="w-full bg-white/50 backdrop-blur-2xl p-4 sm:p-5 border border-white/60 shadow-[0_4px_24px_rgba(0,0,0,0.06)] ring-1 ring-black/[0.03] rounded-2xl space-y-3 sm:space-y-3.5 text-left">
       {/* Header */}
-      <div className="text-center space-y-1 sm:space-y-2 pb-1 sm:pb-2">
-        <h2 className="text-xl sm:text-2xl md:text-3xl font-serif text-stone-800 tracking-tight">
+      <div className="text-center space-y-0.5 pb-0.5">
+        <h2 className="text-lg sm:text-xl md:text-2xl font-serif text-stone-800 tracking-tight">
           Bilibala
         </h2>
-        <p className="text-xs sm:text-sm text-stone-500 leading-relaxed">
+        <p className="text-[11px] sm:text-xs text-stone-500 leading-relaxed">
           Turn any YouTube video into a structured language lesson.
         </p>
       </div>
 
       {/* Language Selectors */}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4">
-        <div className="space-y-1 sm:space-y-1.5">
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+        <div className="space-y-0.5 sm:space-y-1">
           <label className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-stone-400 ml-1">
             I Speak
           </label>
-          <div className="relative group">
-            <select
-              value={nativeLang}
-              onChange={(e) => setNativeLang(e.target.value)}
-              className="w-full appearance-none bg-white border border-stone-200 text-stone-700 text-base sm:text-sm rounded-lg py-2 sm:py-2.5 px-2.5 sm:px-3 pr-7 sm:pr-8 outline-none focus:border-stone-400 focus:ring-1 focus:ring-stone-200 transition-all cursor-pointer hover:bg-stone-50"
-            >
-              {LANGUAGES.map((l) => (
-                <option key={l.code} value={l.name}>
-                  {l.name}
-                </option>
-              ))}
-            </select>
-            <ChevronDownIcon />
-          </div>
+          <GlassDropdown
+            value={nativeLang}
+            onChange={setNativeLang}
+            options={languageOptions}
+          />
         </div>
 
-        <div className="space-y-1 sm:space-y-1.5">
+        <div className="space-y-0.5 sm:space-y-1">
           <label className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-stone-400 ml-1">
             I'm Learning
           </label>
-          <div className="relative group">
-            <select
-              value={targetLang}
-              onChange={(e) => setTargetLang(e.target.value)}
-              className="w-full appearance-none bg-white border border-stone-200 text-stone-700 text-base sm:text-sm rounded-lg py-2 sm:py-2.5 px-2.5 sm:px-3 pr-7 sm:pr-8 outline-none focus:border-stone-400 focus:ring-1 focus:ring-stone-200 transition-all cursor-pointer hover:bg-stone-50"
-            >
-              {LANGUAGES.map((l) => (
-                <option key={l.code} value={l.name}>
-                  {l.name}
-                </option>
-              ))}
-            </select>
-            <ChevronDownIcon />
-          </div>
+          <GlassDropdown
+            value={targetLang}
+            onChange={setTargetLang}
+            options={languageOptions}
+          />
         </div>
 
         {/* Depth Level - full width on all screens */}
-        <div className="col-span-2 space-y-1 sm:space-y-1.5">
+        <div className="col-span-2 space-y-0.5 sm:space-y-1">
           <label className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-stone-400 ml-1">
             Depth Level
           </label>
-          <div className="flex bg-white p-1 rounded-lg border border-stone-200 gap-1">
+          <div className="flex bg-white/40 backdrop-blur-sm p-1 rounded-xl border border-white/60 ring-1 ring-black/[0.04] gap-1">
             {LEVELS.map((l) => (
               <button
                 key={l.id}
                 onClick={() => setLevel(l.id)}
-                className={`flex-1 py-1.5 sm:py-2 rounded-md text-[11px] sm:text-xs font-medium transition-all ${
+                className={`flex-1 py-1 sm:py-1.5 rounded-lg text-[11px] sm:text-xs font-medium transition-all ${
                   level === l.id
-                    ? 'bg-[#FAF9F6] text-stone-800 shadow-sm border border-stone-200'
-                    : 'text-stone-500 hover:text-stone-700 hover:bg-stone-50'
+                    ? 'bg-white/70 backdrop-blur-sm text-stone-800 shadow-sm ring-1 ring-black/[0.04]'
+                    : 'text-stone-500 hover:text-stone-700 hover:bg-white/40'
                 }`}
               >
                 {l.label}
@@ -114,35 +88,40 @@ const LandingFormCard: React.FC<LandingFormCardProps> = ({
         </div>
       </div>
 
-      {/* URL Input */}
-      <div className="space-y-1 sm:space-y-1.5 pt-1 sm:pt-2">
+      {/* URL Input with inline submit */}
+      <div className="space-y-0.5 sm:space-y-1">
         <label className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-stone-400 ml-1">
           Source Material
         </label>
-        <input
-          type="text"
-          className="w-full bg-white border border-stone-300 px-3 sm:px-4 py-2.5 sm:py-3 text-base sm:text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none focus:border-stone-500 focus:ring-1 focus:ring-stone-200 transition-all rounded-lg shadow-sm"
-          placeholder="Paste YouTube Link..."
-          value={videoUrl}
-          onChange={(e) => setVideoUrl(e.target.value)}
-        />
+        <div className="relative">
+          <input
+            type="text"
+            className="w-full bg-white/60 backdrop-blur-sm border border-white/60 pl-3 sm:pl-4 pr-12 py-2 sm:py-2.5 text-base sm:text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none focus:border-stone-300 focus:ring-1 focus:ring-stone-200 transition-all rounded-xl ring-1 ring-black/[0.04] shadow-sm"
+            placeholder="Paste YouTube Link..."
+            value={videoUrl}
+            onChange={(e) => setVideoUrl(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && videoUrl) onStart(); }}
+          />
+          <button
+            onClick={onStart}
+            disabled={!videoUrl}
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 w-7 h-7 flex items-center justify-center rounded-lg bg-stone-800 text-white shadow-sm hover:bg-stone-900 transition-all disabled:opacity-30 disabled:cursor-not-allowed active:scale-90"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+            </svg>
+          </button>
+        </div>
       </div>
 
-      {/* Error Message — inline under input, no extra vertical space */}
-      {errorMsg && (
-        <div className="-mt-2 sm:-mt-3 text-red-500 text-[10px] sm:text-[11px] font-medium leading-tight px-1">
-          {errorMsg}
-        </div>
-      )}
-
-      {/* Start Button */}
-      <button
-        onClick={onStart}
-        disabled={!videoUrl}
-        className="w-full bg-stone-800 text-white font-medium py-2.5 sm:py-3 text-sm rounded-lg shadow-md hover:bg-stone-900 hover:shadow-lg hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 active:scale-[0.98]"
-      >
-        Start
-      </button>
+      {/* Error Message */}
+      <div className="min-h-[16px] -mt-1.5">
+        {errorMsg && (
+          <span className="text-red-500 text-[10px] sm:text-[11px] font-medium leading-tight px-1">
+            {errorMsg}
+          </span>
+        )}
+      </div>
     </div>
   );
 };
