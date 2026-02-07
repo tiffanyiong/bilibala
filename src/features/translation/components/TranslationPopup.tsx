@@ -41,7 +41,6 @@ interface PopupState {
   translation: string | null;
   loading: boolean;
   error: string | null;
-  showBelow: boolean; // touch: show below selection (iOS pills stay above); desktop: show above
 }
 
 const TranslationPopup: React.FC<TranslationPopupProps> = ({
@@ -57,13 +56,14 @@ const TranslationPopup: React.FC<TranslationPopupProps> = ({
     translation: null,
     loading: false,
     error: null,
-    showBelow: false,
   });
 
   const popupRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   // Track the last processed text to avoid duplicate triggers
   const lastProcessedTextRef = useRef<string>('');
+  // Timer for delayed iOS selection clear
+  const iosClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Translate text via backend API
   const translateText = useCallback(async (text: string) => {
@@ -151,11 +151,30 @@ const TranslationPopup: React.FC<TranslationPopupProps> = ({
 
     const rect = range.getBoundingClientRect();
     const posX = rect.left + rect.width / 2;
-    // Desktop: position above selection top; Touch: position below selection bottom
-    // with extra offset (~20px) to clear the iOS blue drag handles
-    const posY = fromTouch ? rect.bottom + 20 : rect.top;
+    const posY = rect.top;
 
     lastProcessedTextRef.current = selectedText;
+
+    // On touch devices, handle iOS native callout (Copy/Find) overlap
+    if (fromTouch) {
+      // Clear any previous timer
+      if (iosClearTimerRef.current) {
+        clearTimeout(iosClearTimerRef.current);
+        iosClearTimerRef.current = null;
+      }
+
+      const viewportHeight = window.innerHeight;
+      if (rect.top >= viewportHeight * 0.5) {
+        // Selection is in the bottom half — iOS callout appears ABOVE the selection,
+        // which overlaps our tooltip. Give user 3s to use Copy/Find, then dismiss it.
+        iosClearTimerRef.current = setTimeout(() => {
+          window.getSelection()?.removeAllRanges();
+          iosClearTimerRef.current = null;
+        }, 3000);
+      }
+      // Selection in top half — iOS callout goes below selection,
+      // our tooltip sits above — no overlap, keep both
+    }
 
     // Check character limit
     if (selectedText.length > MAX_CHARS) {
@@ -168,7 +187,6 @@ const TranslationPopup: React.FC<TranslationPopupProps> = ({
         translation: null,
         loading: false,
         error: `${msgs.tooLong} (${selectedText.length}/${MAX_CHARS})`,
-        showBelow: fromTouch,
       });
       return;
     }
@@ -188,7 +206,6 @@ const TranslationPopup: React.FC<TranslationPopupProps> = ({
       translation: null,
       loading: true,
       error: null,
-      showBelow: fromTouch,
     });
 
     translateText(selectedText);
@@ -210,6 +227,10 @@ const TranslationPopup: React.FC<TranslationPopupProps> = ({
     if (popupRef.current && !popupRef.current.contains(event.target as Node)) {
       setPopup(prev => ({ ...prev, visible: false }));
       lastProcessedTextRef.current = '';
+      if (iosClearTimerRef.current) {
+        clearTimeout(iosClearTimerRef.current);
+        iosClearTimerRef.current = null;
+      }
       window.getSelection()?.removeAllRanges();
     }
   }, []);
@@ -219,6 +240,10 @@ const TranslationPopup: React.FC<TranslationPopupProps> = ({
     if (event.key === 'Escape') {
       setPopup(prev => ({ ...prev, visible: false }));
       lastProcessedTextRef.current = '';
+      if (iosClearTimerRef.current) {
+        clearTimeout(iosClearTimerRef.current);
+        iosClearTimerRef.current = null;
+      }
       window.getSelection()?.removeAllRanges();
     }
   }, []);
@@ -247,6 +272,9 @@ const TranslationPopup: React.FC<TranslationPopupProps> = ({
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
+      if (iosClearTimerRef.current) {
+        clearTimeout(iosClearTimerRef.current);
+      }
     };
   }, [containerRef, handleMouseUp, handleTouchEnd, handleDismiss, handleKeyDown]);
 
@@ -255,7 +283,6 @@ const TranslationPopup: React.FC<TranslationPopupProps> = ({
     if (popup.visible && popupRef.current) {
       const rect = popupRef.current.getBoundingClientRect();
       const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight;
 
       let adjustedX = popup.x;
       let adjustedY = popup.y;
@@ -268,46 +295,29 @@ const TranslationPopup: React.FC<TranslationPopupProps> = ({
         adjustedX = rect.width / 2 + 16;
       }
 
-      if (popup.showBelow) {
-        // Mobile: showing below selection. Clamp if overflows bottom.
-        if (popup.y + rect.height > viewportHeight - 16) {
-          adjustedY = viewportHeight - rect.height - 16;
-        }
-      } else {
-        // Desktop: showing above selection. If not enough space above, flip below.
-        if (popup.y - rect.height - 8 < 16) {
-          adjustedY = popup.y + 30;
-        }
+      // Showing above selection. If not enough space above, flip below.
+      if (popup.y - rect.height - 8 < 16) {
+        adjustedY = popup.y + 30;
       }
 
       if (adjustedX !== popup.x || adjustedY !== popup.y) {
         setPopup(prev => ({ ...prev, x: adjustedX, y: adjustedY }));
       }
     }
-  }, [popup.visible, popup.x, popup.y, popup.showBelow]);
+  }, [popup.visible, popup.x, popup.y]);
 
   if (!popup.visible) return null;
 
   return (
     <div
       ref={popupRef}
-      className={`fixed z-[1000] transform -translate-x-1/2 ${
-        popup.showBelow ? 'mt-0' : '-translate-y-full -mt-2'
-      }`}
+      className="fixed z-[1000] transform -translate-x-1/2 -translate-y-full -mt-2"
       style={{ left: popup.x, top: popup.y }}
     >
       <div
         className="relative rounded-2xl px-4 py-3 max-w-xs animate-in fade-in zoom-in-95 duration-150"
         style={GLASS_STYLE}
       >
-        {/* Arrow pointing up (mobile: tooltip below selection) */}
-        {popup.showBelow && (
-          <div
-            className="absolute left-1/2 -translate-x-1/2 bottom-full w-0 h-0 border-l-8 border-r-8 border-b-8 border-transparent"
-            style={{ borderBottomColor: 'rgba(255,255,255,0.6)' }}
-          />
-        )}
-
         {/* Loading state */}
         {popup.loading && (
           <div className="flex items-center gap-2">
@@ -331,13 +341,11 @@ const TranslationPopup: React.FC<TranslationPopupProps> = ({
           </div>
         )}
 
-        {/* Arrow pointing down (desktop: tooltip above selection) */}
-        {!popup.showBelow && (
-          <div
-            className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-8 border-r-8 border-t-8 border-transparent"
-            style={{ borderTopColor: 'rgba(255,255,255,0.6)' }}
-          />
-        )}
+        {/* Arrow pointing down */}
+        <div
+          className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-8 border-r-8 border-t-8 border-transparent"
+          style={{ borderTopColor: 'rgba(255,255,255,0.6)' }}
+        />
       </div>
     </div>
   );
