@@ -1397,6 +1397,9 @@ const App: React.FC = () => {
   // Handle expanding reports from modal to full page
   const handleExpandReports = (video: VideoHistoryItem, sessionId?: string) => {
     setCurrentReportsVideo(video);
+    // Update language context so TranslationPopup uses the correct target language
+    setNativeLang(video.nativeLang);
+    setTargetLang(video.targetLang);
     if (sessionId) {
       setCurrentReportSessionId(sessionId);
       setAppState(AppState.PRACTICE_REPORT_DETAIL);
@@ -1618,7 +1621,7 @@ const App: React.FC = () => {
            </div>
 
            {/* ContentTabs - Order 2 on mobile (before topics), right column on desktop */}
-           <div className="lg:col-span-5 h-[500px] lg:h-[720px] order-2">
+           <div className="lg:col-span-5 h-[500px] lg:h-[775px] order-2">
                <ContentTabs
                   summary={summary}
                   translatedSummary={translatedSummary}
