@@ -19,6 +19,14 @@ const ERROR_MESSAGES: Record<string, { notAvailable: string; tooLong: string }> 
 
 const DEFAULT_ERRORS = { notAvailable: 'Translation is currently not available', tooLong: 'Selection too long' };
 
+const GLASS_STYLE: React.CSSProperties = {
+  background: 'linear-gradient(135deg, rgba(255,255,255,0.72), rgba(255,255,255,0.48))',
+  backdropFilter: 'blur(40px) saturate(1.8)',
+  WebkitBackdropFilter: 'blur(40px) saturate(1.8)',
+  border: '1px solid rgba(255,255,255,0.5)',
+  boxShadow: '0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.6)',
+};
+
 interface TranslationPopupProps {
   sourceLang?: string; // e.g., "English" - optional, DeepL auto-detects if not provided
   targetLang: string; // e.g., "Chinese (Mandarin - 中文)" - translate TO this language
@@ -33,7 +41,6 @@ interface PopupState {
   translation: string | null;
   loading: boolean;
   error: string | null;
-  showBelow: boolean; // true = show below selection (mobile), false = show above (desktop)
 }
 
 const TranslationPopup: React.FC<TranslationPopupProps> = ({
@@ -49,7 +56,6 @@ const TranslationPopup: React.FC<TranslationPopupProps> = ({
     translation: null,
     loading: false,
     error: null,
-    showBelow: false,
   });
 
   const popupRef = useRef<HTMLDivElement>(null);
@@ -115,8 +121,6 @@ const TranslationPopup: React.FC<TranslationPopupProps> = ({
   }, [sourceLang, targetLang]);
 
   // Shared selection processing logic (works for both mouse and touch)
-  // fromTouch: true when triggered by touch event (mobile) - positions popup below selection
-  // to avoid overlapping with the iOS native selection menu (Copy/Find pills)
   const processSelection = useCallback((fromTouch: boolean) => {
     const selection = window.getSelection();
     const selectedText = selection?.toString().trim();
@@ -139,16 +143,22 @@ const TranslationPopup: React.FC<TranslationPopupProps> = ({
       }
     }
 
-    // Get position from the selection range (works on both desktop and mobile)
+    // Get position from the selection range
     const range = selection?.getRangeAt(0);
     if (!range) return;
 
     const rect = range.getBoundingClientRect();
     const posX = rect.left + rect.width / 2;
-    // On touch devices, position below the selection to avoid iOS selection pills
-    const posY = fromTouch ? rect.bottom : rect.top;
+    const posY = rect.top;
 
     lastProcessedTextRef.current = selectedText;
+
+    // On touch devices, clear the selection to dismiss the iOS callout menu
+    // (Copy/Find Selection pills). Our tooltip will show at the captured position
+    // and displays both the original text and translation.
+    if (fromTouch) {
+      selection?.removeAllRanges();
+    }
 
     // Check character limit
     if (selectedText.length > MAX_CHARS) {
@@ -161,7 +171,6 @@ const TranslationPopup: React.FC<TranslationPopupProps> = ({
         translation: null,
         loading: false,
         error: `${msgs.tooLong} (${selectedText.length}/${MAX_CHARS})`,
-        showBelow: fromTouch,
       });
       return;
     }
@@ -181,19 +190,18 @@ const TranslationPopup: React.FC<TranslationPopupProps> = ({
       translation: null,
       loading: true,
       error: null,
-      showBelow: fromTouch,
     });
 
     translateText(selectedText);
   }, [containerRef, sourceLang, targetLang, translateText]);
 
-  // Desktop: handle mouseup - popup appears above selection
+  // Desktop: handle mouseup
   const handleMouseUp = useCallback(() => {
     setTimeout(() => processSelection(false), 10);
   }, [processSelection]);
 
-  // Mobile/Tablet: handle touchend - popup appears below selection
-  // to avoid overlapping with the iOS native selection menu pills
+  // Mobile/Tablet: handle touchend
+  // Longer delay to let the OS finalize the selection before we capture + clear it
   const handleTouchEnd = useCallback(() => {
     setTimeout(() => processSelection(true), 300);
   }, [processSelection]);
@@ -248,7 +256,6 @@ const TranslationPopup: React.FC<TranslationPopupProps> = ({
     if (popup.visible && popupRef.current) {
       const rect = popupRef.current.getBoundingClientRect();
       const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight;
 
       let adjustedX = popup.x;
       let adjustedY = popup.y;
@@ -261,52 +268,29 @@ const TranslationPopup: React.FC<TranslationPopupProps> = ({
         adjustedX = rect.width / 2 + 16;
       }
 
-      if (popup.showBelow) {
-        // Mobile: popup is below selection. If it overflows bottom, nudge up.
-        if (popup.y + rect.height + 8 > viewportHeight - 16) {
-          adjustedY = viewportHeight - rect.height - 16;
-        }
-      } else {
-        // Desktop: popup is above selection. If not enough space above, show below.
-        if (popup.y - rect.height - 8 < 16) {
-          adjustedY = popup.y + 30;
-        }
+      // Adjust vertical position (show below if not enough space above)
+      if (popup.y - rect.height - 8 < 16) {
+        adjustedY = popup.y + 30;
       }
 
       if (adjustedX !== popup.x || adjustedY !== popup.y) {
         setPopup(prev => ({ ...prev, x: adjustedX, y: adjustedY }));
       }
     }
-  }, [popup.visible, popup.x, popup.y, popup.showBelow]);
+  }, [popup.visible, popup.x, popup.y]);
 
   if (!popup.visible) return null;
 
   return (
     <div
       ref={popupRef}
-      className={`fixed z-[1000] transform -translate-x-1/2 ${
-        popup.showBelow ? 'mt-2' : '-translate-y-full -mt-2'
-      }`}
+      className="fixed z-[1000] transform -translate-x-1/2 -translate-y-full -mt-2"
       style={{ left: popup.x, top: popup.y }}
     >
       <div
         className="relative rounded-2xl px-4 py-3 max-w-xs animate-in fade-in zoom-in-95 duration-150"
-        style={{
-          background: 'linear-gradient(135deg, rgba(255,255,255,0.72), rgba(255,255,255,0.48))',
-          backdropFilter: 'blur(40px) saturate(1.8)',
-          WebkitBackdropFilter: 'blur(40px) saturate(1.8)',
-          border: '1px solid rgba(255,255,255,0.5)',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.6)',
-        }}
+        style={GLASS_STYLE}
       >
-        {/* Arrow pointing up (when popup is below selection on mobile) */}
-        {popup.showBelow && (
-          <div
-            className="absolute left-1/2 -translate-x-1/2 bottom-full w-0 h-0 border-l-8 border-r-8 border-b-8 border-transparent"
-            style={{ borderBottomColor: 'rgba(255,255,255,0.6)' }}
-          />
-        )}
-
         {/* Loading state */}
         {popup.loading && (
           <div className="flex items-center gap-2">
@@ -330,13 +314,11 @@ const TranslationPopup: React.FC<TranslationPopupProps> = ({
           </div>
         )}
 
-        {/* Arrow pointing down (when popup is above selection on desktop) */}
-        {!popup.showBelow && (
-          <div
-            className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-8 border-r-8 border-t-8 border-transparent"
-            style={{ borderTopColor: 'rgba(255,255,255,0.6)' }}
-          />
-        )}
+        {/* Arrow pointing down */}
+        <div
+          className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-8 border-r-8 border-t-8 border-transparent"
+          style={{ borderTopColor: 'rgba(255,255,255,0.6)' }}
+        />
       </div>
     </div>
   );
