@@ -278,7 +278,7 @@ const CubeCarousel: React.FC<CubeCarouselProps> = ({
       >
         {/* Card 1: Landing Form */}
         <div
-          className="absolute inset-0 w-full h-full"
+          className="absolute inset-0 w-full h-full flex items-center justify-center px-2 sm:px-4"
           style={getCardStyle(0)}
         >
           <LandingFormCard
@@ -301,7 +301,7 @@ const CubeCarousel: React.FC<CubeCarouselProps> = ({
           return (
             <div
               key={video.analysisId}
-              className="absolute inset-0 w-full h-full flex items-center justify-center"
+              className="absolute inset-0 w-full h-full flex items-center justify-center px-2 sm:px-4"
               style={getCardStyle(cardIndex)}
             >
               <ExploreVideoCard

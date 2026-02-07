@@ -104,7 +104,7 @@ const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, t
 
   // --- CUSTOM SVG ICONS ---
   const SpeakerIcon: React.FC<{ isPlaying?: boolean }> = ({ isPlaying }) => (
-    <svg className={`w-4 h-4 ${isPlaying ? 'text-blue-500' : 'text-gray-400 group-hover:text-gray-600'}`} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg className={`w-4 h-4 ${isPlaying ? 'text-amber-500' : 'text-stone-400 group-hover:text-stone-600'}`} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path d="M11 5L6 9H2V15H6L11 19V5Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
       {isPlaying ? (
         <>
@@ -201,9 +201,9 @@ const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, t
       }
   };
 
-  const containerClasses = layoutMode === 'fixed' 
-    ? "bg-[#FCFCFC] h-full flex flex-col overflow-hidden shadow-sm rounded-xl border border-gray-200"
-    : "bg-[#FCFCFC] flex flex-col overflow-hidden shadow-sm rounded-xl border border-gray-200";
+  const containerClasses = layoutMode === 'fixed'
+    ? "bg-white/50 backdrop-blur-2xl h-full flex flex-col overflow-hidden shadow-[0_4px_24px_rgba(0,0,0,0.06)] rounded-2xl border border-white/60 ring-1 ring-black/[0.03]"
+    : "bg-white/50 backdrop-blur-2xl flex flex-col overflow-hidden shadow-[0_4px_24px_rgba(0,0,0,0.06)] rounded-2xl border border-white/60 ring-1 ring-black/[0.03]";
 
   const contentAreaClasses = layoutMode === 'fixed'
     ? "flex-1 overflow-y-auto p-2 scrollbar-hide relative"
@@ -212,23 +212,23 @@ const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, t
   return (
     <div className={containerClasses}>
       {/* Tab Header - Notion Style */}
-      <div className="flex px-2 pt-2 gap-1 bg-transparent border-b border-gray-100 flex-nowrap overflow-x-auto shrink-0 mb-1">
+      <div className="flex px-2 pt-2 gap-1 bg-white/30 border-b border-white/40 flex-nowrap overflow-x-auto shrink-0 mb-1">
         <button
           onClick={() => setActiveTab('outline')}
-          className={`px-3 py-2 text-[14px] rounded-md transition-all whitespace-nowrap ${
+          className={`px-3 py-2 text-[14px] rounded-lg transition-all whitespace-nowrap ${
             activeTab === 'outline'
-              ? 'text-gray-900 bg-gray-100 font-medium'
-              : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+              ? 'text-stone-800 bg-white/60 backdrop-blur-sm font-medium shadow-sm ring-1 ring-black/[0.04]'
+              : 'text-stone-400 hover:bg-white/30 hover:text-stone-600'
           }`}
         >
           {uiText.outlineTab}
         </button>
         <button
           onClick={() => setActiveTab('vocab')}
-          className={`px-3 py-2 text-[14px] rounded-md transition-all whitespace-nowrap ${
+          className={`px-3 py-2 text-[14px] rounded-lg transition-all whitespace-nowrap ${
             activeTab === 'vocab'
-              ? 'text-gray-900 bg-gray-100 font-medium'
-              : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+              ? 'text-stone-800 bg-white/60 backdrop-blur-sm font-medium shadow-sm ring-1 ring-black/[0.04]'
+              : 'text-stone-400 hover:bg-white/30 hover:text-stone-600'
           }`}
         >
           {uiText.vocabularyTab}
@@ -236,10 +236,10 @@ const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, t
         <div className="relative flex items-center">
           <button
             onClick={() => setActiveTab('transcript')}
-            className={`px-3 py-2 text-[14px] rounded-md transition-all whitespace-nowrap ${
+            className={`px-3 py-2 text-[14px] rounded-lg transition-all whitespace-nowrap ${
               activeTab === 'transcript'
-                ? 'text-gray-900 bg-gray-100 font-medium'
-                : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+                ? 'text-stone-800 bg-white/60 backdrop-blur-sm font-medium shadow-sm ring-1 ring-black/[0.04]'
+                : 'text-stone-400 hover:bg-white/30 hover:text-stone-600'
             }`}
           >
             {uiText.transcriptTab}
@@ -319,34 +319,40 @@ const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, t
                   <div className="flex flex-col space-y-0.5 px-2 py-2">
                     {/* Summary Section */}
                     {summary && (
-                        <div className="mb-4 p-3 bg-white rounded-lg border border-gray-100 shadow-sm">
-                            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">{uiText.summary}</h3>
-                            <div className="text-[14px] text-gray-700 leading-relaxed">
+                        <div className="mb-3 p-3.5 rounded-xl border border-white/60 bg-white/40 backdrop-blur-xl shadow-[0_2px_12px_rgba(0,0,0,0.04)] ring-1 ring-black/[0.03]">
+                            <h3 className="text-[11px] font-semibold text-stone-400 uppercase tracking-wider mb-2">{uiText.summary}</h3>
+                            <div className="text-[14px] text-stone-600 leading-relaxed">
                                 <BilingualText main={summary} translated={translatedSummary} />
                             </div>
                         </div>
                     )}
 
+                    {topics.length > 0 && (
+                      <h3 className="text-[11px] font-semibold text-stone-400 uppercase tracking-wider px-1 mt-1 mb-1">{uiText.chapters}</h3>
+                    )}
                     {topics.length > 0 && topics.map((topic, index) => {
                         const ms = parseTimestamp(topic.timestamp);
                         return (
-                            <div 
-                                key={index} 
-                                className="group flex gap-3 p-2 rounded-lg hover:bg-gray-100/80 transition-all cursor-pointer items-start"
+                            <div
+                                key={index}
+                                className="group flex gap-3 p-2.5 rounded-xl transition-all cursor-pointer items-start border border-transparent hover:border-white/60 hover:bg-white/40 hover:backdrop-blur-xl hover:shadow-[0_2px_12px_rgba(0,0,0,0.04)] hover:ring-1 hover:ring-black/[0.03] active:scale-[0.99]"
                                 onClick={() => onTimestampClick && onTimestampClick(ms)}
                             >
-                                <div className="shrink-0 pt-0.5">
-                                    <span className="text-[11px] font-mono text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100 group-hover:border-gray-200 transition-colors">
+                                <div className="shrink-0 pt-0.5 flex items-center gap-1.5">
+                                    <span className="text-[11px] font-mono text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100 group-hover:bg-amber-600 group-hover:text-white group-hover:border-amber-600 transition-colors">
                                         {topic.timestamp}
                                     </span>
+                                    <svg className="w-3 h-3 text-amber-300 group-hover:text-amber-600 transition-colors" viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M8 5v14l11-7z"/>
+                                    </svg>
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <h3 className="text-[15px] font-medium text-gray-800 leading-snug mb-1 group-hover:text-black">
+                                    <h3 className="text-[14px] font-medium text-stone-700 leading-snug mb-0.5 group-hover:text-stone-900">
                                         {topic.title}
                                     </h3>
-                                    <div className="text-[13px] text-gray-500 leading-relaxed font-light">
-                                        <BilingualText main={topic.description} translated={topic.translatedDescription} />
-                                    </div>
+                                    <p className="text-[12px] text-stone-400 leading-relaxed line-clamp-2">
+                                        {topic.description}
+                                    </p>
                                 </div>
                             </div>
                         );
@@ -366,31 +372,31 @@ const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, t
                 ) : activeTab === 'vocab' ? (
                   <div className="grid grid-cols-1 gap-2 px-2 py-2">
                     {vocabulary.map((item, index) => (
-                      <div key={index} className="group p-3 rounded-lg border border-transparent hover:border-gray-200 hover:bg-white hover:shadow-sm transition-all">
+                      <div key={index} className="group p-3 rounded-xl border border-transparent hover:border-white/60 hover:bg-white/40 hover:backdrop-blur-xl hover:shadow-[0_2px_12px_rgba(0,0,0,0.04)] hover:ring-1 hover:ring-black/[0.03] transition-all">
                         <div className="flex justify-between items-center mb-1">
                           <div className="flex items-center">
                             <BilingualText
                                 main={item.word}
                                 translated={item.translatedWord || ''}
-                                className="font-medium text-gray-800 text-[15px]"
+                                className="font-medium text-stone-800 text-[15px]"
                             />
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
                                 speak(item.word);
                               }}
-                              className="ml-2 p-1.5 rounded-full hover:bg-gray-100 transition-colors relative z-10"
+                              className="ml-2 p-1.5 rounded-full hover:bg-stone-100 transition-colors relative z-10"
                               title="Listen to pronunciation"
                             >
                               <SpeakerIcon isPlaying={currentText === item.word} />
                             </button>
-                          
+
                           </div>
                         </div>
-                        <div className="text-gray-600 text-[13px] mb-2 leading-relaxed">
+                        <div className="text-stone-600 text-[13px] mb-2 leading-relaxed">
                              <BilingualText main={item.definition} translated={item.translatedDefinition} />
                         </div>
-                        <div className="text-[12px] text-gray-400 pl-2 border-l-2 border-gray-100 italic">
+                        <div className="text-[12px] text-stone-400 pl-2 border-l-2 border-stone-200 italic">
                           <BilingualText main={item.context} translated={item.translatedContext} />
                         </div>
                       </div>
@@ -422,18 +428,18 @@ const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, t
                                     key={i} 
                                     ref={isActive ? activeTranscriptRef : null}
                                     className={`
-                                        group flex gap-3 p-3 rounded-lg transition-all cursor-pointer items-start
-                                        ${isActive 
-                                            ? 'bg-stone-100 border-l-4 border-stone-800 shadow-sm' 
-                                            : 'hover:bg-gray-50 border-l-4 border-transparent'
+                                        group flex gap-3 p-3 rounded-xl transition-all cursor-pointer items-start
+                                        ${isActive
+                                            ? 'bg-white/50 backdrop-blur-sm border-l-4 border-amber-700/50 shadow-[0_2px_12px_rgba(0,0,0,0.04)] ring-1 ring-black/[0.03]'
+                                            : 'hover:bg-white/30 border-l-4 border-transparent'
                                         }
                                     `}
                                     onClick={() => onTimestampClick && onTimestampClick(seg.offset)}
                                 >
-                                    <span className={`text-[11px] font-mono pt-0.5 shrink-0 w-10 ${isActive ? 'text-stone-600 font-bold' : 'text-gray-400'}`}>
+                                    <span className={`text-[11px] font-mono pt-0.5 shrink-0 w-10 ${isActive ? 'text-amber-700 font-bold' : 'text-stone-400'}`}>
                                         {new Date(seg.offset).toISOString().substr(14, 5)}
                                     </span>
-                                    <p className={`text-[14px] leading-relaxed ${isActive ? 'text-stone-900 font-medium' : 'text-gray-700'}`}>
+                                    <p className={`text-[14px] leading-relaxed ${isActive ? 'text-stone-800 font-medium' : 'text-stone-600'}`}>
                                         {seg.text}
                                     </p>
                                 </div>

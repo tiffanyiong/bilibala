@@ -109,7 +109,7 @@ const TopicSelector: React.FC<TopicSelectorProps> = ({
           px-3 py-1.5 rounded-full text-xs font-medium transition-all border text-left
           ${isSelected
             ? 'bg-stone-800 text-white border-stone-800 shadow-sm'
-            : 'bg-stone-50 text-stone-600 border-stone-200 hover:bg-stone-100 hover:border-stone-300'
+            : 'bg-white/50 text-stone-600 border-white/60 backdrop-blur-sm ring-1 ring-black/[0.04] hover:bg-white/70 hover:shadow-sm'
           }
         `}
       >
@@ -119,7 +119,7 @@ const TopicSelector: React.FC<TopicSelectorProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-xl border border-stone-200 p-5 shadow-sm">
+    <div className="bg-white/50 backdrop-blur-2xl rounded-2xl border border-white/60 p-5 shadow-[0_4px_24px_rgba(0,0,0,0.06)] ring-1 ring-black/[0.03]">
       <div className="mb-4">
         <h3 className="text-sm font-semibold text-stone-800 uppercase tracking-wide mb-1">
             {uiText.practiceTopics}
@@ -150,7 +150,7 @@ const TopicSelector: React.FC<TopicSelectorProps> = ({
             {canScrollLeft && (
               <button
                 onClick={() => scroll('left')}
-                className="flex absolute left-0 top-1/2 -translate-y-1/2 -translate-x-2 z-10 w-8 h-8 bg-white border border-stone-200 rounded-full items-center justify-center shadow-md hover:bg-stone-50 transition-colors"
+                className="flex absolute left-0 top-1/2 -translate-y-1/2 -translate-x-2 z-10 w-8 h-8 bg-white/60 backdrop-blur-sm border border-white/60 rounded-full items-center justify-center shadow-md ring-1 ring-black/[0.04] hover:bg-white/80 transition-colors"
                 aria-label="Scroll left"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -183,7 +183,7 @@ const TopicSelector: React.FC<TopicSelectorProps> = ({
                       px-3 py-1.5 rounded-full text-xs font-medium transition-all border whitespace-nowrap shrink-0
                       ${isSelected
                         ? 'bg-stone-800 text-white border-stone-800 shadow-sm'
-                        : 'bg-stone-50 text-stone-600 border-stone-200 hover:bg-stone-100 hover:border-stone-300'
+                        : 'bg-white/50 text-stone-600 border-white/60 backdrop-blur-sm ring-1 ring-black/[0.04] hover:bg-white/70 hover:shadow-sm'
                       }
                     `}
                   >
@@ -197,7 +197,7 @@ const TopicSelector: React.FC<TopicSelectorProps> = ({
             {canScrollRight && (
               <button
                 onClick={() => scroll('right')}
-                className="flex absolute right-0 top-1/2 -translate-y-1/2 translate-x-2 z-10 w-8 h-8 bg-white border border-stone-200 rounded-full items-center justify-center shadow-md hover:bg-stone-50 transition-colors"
+                className="flex absolute right-0 top-1/2 -translate-y-1/2 translate-x-2 z-10 w-8 h-8 bg-white/60 backdrop-blur-sm border border-white/60 rounded-full items-center justify-center shadow-md ring-1 ring-black/[0.04] hover:bg-white/80 transition-colors"
                 aria-label="Scroll right"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

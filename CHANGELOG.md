@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased] - 2026-02-07
+
+### Fixed
+
+#### Landing Page Carousel Alignment (Desktop)
+- **Card centering on swipe**: Form card and explore video cards now use consistent flex centering (`flex items-center justify-center`), fixing misalignment when swiping between cards
+- **Horizontal padding**: Added `px-2 sm:px-4` to all card wrappers so content doesn't stretch edge-to-edge in the carousel slot
+- Files changed: `CubeCarousel.tsx`, `LandingFormCard.tsx`
+
+---
+
 ## [Unreleased] - 2026-02-06
 
 ### Added

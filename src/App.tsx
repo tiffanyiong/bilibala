@@ -85,7 +85,7 @@ const MobileTranslatorSelector: React.FC<{
     <div className="relative" ref={ref}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-1.5 bg-[#FAF9F6] border border-stone-200 text-stone-600 px-2.5 py-1 rounded-md shadow-sm text-[11px] font-medium uppercase tracking-wide"
+        className="flex items-center gap-1.5 bg-white/50 backdrop-blur-sm border border-white/60 text-stone-600 px-2.5 py-1 rounded-lg shadow-sm ring-1 ring-black/[0.04] text-[11px] font-medium uppercase tracking-wide hover:bg-white/70 transition-all"
       >
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M5 8l6 6" />
@@ -102,7 +102,7 @@ const MobileTranslatorSelector: React.FC<{
       </button>
 
       {isOpen && (
-        <div className="absolute left-0 mt-2 w-52 bg-[#FAF9F6] rounded-xl border border-stone-200 shadow-lg py-1 z-[300] max-h-64 overflow-y-auto">
+        <div className="absolute left-0 mt-2 w-52 bg-white rounded-2xl border border-stone-100 shadow-[0_4px_24px_rgba(0,0,0,0.08)] py-1 z-[300] max-h-64 overflow-y-auto">
           {DEEPL_SUPPORTED_LANGUAGES.map((lang) => (
             <button
               key={lang.code}
@@ -1543,11 +1543,11 @@ const App: React.FC = () => {
            <div className="lg:col-span-7 flex flex-col gap-4 md:gap-6 order-1">
                {/* Mobile-only: Language, Level, and Translator badges */}
                <div className="flex md:hidden items-center gap-2 flex-wrap">
-                 <span className="flex items-center gap-1.5 bg-[#FAF9F6] border border-stone-200 text-stone-600 px-2.5 py-1 rounded-md shadow-sm text-[11px] font-medium uppercase tracking-wide">
-                   <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 border border-yellow-600"></span>
+                 <span className="flex items-center gap-1.5 bg-white/50 backdrop-blur-sm border border-white/60 text-stone-600 px-2.5 py-1 rounded-lg shadow-sm ring-1 ring-black/[0.04] text-[11px] font-medium uppercase tracking-wide">
+                   <span className="w-1.5 h-1.5 rounded-full bg-amber-400 border border-amber-500"></span>
                    {targetLang}
                  </span>
-                 <span className="flex items-center gap-1.5 bg-[#FAF9F6] border border-stone-200 text-stone-600 px-2.5 py-1 rounded-md shadow-sm text-[11px] font-medium uppercase tracking-wide">
+                 <span className="flex items-center gap-1.5 bg-white/50 backdrop-blur-sm border border-white/60 text-stone-600 px-2.5 py-1 rounded-lg shadow-sm ring-1 ring-black/[0.04] text-[11px] font-medium uppercase tracking-wide">
                    <span className="w-1.5 h-1.5 rounded-full bg-stone-400"></span>
                    {level}
                  </span>
@@ -1565,7 +1565,7 @@ const App: React.FC = () => {
 
                {/* Video Title & Actions */}
                <div className="flex items-start justify-between gap-4">
-                 <h1 className="text-lg md:text-xl font-medium text-stone-800 line-clamp-2">
+                 <h1 className="text-[15px] md:text-[17px] font-semibold text-stone-700 leading-snug line-clamp-2 tracking-tight">
                    {videoData.title}
                  </h1>
                  {user && (() => {
@@ -1580,8 +1580,8 @@ const App: React.FC = () => {
                          onClick={handleToggleFavorite}
                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${
                            libraryEntry.isFavorite
-                             ? 'bg-red-500 text-white border-red-500 hover:bg-red-600'
-                             : 'bg-white text-stone-600 border-stone-200 hover:border-red-300 hover:text-red-500'
+                             ? 'bg-amber-500 text-white border-amber-500 hover:bg-amber-600'
+                             : 'bg-white/50 text-stone-600 border-white/60 backdrop-blur-sm ring-1 ring-black/[0.04] hover:border-amber-200 hover:text-amber-600'
                          }`}
                        >
                          <svg width="16" height="16" viewBox="0 0 24 24" fill={libraryEntry.isFavorite ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1621,7 +1621,7 @@ const App: React.FC = () => {
            </div>
 
            {/* ContentTabs - Order 2 on mobile (before topics), right column on desktop */}
-           <div className="lg:col-span-5 h-[500px] lg:h-[775px] order-2">
+           <div className="lg:col-span-5 h-[500px] md:h-[640px] lg:h-[640px] xl:h-[775px] order-2">
                <ContentTabs
                   summary={summary}
                   translatedSummary={translatedSummary}
