@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { getBackendOrigin } from '../../../shared/services/backend';
 
-const MAX_CHARS = 200; // Max characters allowed for translation
+const MAX_CHARS = 300; // Max characters allowed for translation
 
 // Localized error messages keyed by language name
 const ERROR_MESSAGES: Record<string, { notAvailable: string; tooLong: string }> = {
@@ -33,6 +33,7 @@ interface PopupState {
   translation: string | null;
   loading: boolean;
   error: string | null;
+  showBelow: boolean; // true = show below selection (mobile), false = show above (desktop)
 }
 
 const TranslationPopup: React.FC<TranslationPopupProps> = ({
@@ -48,6 +49,7 @@ const TranslationPopup: React.FC<TranslationPopupProps> = ({
     translation: null,
     loading: false,
     error: null,
+    showBelow: false,
   });
 
   const popupRef = useRef<HTMLDivElement>(null);
@@ -113,7 +115,9 @@ const TranslationPopup: React.FC<TranslationPopupProps> = ({
   }, [sourceLang, targetLang]);
 
   // Shared selection processing logic (works for both mouse and touch)
-  const processSelection = useCallback(() => {
+  // fromTouch: true when triggered by touch event (mobile) - positions popup below selection
+  // to avoid overlapping with the iOS native selection menu (Copy/Find pills)
+  const processSelection = useCallback((fromTouch: boolean) => {
     const selection = window.getSelection();
     const selectedText = selection?.toString().trim();
 
@@ -140,9 +144,9 @@ const TranslationPopup: React.FC<TranslationPopupProps> = ({
     if (!range) return;
 
     const rect = range.getBoundingClientRect();
-    // Position popup above the center of the selection
     const posX = rect.left + rect.width / 2;
-    const posY = rect.top;
+    // On touch devices, position below the selection to avoid iOS selection pills
+    const posY = fromTouch ? rect.bottom : rect.top;
 
     lastProcessedTextRef.current = selectedText;
 
@@ -157,6 +161,7 @@ const TranslationPopup: React.FC<TranslationPopupProps> = ({
         translation: null,
         loading: false,
         error: `${msgs.tooLong} (${selectedText.length}/${MAX_CHARS})`,
+        showBelow: fromTouch,
       });
       return;
     }
@@ -176,21 +181,21 @@ const TranslationPopup: React.FC<TranslationPopupProps> = ({
       translation: null,
       loading: true,
       error: null,
+      showBelow: fromTouch,
     });
 
     translateText(selectedText);
   }, [containerRef, sourceLang, targetLang, translateText]);
 
-  // Desktop: handle mouseup
+  // Desktop: handle mouseup - popup appears above selection
   const handleMouseUp = useCallback(() => {
-    setTimeout(processSelection, 10);
+    setTimeout(() => processSelection(false), 10);
   }, [processSelection]);
 
-  // Mobile/Tablet: handle touchend
-  // On touch devices, users long-press to select text, then the selection
-  // is finalized on touchend. We use a longer delay to let the OS finish.
+  // Mobile/Tablet: handle touchend - popup appears below selection
+  // to avoid overlapping with the iOS native selection menu pills
   const handleTouchEnd = useCallback(() => {
-    setTimeout(processSelection, 300);
+    setTimeout(() => processSelection(true), 300);
   }, [processSelection]);
 
   // Dismiss popup on outside click/tap
@@ -243,6 +248,7 @@ const TranslationPopup: React.FC<TranslationPopupProps> = ({
     if (popup.visible && popupRef.current) {
       const rect = popupRef.current.getBoundingClientRect();
       const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
 
       let adjustedX = popup.x;
       let adjustedY = popup.y;
@@ -255,51 +261,82 @@ const TranslationPopup: React.FC<TranslationPopupProps> = ({
         adjustedX = rect.width / 2 + 16;
       }
 
-      // Adjust vertical position (show below if not enough space above)
-      if (popup.y - rect.height - 8 < 16) {
-        adjustedY = popup.y + 30; // Show below selection
+      if (popup.showBelow) {
+        // Mobile: popup is below selection. If it overflows bottom, nudge up.
+        if (popup.y + rect.height + 8 > viewportHeight - 16) {
+          adjustedY = viewportHeight - rect.height - 16;
+        }
+      } else {
+        // Desktop: popup is above selection. If not enough space above, show below.
+        if (popup.y - rect.height - 8 < 16) {
+          adjustedY = popup.y + 30;
+        }
       }
 
       if (adjustedX !== popup.x || adjustedY !== popup.y) {
         setPopup(prev => ({ ...prev, x: adjustedX, y: adjustedY }));
       }
     }
-  }, [popup.visible, popup.x, popup.y]);
+  }, [popup.visible, popup.x, popup.y, popup.showBelow]);
 
   if (!popup.visible) return null;
 
   return (
     <div
       ref={popupRef}
-      className="fixed z-[1000] transform -translate-x-1/2 -translate-y-full"
+      className={`fixed z-[1000] transform -translate-x-1/2 ${
+        popup.showBelow ? 'mt-2' : '-translate-y-full -mt-2'
+      }`}
       style={{ left: popup.x, top: popup.y }}
     >
-      <div className="bg-stone-900 text-white rounded-lg shadow-xl px-4 py-3 max-w-xs animate-in fade-in zoom-in-95 duration-150">
+      <div
+        className="relative rounded-2xl px-4 py-3 max-w-xs animate-in fade-in zoom-in-95 duration-150"
+        style={{
+          background: 'linear-gradient(135deg, rgba(255,255,255,0.72), rgba(255,255,255,0.48))',
+          backdropFilter: 'blur(40px) saturate(1.8)',
+          WebkitBackdropFilter: 'blur(40px) saturate(1.8)',
+          border: '1px solid rgba(255,255,255,0.5)',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.6)',
+        }}
+      >
+        {/* Arrow pointing up (when popup is below selection on mobile) */}
+        {popup.showBelow && (
+          <div
+            className="absolute left-1/2 -translate-x-1/2 bottom-full w-0 h-0 border-l-8 border-r-8 border-b-8 border-transparent"
+            style={{ borderBottomColor: 'rgba(255,255,255,0.6)' }}
+          />
+        )}
+
         {/* Loading state */}
         {popup.loading && (
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-            <span className="text-sm text-stone-300">Translating...</span>
+            <div className="w-4 h-4 border-2 border-stone-300/50 border-t-stone-600 rounded-full animate-spin" />
+            <span className="text-sm text-stone-500">Translating...</span>
           </div>
         )}
 
         {/* Error state */}
         {popup.error && (
-          <div className="text-sm text-red-400">{popup.error}</div>
+          <div className="text-sm text-red-500/80">{popup.error}</div>
         )}
 
         {/* Translation result */}
         {popup.translation && !popup.loading && !popup.error && (
           <div className="space-y-1">
-            <p className="text-sm font-medium">{popup.translation}</p>
-            <p className="text-xs text-stone-400 truncate max-w-[200px]">
+            <p className="text-sm font-semibold text-stone-800">{popup.translation}</p>
+            <p className="text-xs text-stone-500 truncate max-w-[200px]">
               {popup.text}
             </p>
           </div>
         )}
 
-        {/* Arrow pointing down */}
-        <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-8 border-r-8 border-t-8 border-transparent border-t-stone-900" />
+        {/* Arrow pointing down (when popup is above selection on desktop) */}
+        {!popup.showBelow && (
+          <div
+            className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-8 border-r-8 border-t-8 border-transparent"
+            style={{ borderTopColor: 'rgba(255,255,255,0.6)' }}
+          />
+        )}
       </div>
     </div>
   );
