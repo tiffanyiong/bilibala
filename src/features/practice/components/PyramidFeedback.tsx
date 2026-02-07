@@ -334,7 +334,7 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
                 </div>
 
                 {/* RESTORED MINIMAP */}
-                <div className={`transition-opacity duration-300 ${isMapVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+                <div className={`hidden md:block transition-opacity duration-300 ${isMapVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
                     <MiniMap position="top-right" className="bg-white border border-stone-100 rounded-xl shadow-lg m-4" />
                 </div>
 
