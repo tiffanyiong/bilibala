@@ -84,10 +84,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     });
 
     // Check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setUserProfile(getUserProfile(session?.user ?? null));
+    supabase.auth.getSession().then(({ data: { session } , error }) => {
+      if (error) {
+        // Session is invalid/expired — clear local state so user can sign in again
+        supabase.auth.signOut({ scope: 'local' });
+        setSession(null);
+        setUser(null);
+        setUserProfile(null);
+      } else {
+        setSession(session);
+        setUser(session?.user ?? null);
+        setUserProfile(getUserProfile(session?.user ?? null));
+      }
       setLoading(false);
     });
 
@@ -95,7 +103,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, []);
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      // Session already gone server-side — clear local state instead
+      await supabase.auth.signOut({ scope: 'local' });
+    }
   };
 
   const updatePassword = async (newPassword: string): Promise<{ error: string | null }> => {
