@@ -10,7 +10,11 @@ import { generateFlowData } from '../utils/transformPyramid';
 import AudioRecorder from './AudioRecorder';
 
 // --- WORD WITH TOOLTIP COMPONENT ---
-const WordWithTooltip = ({ word }: { word: { word: string; status: 'good' | 'needs-work' | 'unclear'; feedback?: string } }) => {
+const WordWithTooltip = ({ word, onSpeak, isSpeakingThis }: {
+    word: { word: string; status: 'good' | 'needs-work' | 'unclear'; feedback?: string };
+    onSpeak?: (text: string) => void;
+    isSpeakingThis?: boolean;
+}) => {
     const wordRef = useRef<HTMLDivElement>(null);
     const tooltipRef = useRef<HTMLDivElement>(null);
     const [tooltipStyle, setTooltipStyle] = useState<React.CSSProperties>({});
@@ -33,26 +37,45 @@ const WordWithTooltip = ({ word }: { word: { word: string; status: 'good' | 'nee
         setArrowStyle({ left: `${arrowLeft}px`, transform: 'translateX(-50%)' });
     };
 
+    const handleClick = () => {
+        if (onSpeak) onSpeak(word.word);
+    };
+
     return (
         <div
             ref={wordRef}
             onMouseEnter={handleMouseEnter}
-            className={`group relative px-3 py-1.5 rounded-lg text-sm font-medium transition-all cursor-default ${
+            onClick={handleClick}
+            className={`group relative px-3 py-1.5 rounded-lg text-sm font-medium transition-all cursor-pointer active:scale-95 ${
                 word.status === 'good' ? 'bg-green-100 text-green-800 border border-green-200' :
                 word.status === 'needs-work' ? 'bg-amber-100 text-amber-800 border border-amber-200' :
                 'bg-red-100 text-red-800 border border-red-200'
-            }`}
+            } ${isSpeakingThis ? 'ring-2 ring-blue-400 ring-offset-1' : ''}`}
         >
             {word.word}
             {word.status === 'good' && <span className="ml-1">✓</span>}
+            {isSpeakingThis && (
+                <span className="ml-1 inline-flex items-center gap-[2px]">
+                    <span className="w-[3px] h-[10px] bg-current rounded-full animate-[soundbar_0.5s_ease-in-out_infinite_alternate]" />
+                    <span className="w-[3px] h-[14px] bg-current rounded-full animate-[soundbar_0.5s_ease-in-out_0.15s_infinite_alternate]" />
+                    <span className="w-[3px] h-[8px] bg-current rounded-full animate-[soundbar_0.5s_ease-in-out_0.3s_infinite_alternate]" />
+                </span>
+            )}
             {word.feedback && (
                 <div
                     ref={tooltipRef}
-                    style={tooltipStyle}
-                    className="fixed px-3 py-2 bg-stone-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none max-w-[calc(100vw-32px)]"
+                    style={{
+                        ...tooltipStyle,
+                        background: 'linear-gradient(135deg, rgba(255,255,255,0.72), rgba(255,255,255,0.48))',
+                        backdropFilter: 'blur(40px) saturate(1.8)',
+                        WebkitBackdropFilter: 'blur(40px) saturate(1.8)',
+                        border: '1px solid rgba(255,255,255,0.5)',
+                        boxShadow: '0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.6)',
+                    }}
+                    className="fixed px-3 py-2 text-stone-800 text-xs rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none max-w-[calc(100vw-32px)]"
                 >
                     {word.feedback}
-                    <div style={arrowStyle} className="absolute top-full border-4 border-transparent border-t-stone-900"></div>
+                    <div style={{ ...arrowStyle, borderTopColor: 'rgba(255,255,255,0.6)' }} className="absolute top-full border-4 border-transparent"></div>
                 </div>
             )}
         </div>
@@ -118,7 +141,7 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
   const [isRecorderMinimized, setIsRecorderMinimized] = useState(false);
   const [isMapVisible, setIsMapVisible] = useState(false);
   const { fitView } = useReactFlow();
-  const { speak, stop: stopTTS, togglePlayPause: toggleTTS, seek: seekTTS, isSpeaking, isPaused: isTTSPaused, progress: ttsProgress, currentTime: ttsCurrentTime, duration: ttsDuration, formatTime: formatTTSTime } = useTTS(targetLang);
+  const { speak, stop: stopTTS, togglePlayPause: toggleTTS, seek: seekTTS, isSpeaking, isPaused: isTTSPaused, progress: ttsProgress, currentTime: ttsCurrentTime, duration: ttsDuration, formatTime: formatTTSTime, currentText: ttsCurrentText } = useTTS(targetLang);
   const { stop: stopUserAudio, togglePlayPause: toggleUserAudio, seek: seekUserAudio, isPlaying: userAudioPlaying, progress: userProgress, currentTime: userCurrentTime, duration: userDuration, formatTime: formatUserTime } = useAudioPlayer(audioUrl);
 
   const labels = preFetchedLabels || {
@@ -444,7 +467,7 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
                   <span className="text-[10px] uppercase font-bold text-stone-400 tracking-wider block mb-3">{labels.wordPronunciation}</span>
                   <div className="flex flex-wrap gap-2">
                       {pronunciation.words.map((w, idx) => (
-                          <WordWithTooltip key={idx} word={w} />
+                          <WordWithTooltip key={idx} word={w} onSpeak={speak} isSpeakingThis={isSpeaking && ttsCurrentText === w.word} />
                       ))}
                   </div>
                   

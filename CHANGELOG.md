@@ -1,5 +1,33 @@
 # Changelog
 
+## [Unreleased] - 2026-02-06
+
+### Added
+
+#### Word Pronunciation TTS
+- **Tap-to-speak word pills**: Pronunciation word pills (good/needs-work/unclear) now play audio via Google TTS when tapped
+  - Reuses existing `useTTS` hook and `/api/tts` endpoint
+  - Audio automatically cached to Supabase `tts-cache` storage bucket
+  - Visual feedback: blue ring + animated soundbar equalizer while playing
+  - Files changed: `PyramidFeedback.tsx`, `index.css`
+
+### Changed
+
+#### Translation Popup Improvements
+- **Increased max translation characters**: 200 → 300 (both frontend and backend)
+  - Files changed: `TranslationPopup.tsx`, `deeplService.js`
+- **Mobile iOS positioning**: Translation popup now appears **below** the selection on touch devices to avoid overlapping with iOS native selection pills (Copy/Find). Desktop still shows above.
+  - Files changed: `TranslationPopup.tsx`
+- **Liquid glass design**: Translation popup and pronunciation word tooltips restyled with Apple-style glassmorphism (frosted blur, translucent gradient, soft shadows)
+  - Files changed: `TranslationPopup.tsx`, `PyramidFeedback.tsx`
+
+### Fixed
+
+- **Translation language bug on report pages**: Navigating to practice reports from the library now correctly sets `nativeLang` and `targetLang` from the video data, so the translation popup translates to the correct language instead of always defaulting to English
+  - Files changed: `App.tsx` (`handleExpandReports`)
+
+---
+
 ## [Unreleased] - 2026-02-04
 
 ### Added
