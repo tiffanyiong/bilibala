@@ -1,5 +1,5 @@
 import PerformanceCard from '@/features/practice/components/PerformanceCard';
-import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactFlow, { Background, Controls, Handle, MiniMap, Node, Position, ReactFlowProvider, useEdgesState, useNodesState, useReactFlow } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { useTTS } from '../../../shared/hooks/useTTS';
@@ -19,8 +19,9 @@ const WordWithTooltip = ({ word, onSpeak, isSpeakingThis }: {
     const tooltipRef = useRef<HTMLDivElement>(null);
     const [tooltipStyle, setTooltipStyle] = useState<React.CSSProperties>({});
     const [arrowStyle, setArrowStyle] = useState<React.CSSProperties>({});
+    const [tapped, setTapped] = useState(false);
 
-    const handleMouseEnter = () => {
+    const updateTooltipPosition = useCallback(() => {
         if (!wordRef.current || !tooltipRef.current) return;
         const wordRect = wordRef.current.getBoundingClientRect();
         const tooltipRect = tooltipRef.current.getBoundingClientRect();
@@ -35,11 +36,21 @@ const WordWithTooltip = ({ word, onSpeak, isSpeakingThis }: {
 
         setTooltipStyle({ left: `${left}px`, top: `${top}px`, transform: 'none' });
         setArrowStyle({ left: `${arrowLeft}px`, transform: 'translateX(-50%)' });
-    };
+    }, []);
+
+    const handleMouseEnter = () => updateTooltipPosition();
 
     const handleClick = () => {
+        // Recalculate position on tap (mouseenter doesn't fire reliably on touch)
+        updateTooltipPosition();
+        setTapped(true);
         if (onSpeak) onSpeak(word.word);
     };
+
+    // Hide tooltip when speaking stops
+    useEffect(() => {
+        if (!isSpeakingThis) setTapped(false);
+    }, [isSpeakingThis]);
 
     return (
         <div
@@ -72,7 +83,9 @@ const WordWithTooltip = ({ word, onSpeak, isSpeakingThis }: {
                         border: '1px solid rgba(255,255,255,0.5)',
                         boxShadow: '0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.6)',
                     }}
-                    className="fixed px-3 py-2 text-stone-800 text-xs rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none max-w-[calc(100vw-32px)]"
+                    className={`fixed px-3 py-2 text-stone-800 text-xs rounded-2xl transition-opacity z-50 pointer-events-none max-w-[calc(100vw-32px)] ${
+                        tapped ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                    }`}
                 >
                     {word.feedback}
                     <div style={{ ...arrowStyle, borderTopColor: 'rgba(255,255,255,0.6)' }} className="absolute top-full border-4 border-transparent"></div>
