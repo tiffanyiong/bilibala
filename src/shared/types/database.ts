@@ -242,6 +242,7 @@ export interface DbUserSubscription {
   subscription_status: SubscriptionStatus;
   current_period_start: string | null;
   current_period_end: string | null;
+  billing_interval: 'month' | 'year';
   credits_balance: number;
   // Credit pack purchases (never expire, don't reset monthly)
   ai_tutor_credit_minutes: number;

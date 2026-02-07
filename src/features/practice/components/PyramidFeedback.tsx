@@ -552,12 +552,22 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
                                           {formatUserTime(userCurrentTime)} / {userDuration > 0 ? formatUserTime(userDuration) : '--:--'}
                                       </span>
                                   </div>
-                                  {/* Clickable progress bar */}
+                                  {/* Clickable + touch-draggable progress bar */}
                                   <div
-                                      className="h-2 bg-stone-100 rounded-full overflow-hidden cursor-pointer group"
+                                      className="h-2 bg-stone-100 rounded-full overflow-hidden cursor-pointer group touch-none"
                                       onClick={(e) => {
                                           const rect = e.currentTarget.getBoundingClientRect();
                                           const percent = ((e.clientX - rect.left) / rect.width) * 100;
+                                          seekUserAudio(Math.max(0, Math.min(100, percent)));
+                                      }}
+                                      onTouchStart={(e) => {
+                                          const rect = e.currentTarget.getBoundingClientRect();
+                                          const percent = ((e.touches[0].clientX - rect.left) / rect.width) * 100;
+                                          seekUserAudio(Math.max(0, Math.min(100, percent)));
+                                      }}
+                                      onTouchMove={(e) => {
+                                          const rect = e.currentTarget.getBoundingClientRect();
+                                          const percent = ((e.touches[0].clientX - rect.left) / rect.width) * 100;
                                           seekUserAudio(Math.max(0, Math.min(100, percent)));
                                       }}
                                   >
@@ -614,12 +624,22 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
                                           {formatTTSTime(ttsCurrentTime)} / {ttsDuration > 0 ? formatTTSTime(ttsDuration) : '--:--'}
                                       </span>
                                   </div>
-                                  {/* Clickable progress bar */}
+                                  {/* Clickable + touch-draggable progress bar */}
                                   <div
-                                      className="h-2 bg-sky-100 rounded-full overflow-hidden cursor-pointer group"
+                                      className="h-2 bg-sky-100 rounded-full overflow-hidden cursor-pointer group touch-none"
                                       onClick={(e) => {
                                           const rect = e.currentTarget.getBoundingClientRect();
                                           const percent = ((e.clientX - rect.left) / rect.width) * 100;
+                                          seekTTS(Math.max(0, Math.min(100, percent)));
+                                      }}
+                                      onTouchStart={(e) => {
+                                          const rect = e.currentTarget.getBoundingClientRect();
+                                          const percent = ((e.touches[0].clientX - rect.left) / rect.width) * 100;
+                                          seekTTS(Math.max(0, Math.min(100, percent)));
+                                      }}
+                                      onTouchMove={(e) => {
+                                          const rect = e.currentTarget.getBoundingClientRect();
+                                          const percent = ((e.touches[0].clientX - rect.left) / rect.width) * 100;
                                           seekTTS(Math.max(0, Math.min(100, percent)));
                                       }}
                                   >

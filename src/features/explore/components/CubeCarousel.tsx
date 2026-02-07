@@ -137,34 +137,56 @@ const CubeCarousel: React.FC<CubeCarouselProps> = ({
 
   const DRAG_THRESHOLD = 5; // px before drag starts (allows clicks to pass through)
 
-  // Touch handlers
+  // Touch handlers — use refs so the native listener always sees fresh state
+  const isDraggingRef = useRef(false);
+  const currentIndexRef = useRef(currentIndex);
+  const totalCardsRef = useRef(totalCards);
+  currentIndexRef.current = currentIndex;
+  totalCardsRef.current = totalCards;
+
   const handleTouchStart = (e: React.TouchEvent) => {
     if (isSnapping) return;
     dragStartRef.current = e.touches[0].clientX;
+    isDraggingRef.current = false;
     setDragOffset(0);
   };
 
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (dragStartRef.current === null) return;
-    const diff = e.touches[0].clientX - dragStartRef.current;
-
-    // Only start dragging after threshold
-    if (!isDragging && Math.abs(diff) < DRAG_THRESHOLD) return;
-    if (!isDragging) setIsDragging(true);
-
-    const atStart = currentIndex === 0 && diff > 0;
-    const atEnd = currentIndex === totalCards - 1 && diff < 0;
-    const dampened = (atStart || atEnd) ? diff * 0.3 : diff;
-
-    setDragOffset(dampened);
-  };
-
   const handleTouchEnd = () => {
-    if (isDragging) {
+    if (isDraggingRef.current) {
       handleDragEnd();
     }
+    isDraggingRef.current = false;
     dragStartRef.current = null;
   };
+
+  // Attach touchmove as a non-passive native listener so we can preventDefault
+  // to stop the page from scrolling during a horizontal card swipe.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (dragStartRef.current === null) return;
+      const diff = e.touches[0].clientX - dragStartRef.current;
+
+      if (!isDraggingRef.current && Math.abs(diff) < DRAG_THRESHOLD) return;
+      if (!isDraggingRef.current) {
+        isDraggingRef.current = true;
+        setIsDragging(true);
+      }
+
+      // Prevent page scroll while swiping cards horizontally
+      e.preventDefault();
+
+      const atStart = currentIndexRef.current === 0 && diff > 0;
+      const atEnd = currentIndexRef.current === totalCardsRef.current - 1 && diff < 0;
+      const dampened = (atStart || atEnd) ? diff * 0.3 : diff;
+      setDragOffset(dampened);
+    };
+
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    return () => el.removeEventListener('touchmove', onTouchMove);
+  }, []);
 
   // Mouse drag handlers
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -248,7 +270,6 @@ const CubeCarousel: React.FC<CubeCarouselProps> = ({
         ref={containerRef}
         className="relative w-full max-w-xl select-none h-[480px] sm:h-[520px] md:h-[540px] overflow-hidden"
         onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
