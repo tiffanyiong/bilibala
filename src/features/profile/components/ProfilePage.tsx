@@ -11,6 +11,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenSubscription }) => {
   const {
     tier,
     status,
+    billingInterval,
     subscription,
     usage,
     videosLimit,
@@ -149,7 +150,9 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenSubscription }) => {
               <div className="flex items-center justify-between mb-2">
                 <div>
                   <span className="text-lg font-medium text-stone-800">
-                    {tier === 'pro' ? 'Pro Plan' : 'Free Plan'}
+                    {tier === 'pro'
+                      ? (billingInterval === 'year' ? 'Pro Annual Plan' : 'Pro Plan')
+                      : 'Free Plan'}
                   </span>
                 </div>
                 {tier === 'pro' && status && (
