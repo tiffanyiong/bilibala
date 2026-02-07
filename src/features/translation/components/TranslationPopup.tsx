@@ -170,7 +170,7 @@ const TranslationPopup: React.FC<TranslationPopupProps> = ({
         iosClearTimerRef.current = setTimeout(() => {
           window.getSelection()?.removeAllRanges();
           iosClearTimerRef.current = null;
-        }, 3000);
+        }, 2000);
       }
       // Selection in top half — iOS callout goes below selection,
       // our tooltip sits above — no overlap, keep both
