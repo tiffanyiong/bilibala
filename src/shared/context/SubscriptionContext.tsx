@@ -22,6 +22,7 @@ interface SubscriptionContextType {
   // Subscription info
   tier: SubscriptionTier;
   status: string;
+  billingInterval: 'month' | 'year';
   subscription: DbUserSubscription | null;
 
   // Usage data
@@ -346,6 +347,7 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
     <SubscriptionContext.Provider value={{
       tier,
       status: subscription?.subscription_status || 'active',
+      billingInterval: subscription?.billing_interval || 'month',
       subscription,
       usage,
       aiTutorCreditMinutes,

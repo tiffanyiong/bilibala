@@ -338,10 +338,12 @@ router.post('/subscriptions/sync', async (req, res) => {
       : null;
 
     // Update database with current Stripe status
+    const billingInterval = subscription.items?.data?.[0]?.plan?.interval || 'month';
     const updateData = {
       tier: isActive ? 'pro' : 'free',
       stripe_subscription_id: subscription.id,
       subscription_status: subscription.status,
+      billing_interval: billingInterval,
       updated_at: new Date().toISOString(),
     };
     if (periodStart) updateData.current_period_start = periodStart;
@@ -468,6 +470,7 @@ router.post('/subscriptions/webhook', async (req, res) => {
         if (userId && subscriptionId) {
           try {
             const stripeSubscription = await stripe.subscriptions.retrieve(subscriptionId);
+            const billingInterval = stripeSubscription.items?.data?.[0]?.plan?.interval || 'month';
             const { error: upsertError } = await supabaseAdmin
               .from('user_subscriptions')
               .upsert({
@@ -476,6 +479,7 @@ router.post('/subscriptions/webhook', async (req, res) => {
                 stripe_customer_id: customerId,
                 stripe_subscription_id: subscriptionId,
                 subscription_status: 'active',
+                billing_interval: billingInterval,
                 current_period_start: new Date(stripeSubscription.current_period_start * 1000).toISOString(),
                 current_period_end: new Date(stripeSubscription.current_period_end * 1000).toISOString(),
                 updated_at: new Date().toISOString(),
@@ -508,11 +512,13 @@ router.post('/subscriptions/webhook', async (req, res) => {
 
         if (userSub) {
           const isActive = subscription.status === 'active' || subscription.status === 'trialing';
+          const billingInterval = subscription.items?.data?.[0]?.plan?.interval || 'month';
           await supabaseAdmin
             .from('user_subscriptions')
             .update({
               tier: isActive ? 'pro' : 'free',
               subscription_status: subscription.status,
+              billing_interval: billingInterval,
               current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
               current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
               updated_at: new Date().toISOString(),
