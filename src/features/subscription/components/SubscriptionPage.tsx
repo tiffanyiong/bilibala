@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   PRO_ANNUAL_PRICE,
+  PRO_ANNUAL_TOTAL,
   PRO_MONTHLY_PRICE,
   STARTER_PACK_AI_TUTOR_MINUTES,
   STARTER_PACK_PRACTICE_SESSIONS,
@@ -95,6 +96,7 @@ const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ onOpenAuthModal }) 
   const {
     tier,
     status,
+    billingInterval,
     subscription,
     usage,
     videosLimit,
@@ -330,13 +332,17 @@ const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ onOpenAuthModal }) 
                   <span className="text-lg text-stone-400 line-through">${PRO_MONTHLY_PRICE}</span>
                 )}
                 <span className="text-4xl font-semibold text-stone-800">
-                  ${tier === 'pro' ? PRO_MONTHLY_PRICE : (billingCycle === 'annual' ? PRO_ANNUAL_PRICE : PRO_MONTHLY_PRICE)}
+                  ${tier === 'pro'
+                    ? (billingInterval === 'year' ? PRO_ANNUAL_PRICE : PRO_MONTHLY_PRICE)
+                    : (billingCycle === 'annual' ? PRO_ANNUAL_PRICE : PRO_MONTHLY_PRICE)}
                 </span>
                 <span className="text-stone-500">/ month</span>
               </div>
               <p className="text-sm text-stone-500">
                 {tier === 'pro'
-                  ? 'Your current plan'
+                  ? (billingInterval === 'year'
+                    ? `Your current plan — billed $${PRO_ANNUAL_TOTAL}/year`
+                    : 'Your current plan — billed monthly')
                   : billingCycle === 'annual'
                     ? `Billed annually, save $${(PRO_MONTHLY_PRICE - PRO_ANNUAL_PRICE) * 12}/year`
                     : 'Billed monthly'
