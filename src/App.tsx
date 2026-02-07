@@ -1685,7 +1685,6 @@ const App: React.FC = () => {
             analysisId={currentAnalysisId}
             videoTitle={videoData.title}
             videoId={videoData.id}
-            onExit={() => setAppState(AppState.DASHBOARD)}
             onRequireAuth={() => setShowAuthModal(true)}
           />
       )}

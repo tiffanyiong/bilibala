@@ -1,5 +1,5 @@
 import { TIER_LIMITS } from '@/shared/types/database';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../../shared/context/AuthContext';
 import { useSubscription } from '../../../shared/context/SubscriptionContext';
 import { getBackendOrigin } from '../../../shared/services/backend';
@@ -24,7 +24,6 @@ interface PracticeSessionProps {
   analysisId?: string | null;
   videoTitle?: string;
   videoId?: string;
-  onExit: () => void;
   onRequireAuth?: () => void;
 }
 
@@ -103,7 +102,6 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
   analysisId,
   videoTitle,
   videoId,
-  onExit,
   onRequireAuth
 }) => {
   const { user } = useAuth();
@@ -128,35 +126,6 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
   }>>({});
 
   const AI_GENERATED_LIMIT = 3;
-
-  // Swipe/drag gesture handling for question navigation (mobile + desktop)
-  const dragStart = useRef<{ x: number; y: number } | null>(null);
-
-  const handleSwipeNavigation = (endX: number, endY: number) => {
-    if (dragStart.current === null || allQuestions.length <= 1 || isAnalyzing) return;
-    const diffX = dragStart.current.x - endX;
-    const diffY = dragStart.current.y - endY;
-    const minSwipeDistance = 50;
-    // Only trigger if horizontal swipe is greater than vertical
-    if (Math.abs(diffX) > minSwipeDistance && Math.abs(diffX) > Math.abs(diffY)) {
-      if (diffX > 0) {
-        // Swipe/drag left -> next question
-        handleQuestionSwitch(allQuestions[currentQuestionIndex < allQuestions.length - 1 ? currentQuestionIndex + 1 : 0]);
-      } else {
-        // Swipe/drag right -> previous question
-        handleQuestionSwitch(allQuestions[currentQuestionIndex > 0 ? currentQuestionIndex - 1 : allQuestions.length - 1]);
-      }
-    }
-    dragStart.current = null;
-  };
-
-  // Touch events (mobile only - desktop keeps text selectable)
-  const handleTouchStart = (e: React.TouchEvent) => {
-    dragStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-  };
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    handleSwipeNavigation(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
-  };
 
   // --- EFFECT: SYNC UI WITH CACHE ON QUESTION CHANGE ---
  useEffect(() => {
@@ -414,12 +383,6 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
 
   return (
     <div className="min-h-screen bg-[#F6F4EF] p-6 lg:p-12 flex flex-col">
-      <div className="flex items-center justify-between mb-8 max-w-5xl mx-auto w-full">
-        <button onClick={onExit} className="flex items-center gap-2 text-stone-500 hover:text-stone-800 transition-colors">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-        </button>
-      </div>
-
       <div className="flex-1 max-w-5xl mx-auto w-full flex flex-col justify-start pt-4 space-y-10">
         <div className="text-center space-y-4 animate-in fade-in slide-in-from-top-4 duration-500">
             {/* Topic Navigation */}
@@ -440,11 +403,7 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
             </div>
 
             {/* Question Navigation */}
-            <div
-              className="flex flex-col items-center w-full touch-pan-y"
-              onTouchStart={handleTouchStart}
-              onTouchEnd={handleTouchEnd}
-            >
+            <div className="flex flex-col items-center w-full">
               <div className="flex flex-col items-center gap-2 max-w-3xl px-4 md:px-12">
                 <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-serif text-stone-900 leading-relaxed sm:leading-snug md:leading-tight">
                   {topic.question}
