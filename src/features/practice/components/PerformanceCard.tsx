@@ -284,7 +284,7 @@ const PerformanceCard: React.FC<PerformanceCardProps> = ({
   const progress = score >= 95 ? 100 : (score / role.nextScore) * 100;
 
   return (
-    <div className="bg-white rounded-[20px] p-5 border border-stone-200/60 w-full mb-6 shadow-sm">
+    <div className="bg-white/50 backdrop-blur-xl rounded-[20px] p-5 border border-white/50 shadow-[inset_0_1px_1px_rgba(255,255,255,0.6),inset_0_-1px_1px_rgba(0,0,0,0.02),0_1px_3px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.03)] ring-1 ring-black/[0.03] w-full mb-6">
       <div className="flex flex-col gap-4">
 
         {/* Role Badge - Matched to Screenshot Pill Style */}
