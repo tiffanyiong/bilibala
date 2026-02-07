@@ -421,7 +421,7 @@ const PracticeReportDetailPage: React.FC<PracticeReportDetailPageProps> = ({
             {/* Question Card - Frosted Glass Design */}
             {session.question_text && (
               <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mb-6">
-                <div className="p-4 bg-gradient-to-br from-blue-50/80 to-indigo-50/60 backdrop-blur-md rounded-xl border border-white/40 shadow-sm">
+                <div className="p-4 bg-white/50 backdrop-blur-xl rounded-xl border border-white/50 shadow-[inset_0_1px_1px_rgba(255,255,255,0.6),inset_0_-1px_1px_rgba(0,0,0,0.02),0_1px_3px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.03)] ring-1 ring-black/[0.03]">
                   <div className="flex items-center gap-2 mb-2">
                     <div className="flex-shrink-0 w-6 h-6 bg-white/60 backdrop-blur-sm rounded-md flex items-center justify-center border border-white/50 shadow-sm">
                       <QuestionIcon />
