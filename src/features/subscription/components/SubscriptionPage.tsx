@@ -396,6 +396,10 @@ const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ onOpenAuthModal }) 
                 <span className="text-stone-500"><ChatIcon /></span>
                 <span>{proLimits.aiTutorMinutesPerMonth} min AI Tutor / month</span>
               </li>
+              <li className="flex items-center gap-3 text-sm text-stone-600">
+                <span className="text-stone-400"><LayersIcon /></span>
+                <span>Unlimited video storage</span>
+              </li>
               <li className="flex items-center gap-3 text-sm text-stone-700">
                 <span className="text-stone-500"><WaveformIcon /></span>
                 <span>Unlimited AI Reports</span>

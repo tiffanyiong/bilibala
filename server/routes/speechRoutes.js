@@ -244,7 +244,14 @@ router.post('/analyze-speech', async (req, res) => {
       ${isIELTS ? `
       **IELTS SPEAKING BREAKDOWN (REQUIRED for English):**
       You are also an expert IELTS Speaking Examiner. You MUST provide a "breakdown" object inside the "feedback" field.
-
+      
+      **ADAPTIVE SCORING CRITERIA:**
+      You must first analyze the **Question Complexity**:
+      1. **Level 1 (Basic):** Daily life, personal preferences. (Target: Accuracy & Fluency).
+      2. **Level 2 (Descriptive):** Describing events, people, or places. (Target: Narrative tenses & Adjectives).
+      3. **Level 3 (Abstract):** Speculating, debating, or analyzing. (Target: High-level vocabulary & Complex logic).
+      
+      Then,
       Evaluate the response on the official IELTS band scale (0-9, in 0.5 increments) for each of these 4 equally weighted categories:
 
       1. **Fluency & Coherence (fluency_coherence):** Ability to speak without long pauses, logical flow, and use of cohesive devices like "however" or "consequently".
@@ -252,6 +259,10 @@ router.post('/analyze-speech', async (req, res) => {
       3. **Grammatical Range & Accuracy (grammatical_range):** Use of complex structures (conditionals, relative clauses) and the number of errors.
       4. **Pronunciation (pronunciation):** Clarity of speech, use of intonation, and correct word stress.
 
+      **Scoring Penalty Rule:**
+      - If the user provides "Level 1" vocabulary (e.g., "good," "happy," "a lot") for a "Level 3" question, **Lexical Resource** must be capped at 5.5, even if they are perfectly fluent.
+      - For "Level 3" questions, higher scores (7.0+) REQUIRE speculative language ("I would argue," "It is highly probable") and complex connectors.
+      
       **IELTS Band Reference:**
       - Band 9 (Expert): Fluent, accurate, idiomatic, full range of complex grammar, rare errors.
       - Band 8 (Very Good): Fully operational, occasional unsystematic inaccuracies, wide vocabulary for precise meaning.
@@ -263,7 +274,7 @@ router.post('/analyze-speech', async (req, res) => {
       - Band 1-2: No ability / intermittent ability to use English beyond isolated words.
 
       **Calculate band_score** as the average of the 4 sub-scores, rounded to nearest 0.5.
-      **CONSISTENCY RULE:** Band 7+ = Score 75+, Band 6 = ~65-74, Band 5 = ~55-64, Band 4 = ~45-54, Below 4 = below 45.
+      **CONSISTENCY RULE:** Band 7+ = Score 75+, Band 6 = ~65-74, Band 5 = ~55-64, Band 4 = ~45-54, Below 4 = below 45.   
 
       **CRITICAL: Each sub-score MUST be evaluated INDEPENDENTLY.** Do NOT give the same band score to all 4 categories — that is unrealistic. A speaker's fluency, vocabulary, grammar, and pronunciation are almost never at the same level. For example, a learner might have Band 7.0 fluency but Band 5.5 grammar. Differentiate based on what you actually hear.
 

@@ -357,33 +357,33 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
   // --- RENDER FUNCTIONS ---
 
   const renderMinimized = () => (
-    <div className={`w-full h-full flex items-center px-5 text-white ${recorderState === RecorderState.IDLE ? 'justify-center' : 'justify-between'}`}>
-        {/* LEFT: IDLE (Mic) OR Status Indicator */}
-        {recorderState === RecorderState.IDLE ? (
-            <button onClick={startRecording} className="w-8 h-8 bg-white text-stone-900 rounded-full flex items-center justify-center hover:scale-105 transition-transform" title="Start Recording">
-                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
-            </button>
-        ) : (
-            <div className="flex items-center gap-3">
-                <div className={`w-2.5 h-2.5 rounded-full shadow-lg ${
-                    recorderState === RecorderState.RECORDING ? (isNearLimit ? 'bg-amber-500 animate-pulse' : 'bg-red-500 animate-pulse') :
-                    recorderState === RecorderState.PAUSED ? 'bg-amber-400' :
-                    'bg-green-500'
-                }`}></div>
-                <span className={`font-mono text-lg font-medium tracking-wide ${isNearLimit ? 'text-amber-400' : ''}`}>{formatTime(duration)}</span>
-                {isNearLimit && <span className="text-amber-400 text-xs">({formatTime(maxDuration - duration)} left)</span>}
-            </div>
-        )}
+    <div className="w-full h-full flex items-center justify-between px-5 text-white relative">
+        {/* LEFT: Status Indicator */}
+        <div className="flex items-center gap-3">
+            <div className={`w-2.5 h-2.5 rounded-full shadow-lg ${
+                recorderState === RecorderState.RECORDING ? (isNearLimit ? 'bg-amber-500 animate-pulse' : 'bg-red-500 animate-pulse') :
+                recorderState === RecorderState.PAUSED || recorderState === RecorderState.IDLE ? 'bg-amber-400' :
+                'bg-green-500'
+            }`}></div>
+            <span className={`font-mono text-lg font-medium tracking-wide ${isNearLimit ? 'text-amber-400' : ''}`}>{formatTime(duration)}</span>
+            {isNearLimit && <span className="text-amber-400 text-xs">({formatTime(maxDuration - duration)} left)</span>}
+        </div>
 
         {/* MIDDLE: Visualizer (Recording Only) */}
-        {recorderState === RecorderState.RECORDING && (
+        {recorderState === RecorderState.RECORDING ? (
             <div className="flex-1 max-w-[120px] h-8 mx-4 opacity-80"><canvas ref={canvasRef} className="w-full h-full" /></div>
+        ) : (
+            <div className="flex-1" />
         )}
-        
-        {recorderState !== RecorderState.RECORDING && <div className="flex-1" />}
 
         {/* RIGHT: Action Buttons */}
         <div className="flex items-center gap-2">
+            {recorderState === RecorderState.IDLE && (
+                <button onClick={startRecording} className="w-8 h-8 bg-white text-stone-900 rounded-full flex items-center justify-center hover:scale-105 transition-transform" title="Start Recording">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                </button>
+            )}
+
             {(recorderState === RecorderState.RECORDING || recorderState === RecorderState.PAUSED) && (
                 <>
                     <button onClick={togglePause} className={`p-1.5 transition-colors ${recorderState === RecorderState.PAUSED ? 'text-amber-400 hover:text-amber-200' : 'text-stone-400 hover:text-white'}`}>
@@ -406,7 +406,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
                 </>
             )}
 
-            {onToggleMinimize && recorderState !== RecorderState.IDLE && (
+            {onToggleMinimize && (
                 <button onClick={onToggleMinimize} className="p-1.5 text-stone-400 hover:text-white transition-colors ml-1">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
                 </button>
