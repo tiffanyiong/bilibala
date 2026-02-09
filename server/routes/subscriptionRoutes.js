@@ -329,21 +329,26 @@ router.post('/subscriptions/sync', async (req, res) => {
     const subscription = subscriptions.data[0];
     const isActive = subscription.status === 'active' || subscription.status === 'trialing';
 
+    // Stripe API 2025-03-31+: period dates moved from subscription to subscription items
+    const item = subscription.items?.data?.[0];
+    const rawStart = item?.current_period_start ?? subscription.current_period_start;
+    const rawEnd = item?.current_period_end ?? subscription.current_period_end;
+
     console.log('[Sync] Stripe subscription raw data:', {
       userId: user.id,
       subId: subscription.id,
       status: subscription.status,
-      rawStart: subscription.current_period_start,
-      rawEnd: subscription.current_period_end,
-      interval: subscription.items?.data?.[0]?.plan?.interval,
+      rawStart,
+      rawEnd,
+      interval: item?.plan?.interval,
     });
 
     // Safely convert timestamps (handle null/undefined)
-    const periodStart = subscription.current_period_start
-      ? new Date(subscription.current_period_start * 1000).toISOString()
+    const periodStart = rawStart
+      ? new Date(rawStart * 1000).toISOString()
       : null;
-    const periodEnd = subscription.current_period_end
-      ? new Date(subscription.current_period_end * 1000).toISOString()
+    const periodEnd = rawEnd
+      ? new Date(rawEnd * 1000).toISOString()
       : null;
 
     // Update database with current Stripe status — always include period dates
@@ -488,9 +493,13 @@ router.post('/subscriptions/webhook', async (req, res) => {
         if (userId && subscriptionId) {
           try {
             const stripeSubscription = await stripe.subscriptions.retrieve(subscriptionId);
-            const billingInterval = stripeSubscription.items?.data?.[0]?.plan?.interval || 'month';
-            const periodStart = new Date(stripeSubscription.current_period_start * 1000).toISOString();
-            const periodEnd = new Date(stripeSubscription.current_period_end * 1000).toISOString();
+            // Stripe API 2025-03-31+: period dates moved to subscription items
+            const subItem = stripeSubscription.items?.data?.[0];
+            const billingInterval = subItem?.plan?.interval || 'month';
+            const rawStart = subItem?.current_period_start ?? stripeSubscription.current_period_start;
+            const rawEnd = subItem?.current_period_end ?? stripeSubscription.current_period_end;
+            const periodStart = rawStart ? new Date(rawStart * 1000).toISOString() : null;
+            const periodEnd = rawEnd ? new Date(rawEnd * 1000).toISOString() : null;
 
             console.log('[Webhook] checkout subscription data:', {
               userId,
@@ -498,8 +507,8 @@ router.post('/subscriptions/webhook', async (req, res) => {
               billingInterval,
               periodStart,
               periodEnd,
-              rawStart: stripeSubscription.current_period_start,
-              rawEnd: stripeSubscription.current_period_end,
+              rawStart,
+              rawEnd,
             });
 
             // Use update first (row should already exist from signup trigger)
@@ -584,14 +593,17 @@ router.post('/subscriptions/webhook', async (req, res) => {
 
         if (userSub) {
           const isActive = subscription.status === 'active' || subscription.status === 'trialing';
-          const billingInterval = subscription.items?.data?.[0]?.plan?.interval || 'month';
-          const periodStart = new Date(subscription.current_period_start * 1000).toISOString();
-          const periodEnd = new Date(subscription.current_period_end * 1000).toISOString();
+          // Stripe API 2025-03-31+: period dates moved to subscription items
+          const subItem = subscription.items?.data?.[0];
+          const billingInterval = subItem?.plan?.interval || 'month';
+          const rawStart = subItem?.current_period_start ?? subscription.current_period_start;
+          const rawEnd = subItem?.current_period_end ?? subscription.current_period_end;
+          const periodStart = rawStart ? new Date(rawStart * 1000).toISOString() : null;
+          const periodEnd = rawEnd ? new Date(rawEnd * 1000).toISOString() : null;
 
           console.log(`[Webhook] ${event.type} - updating user:`, userSub.user_id, {
             isActive, billingInterval, periodStart, periodEnd,
-            rawStart: subscription.current_period_start,
-            rawEnd: subscription.current_period_end,
+            rawStart, rawEnd,
           });
 
           const { data: updateData, error: updateError } = await supabaseAdmin
