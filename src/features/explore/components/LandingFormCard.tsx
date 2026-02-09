@@ -151,7 +151,7 @@ const LandingFormCard: React.FC<LandingFormCardProps> = ({
           ">
             {/* I Speak */}
             <div className="space-y-0.5">
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-stone-400 ml-0.5">
+              <label className="block text-left text-[11px] font-semibold uppercase tracking-wider text-stone-400 ml-0.5">
                 I Speak
               </label>
               <GlassDropdown
@@ -163,7 +163,7 @@ const LandingFormCard: React.FC<LandingFormCardProps> = ({
 
             {/* I'm Learning */}
             <div className="space-y-0.5">
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-stone-400 ml-0.5">
+              <label className="block text-left text-[11px] font-semibold uppercase tracking-wider text-stone-400 ml-0.5">
                 I'm Learning
               </label>
               <GlassDropdown
@@ -175,7 +175,7 @@ const LandingFormCard: React.FC<LandingFormCardProps> = ({
 
             {/* Depth Level */}
             <div className="space-y-0.5">
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-stone-400 ml-0.5">
+              <label className="block text-left text-[11px] font-semibold uppercase tracking-wider text-stone-400 ml-0.5">
                 Level
               </label>
               <div className="flex bg-white/50 backdrop-blur-sm p-1 rounded-xl border border-white/60 ring-1 ring-black/[0.04] gap-1">

@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Subscription Page — Design Options</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Inter', sans-serif; background: #faf9f7; color: #292524; }
+
+    /* Design selector nav */
+    .design-nav {
+      position: sticky; top: 0; z-index: 100;
+      background: #292524; color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      gap: 8px; padding: 14px 24px;
+      font-size: 13px; font-weight: 500;
+    }
+    .design-nav a {
+      color: #d6d3d1; text-decoration: none;
+      padding: 6px 16px; border-radius: 20px;
+      transition: all 0.2s;
+    }
+    .design-nav a:hover, .design-nav a.active { background: rgba(255,255,255,0.15); color: #fff; }
+    .design-nav .label { color: #a8a29e; margin-right: 8px; }
+
+    .design-section {
+      max-width: 960px; margin: 0 auto;
+      padding: 60px 24px 80px;
+      border-bottom: 1px solid #e7e5e4;
+    }
+    .design-section:last-child { border-bottom: none; }
+
+    .section-badge {
+      display: inline-block; background: #292524; color: #fff;
+      font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+      text-transform: uppercase; padding: 4px 12px; border-radius: 20px;
+      margin-bottom: 12px;
+    }
+    .section-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 28px; font-weight: 500; margin-bottom: 6px;
+    }
+    .section-desc {
+      font-size: 14px; color: #78716c; margin-bottom: 36px; max-width: 560px;
+    }
+
+    /* =========================================
+       SHARED STYLES
+    ========================================= */
+    .page-header { text-align: center; margin-bottom: 32px; }
+    .page-header h1 { font-family: 'Playfair Display', serif; font-size: 30px; font-weight: 500; margin-bottom: 6px; }
+    .page-header p { font-size: 14px; color: #78716c; }
+
+    .card {
+      background: #fff; border: 1px solid #e7e5e4; border-radius: 16px;
+      padding: 24px;
+    }
+    .card.highlighted { border-color: #57534e; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+
+    .plan-name { font-size: 17px; font-weight: 600; color: #292524; }
+    .plan-price { font-size: 36px; font-weight: 700; color: #292524; line-height: 1; }
+    .plan-price .unit { font-size: 14px; font-weight: 400; color: #78716c; }
+    .plan-price .old { font-size: 16px; font-weight: 400; color: #a8a29e; text-decoration: line-through; margin-right: 4px; }
+    .plan-sub { font-size: 12px; color: #a8a29e; margin-top: 4px; }
+
+    .feature-list { list-style: none; padding: 0; }
+    .feature-list li {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 13px; color: #57534e; padding: 6px 0;
+    }
+    .feature-list li .icon {
+      width: 18px; height: 18px; display: flex; align-items: center; justify-content: center;
+      color: #a8a29e; flex-shrink: 0;
+    }
+
+    .btn {
+      display: block; width: 100%; padding: 12px; border-radius: 999px;
+      font-size: 13px; font-weight: 600; text-align: center;
+      border: none; cursor: pointer; transition: all 0.2s;
+    }
+    .btn-primary { background: #292524; color: #fff; }
+    .btn-primary:hover { background: #1c1917; }
+    .btn-outline { background: #fff; color: #57534e; border: 1px solid #d6d3d1; }
+    .btn-outline:hover { background: #fafaf9; }
+    .btn-disabled { background: #f5f5f4; color: #a8a29e; cursor: not-allowed; }
+
+    .toggle-group {
+      display: flex; align-items: center; gap: 8px; font-size: 12px;
+    }
+    .toggle-track {
+      width: 40px; height: 22px; background: #292524; border-radius: 11px;
+      position: relative; cursor: pointer;
+    }
+    .toggle-track .thumb {
+      position: absolute; top: 3px; left: 21px;
+      width: 16px; height: 16px; background: #fff; border-radius: 50%;
+    }
+    .toggle-label { color: #a8a29e; }
+    .toggle-label.active { color: #292524; font-weight: 600; }
+
+    .badge-rec {
+      position: absolute; top: -11px; left: 50%; transform: translateX(-50%);
+      background: #292524; color: #fff; font-size: 11px; font-weight: 600;
+      padding: 3px 12px; border-radius: 20px; white-space: nowrap;
+    }
+
+    .usage-label { font-size: 11px; color: #a8a29e; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; margin-bottom: 6px; }
+    .usage-val { font-size: 14px; font-weight: 600; color: #292524; }
+    .usage-bar { height: 5px; background: #f5f5f4; border-radius: 3px; margin-top: 6px; overflow: hidden; }
+    .usage-bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+    .usage-bar-fill.normal { background: #a8a29e; }
+    .usage-bar-fill.warning { background: #f59e0b; }
+    .usage-bar-fill.credit { background: #22c55e; }
+
+    .credit-badge {
+      display: inline-block; font-size: 11px; font-weight: 600;
+      color: #16a34a; background: #f0fdf4; padding: 2px 8px;
+      border-radius: 10px; margin-left: 6px;
+    }
+
+    .pro-only-badge {
+      display: inline-block; font-size: 11px; font-weight: 500;
+      color: #78716c; background: #f5f5f4; padding: 2px 10px;
+      border-radius: 10px;
+    }
+
+    /* Tabs */
+    .tab-group { display: flex; gap: 2px; background: #f5f5f4; border-radius: 10px; padding: 3px; margin-bottom: 20px; }
+    .tab-btn {
+      flex: 1; padding: 8px 16px; border-radius: 8px; border: none;
+      font-size: 12px; font-weight: 500; cursor: pointer;
+      background: transparent; color: #78716c; transition: all 0.2s;
+    }
+    .tab-btn.active { background: #fff; color: #292524; box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+
+    .divider { border-top: 1px solid #f0efed; margin: 16px 0; }
+
+    /* Capability style */
+    .capability-card {
+      background: #fafaf9; border-radius: 12px; padding: 16px;
+      text-align: center;
+    }
+    .capability-card .cap-icon {
+      width: 36px; height: 36px; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 10px; font-size: 16px;
+    }
+    .capability-card .cap-title { font-size: 12px; font-weight: 600; color: #292524; margin-bottom: 2px; }
+    .capability-card .cap-value { font-size: 20px; font-weight: 700; color: #292524; }
+    .capability-card .cap-unit { font-size: 11px; color: #78716c; }
+    .capability-card .cap-sub { font-size: 10px; color: #a8a29e; margin-top: 4px; }
+
+    /* What you can do chips */
+    .action-chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: #f5f5f4; border-radius: 8px; padding: 8px 14px;
+      font-size: 12px; color: #57534e; font-weight: 500;
+    }
+    .action-chip .chip-count {
+      font-weight: 700; color: #292524;
+    }
+
+    .section-label {
+      font-size: 11px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.06em; color: #a8a29e; margin-bottom: 12px;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Navigation -->
+<nav class="design-nav">
+  <span class="label">Jump to:</span>
+  <a href="#option-a">Option A — Tabs & Sections</a>
+  <a href="#option-b">Option B — Credits as Sidebar</a>
+  <a href="#option-c">Option C — Inline Color-coded Bars</a>
+</nav>
+
+
+<!-- ================================================
+     OPTION A: TABS / SECTIONS
+================================================= -->
+<section class="design-section" id="option-a">
+  <span class="section-badge">Option A</span>
+  <h2 class="section-title">Tabs & Sections</h2>
+  <p class="section-desc">
+    Split usage into two clear sections: <strong>Monthly Plan</strong> (what resets each month) and <strong>Credits</strong> (purchased extras that never expire). Uses tabs to switch between the two views.
+  </p>
+
+  <!-- Mock page -->
+  <div style="background: #faf9f7; border-radius: 20px; padding: 40px 32px; border: 1px solid #e7e5e4;">
+
+    <div class="page-header">
+      <h1>Plan</h1>
+      <p>You're currently on a free plan. Here's what you can do right now.</p>
+    </div>
+
+    <!-- Usage card with tabs -->
+    <div class="card" style="margin-bottom: 32px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <span class="usage-label" style="margin-bottom: 0;">Current Usage — Free Plan</span>
+      </div>
+
+      <div class="tab-group" style="max-width: 280px;">
+        <button class="tab-btn active">Monthly Allowance</button>
+        <button class="tab-btn">Purchased Credits</button>
+      </div>
+
+      <!-- Monthly tab content -->
+      <div class="grid-4">
+        <div>
+          <div class="usage-label">Video Analysis</div>
+          <div class="usage-val">1 <span style="color:#a8a29e; font-weight:400;">/ 3</span></div>
+          <div class="usage-bar"><div class="usage-bar-fill normal" style="width: 33%;"></div></div>
+          <div style="font-size:11px; color:#78716c; margin-top:4px;">2 remaining this month</div>
+        </div>
+        <div>
+          <div class="usage-label">AI Report</div>
+          <div class="usage-val">5 <span style="color:#a8a29e; font-weight:400;">/ 5</span></div>
+          <div class="usage-bar"><div class="usage-bar-fill warning" style="width: 100%;"></div></div>
+          <div style="font-size:11px; color:#f59e0b; margin-top:4px;">Limit reached</div>
+        </div>
+        <div>
+          <div class="usage-label">AI Tutor</div>
+          <div class="pro-only-badge">Pro only</div>
+        </div>
+        <div>
+          <div class="usage-label">PDF Export</div>
+          <div class="pro-only-badge">Pro only</div>
+        </div>
+      </div>
+
+      <!-- Credits tab content (shown below as if toggled) -->
+      <div class="divider"></div>
+      <p style="font-size:11px; color:#a8a29e; margin-bottom:12px; font-weight:500;">↓ What "Purchased Credits" tab shows:</p>
+      <div class="grid-4">
+        <div>
+          <div class="usage-label">Video Credits</div>
+          <div class="usage-val" style="color:#16a34a;">12</div>
+          <div style="font-size:11px; color:#78716c; margin-top:4px;">Never expires</div>
+        </div>
+        <div>
+          <div class="usage-label">AI Report Credits</div>
+          <div class="usage-val" style="color:#16a34a;">94</div>
+          <div style="font-size:11px; color:#78716c; margin-top:4px;">Never expires</div>
+        </div>
+        <div>
+          <div class="usage-label">AI Tutor Credits</div>
+          <div class="usage-val" style="color:#16a34a;">30 min</div>
+          <div style="font-size:11px; color:#78716c; margin-top:4px;">Never expires</div>
+        </div>
+        <div></div>
+      </div>
+    </div>
+
+    <!-- Plan cards -->
+    <div class="grid-3">
+      <!-- Basic -->
+      <div class="card">
+        <div style="margin-bottom:20px;">
+          <div class="plan-name" style="margin-bottom:12px;">Basic</div>
+          <div class="plan-price">Free</div>
+          <div class="plan-sub">No card required</div>
+        </div>
+        <div class="section-label">What you can do</div>
+        <ul class="feature-list">
+          <li><span class="icon">🎬</span> Analyze <strong>3 videos</strong> / month</li>
+          <li><span class="icon">📊</span> Generate <strong>5 AI Reports</strong> / month</li>
+          <li><span class="icon">📁</span> Save up to <strong>10 videos</strong> in library</li>
+        </ul>
+        <div style="margin-top:auto; padding-top:20px;">
+          <button class="btn btn-disabled">Current plan</button>
+        </div>
+      </div>
+
+      <!-- Pro -->
+      <div class="card highlighted" style="position:relative;">
+        <div class="badge-rec">Recommended</div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; margin-top:4px;">
+          <div class="plan-name">Pro</div>
+          <div class="toggle-group">
+            <span class="toggle-label">Monthly</span>
+            <div class="toggle-track"><div class="thumb"></div></div>
+            <span class="toggle-label active">Annual</span>
+          </div>
+        </div>
+        <div style="margin-bottom:20px;">
+          <div class="plan-price"><span class="old">$9</span> $7 <span class="unit">/ month</span></div>
+          <div class="plan-sub">Billed annually, save $24/year</div>
+        </div>
+        <div class="section-label">What you can do</div>
+        <ul class="feature-list">
+          <li><span class="icon">🎬</span> Analyze <strong>100 videos</strong> / month</li>
+          <li><span class="icon">💬</span> <strong>60 min</strong> AI Tutor / month</li>
+          <li><span class="icon">📊</span> <strong>Unlimited</strong> AI Reports</li>
+          <li><span class="icon">🔤</span> Text highlight translation</li>
+          <li><span class="icon">📄</span> PDF export</li>
+        </ul>
+        <div style="margin-top:auto; padding-top:20px;">
+          <button class="btn btn-primary">Upgrade</button>
+        </div>
+      </div>
+
+      <!-- Starter Pack -->
+      <div class="card">
+        <div style="margin-bottom:20px;">
+          <div class="plan-name" style="margin-bottom:12px;">Starter Pack</div>
+          <div class="plan-price">$5</div>
+          <div class="plan-sub">One-time purchase, never expires</div>
+        </div>
+        <div class="section-label">What you get</div>
+        <ul class="feature-list">
+          <li><span class="icon">🎬</span> <strong>15</strong> video credits</li>
+          <li><span class="icon">💬</span> <strong>30 min</strong> AI Tutor</li>
+          <li><span class="icon">📊</span> <strong>30</strong> AI Report credits</li>
+          <li><span class="icon">♾️</span> Credits <strong>never expire</strong></li>
+        </ul>
+        <div style="margin-top:auto; padding-top:20px;">
+          <button class="btn btn-outline">Buy Credits</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ================================================
+     OPTION B: CREDITS AS SIDEBAR
+================================================= -->
+<section class="design-section" id="option-b">
+  <span class="section-badge">Option B</span>
+  <h2 class="section-title">Credits as Sidebar</h2>
+  <p class="section-desc">
+    Monthly plan usage displayed prominently on the left, with purchased credits shown as a compact secondary panel on the right. Clear visual separation between what resets and what doesn't.
+  </p>
+
+  <div style="background: #faf9f7; border-radius: 20px; padding: 40px 32px; border: 1px solid #e7e5e4;">
+
+    <div class="page-header">
+      <h1>Plan</h1>
+      <p>You're currently on a free plan. Here's what you can do right now.</p>
+    </div>
+
+    <!-- Usage: two-panel layout -->
+    <div style="display: grid; grid-template-columns: 1fr 280px; gap: 16px; margin-bottom: 32px;">
+
+      <!-- Main: Monthly usage -->
+      <div class="card">
+        <div class="usage-label" style="margin-bottom: 16px;">Monthly Allowance — Free Plan</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px;">
+          <div>
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+              <span style="font-size:16px;">🎬</span>
+              <span style="font-size:12px; color:#78716c;">Video Analysis</span>
+            </div>
+            <div style="font-size:28px; font-weight:700; color:#292524; line-height:1;">2</div>
+            <div style="font-size:11px; color:#78716c;">remaining of 3</div>
+            <div class="usage-bar" style="margin-top:8px;"><div class="usage-bar-fill normal" style="width: 33%;"></div></div>
+          </div>
+          <div>
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+              <span style="font-size:16px;">📊</span>
+              <span style="font-size:12px; color:#78716c;">AI Report</span>
+            </div>
+            <div style="font-size:28px; font-weight:700; color:#f59e0b; line-height:1;">0</div>
+            <div style="font-size:11px; color:#f59e0b;">limit reached</div>
+            <div class="usage-bar" style="margin-top:8px;"><div class="usage-bar-fill warning" style="width: 100%;"></div></div>
+          </div>
+          <div>
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+              <span style="font-size:16px;">💬</span>
+              <span style="font-size:12px; color:#78716c;">AI Tutor</span>
+            </div>
+            <div class="pro-only-badge" style="margin-top:8px;">Pro only</div>
+          </div>
+        </div>
+        <div style="font-size:11px; color:#a8a29e; margin-top:16px;">Resets on March 1, 2026</div>
+      </div>
+
+      <!-- Sidebar: Credits -->
+      <div class="card" style="background: #f0fdf4; border-color: #bbf7d0;">
+        <div style="display:flex; align-items:center; gap:6px; margin-bottom:16px;">
+          <span style="font-size:14px;">✨</span>
+          <span class="usage-label" style="margin-bottom:0; color:#16a34a;">Purchased Credits</span>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:14px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:12px; color:#57534e;">🎬 Videos</span>
+            <span style="font-size:16px; font-weight:700; color:#16a34a;">12</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:12px; color:#57534e;">📊 AI Reports</span>
+            <span style="font-size:16px; font-weight:700; color:#16a34a;">94</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:12px; color:#57534e;">💬 AI Tutor</span>
+            <span style="font-size:16px; font-weight:700; color:#16a34a;">30 min</span>
+          </div>
+        </div>
+        <div style="font-size:10px; color:#4ade80; margin-top:14px; font-weight:500;">Never expires</div>
+        <button class="btn btn-outline" style="margin-top:14px; font-size:12px; padding:8px; border-color:#86efac; color:#16a34a;">
+          + Buy more credits
+        </button>
+      </div>
+    </div>
+
+    <!-- Plan cards -->
+    <div class="grid-3">
+      <!-- Basic -->
+      <div class="card">
+        <div style="margin-bottom:20px;">
+          <div class="plan-name" style="margin-bottom:12px;">Basic</div>
+          <div class="plan-price">Free</div>
+          <div class="plan-sub">No card required</div>
+        </div>
+        <div class="section-label">What you can do</div>
+        <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:20px;">
+          <div class="capability-card">
+            <div class="cap-value">3</div>
+            <div class="cap-title">Videos / month</div>
+          </div>
+          <div class="capability-card">
+            <div class="cap-value">5</div>
+            <div class="cap-title">AI Reports / month</div>
+          </div>
+          <div class="capability-card">
+            <div class="cap-value">10</div>
+            <div class="cap-title">Library saves</div>
+          </div>
+        </div>
+        <button class="btn btn-disabled">Current plan</button>
+      </div>
+
+      <!-- Pro -->
+      <div class="card highlighted" style="position:relative;">
+        <div class="badge-rec">Recommended</div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; margin-top:4px;">
+          <div class="plan-name">Pro</div>
+          <div class="toggle-group">
+            <span class="toggle-label">Monthly</span>
+            <div class="toggle-track"><div class="thumb"></div></div>
+            <span class="toggle-label active">Annual</span>
+          </div>
+        </div>
+        <div style="margin-bottom:20px;">
+          <div class="plan-price"><span class="old">$9</span> $7 <span class="unit">/ month</span></div>
+          <div class="plan-sub">Billed annually, save $24/year</div>
+        </div>
+        <div class="section-label">What you can do</div>
+        <ul class="feature-list">
+          <li><span class="icon">🎬</span> <strong>100</strong> videos / month</li>
+          <li><span class="icon">💬</span> <strong>60 min</strong> AI Tutor / month</li>
+          <li><span class="icon">📊</span> <strong>Unlimited</strong> AI Reports</li>
+          <li><span class="icon">🔤</span> Text highlight translation</li>
+          <li><span class="icon">📄</span> PDF export</li>
+        </ul>
+        <div style="margin-top:auto; padding-top:20px;">
+          <button class="btn btn-primary">Upgrade</button>
+        </div>
+      </div>
+
+      <!-- Starter Pack -->
+      <div class="card">
+        <div style="margin-bottom:20px;">
+          <div class="plan-name" style="margin-bottom:12px;">Starter Pack</div>
+          <div class="plan-price">$5</div>
+          <div class="plan-sub">One-time purchase, never expires</div>
+        </div>
+        <div class="section-label">What you get</div>
+        <ul class="feature-list">
+          <li><span class="icon">🎬</span> <strong>15</strong> video credits</li>
+          <li><span class="icon">💬</span> <strong>30 min</strong> AI Tutor</li>
+          <li><span class="icon">📊</span> <strong>30</strong> AI Report credits</li>
+          <li><span class="icon">♾️</span> Credits <strong>never expire</strong></li>
+        </ul>
+        <div style="margin-top:auto; padding-top:20px;">
+          <button class="btn btn-outline">Buy Credits</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ================================================
+     OPTION C: INLINE COLOR-CODED BARS
+================================================= -->
+<section class="design-section" id="option-c">
+  <span class="section-badge">Option C</span>
+  <h2 class="section-title">Inline Color-coded Bars</h2>
+  <p class="section-desc">
+    Keep a single usage view but visually distinguish monthly usage vs credits within each bar. Monthly in gray, purchased credits shown as a green extension. Focus on "what you can do right now" with totals.
+  </p>
+
+  <div style="background: #faf9f7; border-radius: 20px; padding: 40px 32px; border: 1px solid #e7e5e4;">
+
+    <div class="page-header">
+      <h1>Plan</h1>
+      <p>You're currently on a free plan. Here's what you can do right now.</p>
+    </div>
+
+    <!-- Usage: single panel, color-coded -->
+    <div class="card" style="margin-bottom: 32px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+        <span class="usage-label" style="margin-bottom:0;">What you can do — Free Plan</span>
+        <div style="display:flex; gap:16px; font-size:11px;">
+          <span style="display:flex; align-items:center; gap:4px;"><span style="width:8px;height:8px;border-radius:50%;background:#a8a29e;display:inline-block;"></span> Monthly</span>
+          <span style="display:flex; align-items:center; gap:4px;"><span style="width:8px;height:8px;border-radius:50%;background:#22c55e;display:inline-block;"></span> Credits (never expire)</span>
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap: 24px;">
+
+        <!-- Video -->
+        <div>
+          <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px;">
+            <span style="font-size:15px;">🎬</span>
+            <span style="font-size:12px; font-weight:600; color:#292524;">Video Analysis</span>
+          </div>
+          <div style="font-size:11px; color:#78716c; margin-bottom:6px;">
+            <span style="color:#292524; font-weight:600;">2</span> monthly + <span style="color:#16a34a; font-weight:600;">12</span> credits = <strong>14 available</strong>
+          </div>
+          <!-- Stacked bar -->
+          <div style="height:8px; border-radius:4px; overflow:hidden; display:flex; background:#f5f5f4;">
+            <div style="width:13%; background:#a8a29e; border-radius:4px 0 0 4px;"></div>
+            <div style="width:2px; background:#faf9f7;"></div>
+            <div style="width:57%; background:#22c55e; border-radius:0 4px 4px 0;"></div>
+          </div>
+          <div style="display:flex; justify-content:space-between; margin-top:4px; font-size:10px; color:#a8a29e;">
+            <span>1/3 used</span>
+            <span style="color:#16a34a;">+12 credits</span>
+          </div>
+        </div>
+
+        <!-- AI Report -->
+        <div>
+          <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px;">
+            <span style="font-size:15px;">📊</span>
+            <span style="font-size:12px; font-weight:600; color:#292524;">AI Report</span>
+          </div>
+          <div style="font-size:11px; color:#78716c; margin-bottom:6px;">
+            <span style="color:#f59e0b; font-weight:600;">0</span> monthly + <span style="color:#16a34a; font-weight:600;">94</span> credits = <strong>94 available</strong>
+          </div>
+          <div style="height:8px; border-radius:4px; overflow:hidden; display:flex; background:#f5f5f4;">
+            <div style="width:100%; background:#f59e0b; border-radius:4px 0 0 4px;"></div>
+          </div>
+          <div style="display:flex; justify-content:space-between; margin-top:4px; font-size:10px;">
+            <span style="color:#f59e0b;">5/5 used</span>
+            <span style="color:#16a34a; font-weight:600;">+94 credits ✓</span>
+          </div>
+        </div>
+
+        <!-- AI Tutor -->
+        <div>
+          <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px;">
+            <span style="font-size:15px;">💬</span>
+            <span style="font-size:12px; font-weight:600; color:#292524;">AI Tutor</span>
+          </div>
+          <div style="font-size:11px; color:#78716c; margin-bottom:6px;">
+            <span style="color:#16a34a; font-weight:600;">30 min</span> credits available
+          </div>
+          <div style="height:8px; border-radius:4px; overflow:hidden; display:flex; background:#f5f5f4;">
+            <div style="width:60%; background:#22c55e; border-radius:4px;"></div>
+          </div>
+          <div style="display:flex; justify-content:space-between; margin-top:4px; font-size:10px; color:#a8a29e;">
+            <span style="color:#78716c;">No monthly plan</span>
+            <span style="color:#16a34a;">30 min credits</span>
+          </div>
+        </div>
+
+        <!-- PDF -->
+        <div>
+          <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px;">
+            <span style="font-size:15px;">📄</span>
+            <span style="font-size:12px; font-weight:600; color:#292524;">PDF Export</span>
+          </div>
+          <div style="margin-top:8px;">
+            <div class="pro-only-badge">Pro only</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Plan cards -->
+    <div class="grid-3">
+      <!-- Basic -->
+      <div class="card">
+        <div style="margin-bottom:20px;">
+          <div class="plan-name" style="margin-bottom:12px;">Basic</div>
+          <div class="plan-price">Free</div>
+          <div class="plan-sub">No card required</div>
+        </div>
+
+        <div class="section-label">What you can do each month</div>
+        <ul class="feature-list" style="margin-bottom:16px;">
+          <li><span class="icon">🎬</span> Analyze <strong>3 videos</strong></li>
+          <li><span class="icon">📊</span> Generate <strong>5 AI Reports</strong></li>
+          <li><span class="icon">📁</span> Save up to <strong>10 videos</strong></li>
+        </ul>
+
+        <button class="btn btn-disabled">Current plan</button>
+      </div>
+
+      <!-- Pro -->
+      <div class="card highlighted" style="position:relative;">
+        <div class="badge-rec">Recommended</div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; margin-top:4px;">
+          <div class="plan-name">Pro</div>
+          <div class="toggle-group">
+            <span class="toggle-label">Monthly</span>
+            <div class="toggle-track"><div class="thumb"></div></div>
+            <span class="toggle-label active">Annual</span>
+          </div>
+        </div>
+        <div style="margin-bottom:20px;">
+          <div class="plan-price"><span class="old">$9</span> $7 <span class="unit">/ month</span></div>
+          <div class="plan-sub">Billed annually, save $24/year</div>
+        </div>
+
+        <div class="section-label">What you can do each month</div>
+        <ul class="feature-list">
+          <li><span class="icon">🎬</span> Analyze <strong>100 videos</strong></li>
+          <li><span class="icon">💬</span> <strong>60 min</strong> AI Tutor</li>
+          <li><span class="icon">📊</span> <strong>Unlimited</strong> AI Reports</li>
+          <li><span class="icon">🔤</span> Text highlight translation</li>
+          <li><span class="icon">📄</span> PDF export</li>
+        </ul>
+        <div style="margin-top:auto; padding-top:20px;">
+          <button class="btn btn-primary">Upgrade</button>
+        </div>
+      </div>
+
+      <!-- Starter Pack -->
+      <div class="card">
+        <div style="margin-bottom:20px;">
+          <div class="plan-name" style="margin-bottom:12px;">Starter Pack</div>
+          <div class="plan-price">$5</div>
+          <div class="plan-sub">One-time purchase, never expires</div>
+        </div>
+        <div class="section-label">Credits you get</div>
+        <ul class="feature-list">
+          <li><span class="icon">🎬</span> <strong>15</strong> video credits</li>
+          <li><span class="icon">💬</span> <strong>30 min</strong> AI Tutor</li>
+          <li><span class="icon">📊</span> <strong>30</strong> AI Report credits</li>
+          <li><span class="icon">♾️</span> Credits <strong>never expire</strong></li>
+        </ul>
+        <div style="margin-top:auto; padding-top:20px;">
+          <button class="btn btn-outline">Buy Credits</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+</body>
+</html>
