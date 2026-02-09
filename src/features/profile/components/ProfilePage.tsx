@@ -19,9 +19,14 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenSubscription }) => {
     aiTutorMinutesLimit,
     aiTutorCreditMinutes,
     practiceSessionCredits,
+    videoCredits,
     createPortal,
     isLoading,
   } = useSubscription();
+
+  const hasAnyCredits = videoCredits > 0 || practiceSessionCredits > 0 || aiTutorCreditMinutes > 0;
+
+  const [profileUsageTab, setProfileUsageTab] = useState<'monthly' | 'credits'>('monthly');
 
   // Name editing state
   const [firstName, setFirstName] = useState(userProfile?.firstName || '');
@@ -220,25 +225,43 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenSubscription }) => {
                   </>
                 )}
 
-                {/* Usage rows */}
-                <UsageRow
-                  label="Videos"
-                  used={usage.videosUsed}
-                  limit={videosLimit}
-                />
-                <UsageRow
-                  label="AI Tutor"
-                  used={usage.aiTutorMinutesUsed}
-                  limit={aiTutorMinutesLimit}
-                  unit="min"
-                  creditText={aiTutorCreditMinutes > 0 ? `+${aiTutorCreditMinutes} min credits` : undefined}
-                />
-                <UsageRow
-                  label="Practice"
-                  used={usage.practiceSessionsUsed}
-                  limit={practiceSessionsLimit}
-                  creditText={practiceSessionCredits > 0 ? `+${practiceSessionCredits} credits` : undefined}
-                />
+                {/* Usage tabs */}
+                {hasAnyCredits && (
+                  <div className="px-4 pt-3">
+                    <ProfileUsageTabs activeTab={profileUsageTab} onTabChange={setProfileUsageTab} />
+                  </div>
+                )}
+
+                {/* Monthly usage rows */}
+                {profileUsageTab === 'monthly' && (
+                  <>
+                    <UsageRow
+                      label="Videos"
+                      used={usage.videosUsed}
+                      limit={videosLimit}
+                    />
+                    <UsageRow
+                      label="AI Tutor"
+                      used={usage.aiTutorMinutesUsed}
+                      limit={aiTutorMinutesLimit}
+                      unit="min"
+                    />
+                    <UsageRow
+                      label="AI Report"
+                      used={usage.practiceSessionsUsed}
+                      limit={practiceSessionsLimit}
+                    />
+                  </>
+                )}
+
+                {/* Remaining credits rows */}
+                {profileUsageTab === 'credits' && hasAnyCredits && (
+                  <>
+                    <CreditRow label="Video Credits" remaining={videoCredits} />
+                    <CreditRow label="AI Tutor Credits" remaining={aiTutorCreditMinutes} unit="min" />
+                    <CreditRow label="AI Report Credits" remaining={practiceSessionCredits} />
+                  </>
+                )}
               </>
             )}
           </div>
@@ -365,34 +388,63 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenSubscription }) => {
   );
 };
 
+// Tabs for switching between monthly usage and credits
+const ProfileUsageTabs: React.FC<{
+  activeTab: 'monthly' | 'credits';
+  onTabChange: (tab: 'monthly' | 'credits') => void;
+}> = ({ activeTab, onTabChange }) => (
+  <div className="flex gap-1 bg-stone-100 rounded-lg p-0.5">
+    <button
+      onClick={() => onTabChange('monthly')}
+      className={`flex-1 py-1.5 px-3 rounded-md text-xs font-medium transition-all ${
+        activeTab === 'monthly'
+          ? 'bg-white text-stone-800 shadow-sm'
+          : 'text-stone-500 hover:text-stone-700'
+      }`}
+    >
+      Monthly Allowance
+    </button>
+    <button
+      onClick={() => onTabChange('credits')}
+      className={`flex-1 py-1.5 px-3 rounded-md text-xs font-medium transition-all ${
+        activeTab === 'credits'
+          ? 'bg-white text-stone-800 shadow-sm'
+          : 'text-stone-500 hover:text-stone-700'
+      }`}
+    >
+      Remaining Credits
+    </button>
+  </div>
+);
+
 // Inline usage row component
 const UsageRow: React.FC<{
   label: string;
   used: number;
   limit: number;
   unit?: string;
-  creditText?: string;
-}> = ({ label, used, limit, unit = '', creditText }) => {
+}> = ({ label, used, limit, unit = '' }) => {
   const isUnlimited = limit === Infinity;
-  const isNearLimit = !isUnlimited && limit > 0 && (used / limit) >= 0.8;
+  // Cap monthly usage at the limit — any overflow was consumed from credits
+  const monthlyUsed = isUnlimited ? used : Math.min(used, limit);
+  const remaining = Math.max(limit - monthlyUsed, 0);
+  const isNearLimit = !isUnlimited && limit > 0 && (monthlyUsed / limit) >= 0.8;
 
-  const valueText = limit === 0 && !creditText
+  const valueText = limit === 0
     ? 'Pro only'
-    : limit === 0 && creditText
-      ? creditText
-      : isUnlimited
-        ? `${used}${unit} used`
-        : `${used}${unit} / ${limit}${unit}`;
+    : isUnlimited
+      ? `${used}${unit} used`
+      : remaining === 0
+        ? `${limit}${unit} / ${limit}${unit}`
+        : `${monthlyUsed}${unit} / ${limit}${unit}`;
 
-  const valueColor = limit === 0 && !creditText
+  const valueColor = limit === 0
     ? 'text-stone-400'
-    : (limit === 0 && creditText)
-      ? 'text-green-500'
-      : isNearLimit
-        ? 'text-amber-500'
-        : 'text-stone-900';
+    : isNearLimit
+      ? 'text-amber-500'
+      : 'text-stone-900';
 
-  const percentage = !isUnlimited && limit > 0 ? Math.min((used / limit) * 100, 100) : 0;
+  const percentage = !isUnlimited && limit > 0 ? Math.min((monthlyUsed / limit) * 100, 100) : 0;
 
   return (
     <div className="px-4 py-3">
@@ -411,5 +463,21 @@ const UsageRow: React.FC<{
     </div>
   );
 };
+
+// Credit row component
+const CreditRow: React.FC<{
+  label: string;
+  remaining: number;
+  unit?: string;
+}> = ({ label, remaining, unit = '' }) => (
+  <div className="px-4 py-3">
+    <div className="flex items-center justify-between">
+      <span className="text-sm text-stone-500">{label}</span>
+      <span className="text-sm font-medium text-green-600">
+        {remaining}{unit && ` ${unit}`} remaining
+      </span>
+    </div>
+  </div>
+);
 
 export default ProfilePage;

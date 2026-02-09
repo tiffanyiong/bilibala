@@ -3,6 +3,7 @@ import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
 import ReactFlow, { Background, Controls, Handle, MiniMap, Node, Position, ReactFlowProvider, useEdgesState, useNodesState, useReactFlow } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { useTTS } from '../../../shared/hooks/useTTS';
+import { getBreakdown } from '../../../shared/utils/scoringUtils';
 import { useAudioPlayer } from '../../../shared/hooks/useAudioPlayer';
 import { checkAnonymousPracticeLimit } from '../../../shared/services/usageTracking';
 import { SpeechAnalysisResult } from '../../../shared/types';
@@ -559,6 +560,8 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
                         targetLang={targetLang}
                         nativeLang={nativeLang}
                         level={level}
+                        breakdown={getBreakdown(feedback, targetLang)}
+                        isDeliveryMode={detected_framework === 'PRACTICE_DELIVERY'}
                     />
                 </div>
                   <div className="bg-green-50/60 backdrop-blur-xl p-4 rounded-xl border border-green-100/50 shadow-[inset_0_1px_1px_rgba(255,255,255,0.6),inset_0_-1px_1px_rgba(0,0,0,0.02),0_1px_3px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.03)] ring-1 ring-green-900/[0.03]">

@@ -85,7 +85,8 @@ const defaultLabels = {
     intonationOverlyExpressive: 'overly-expressive',
     pronunciationGood: 'Good',
     pronunciationNeedsWorkLabel: 'Needs Work',
-    pronunciationUnclear: 'Unclear'
+    pronunciationUnclear: 'Unclear',
+    tapToStart: 'Tap to start recording'
 };
 
 const PracticeSession: React.FC<PracticeSessionProps> = ({
@@ -250,6 +251,24 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
       const [analysisData, translationData] = await Promise.all([analysisPromise, translationPromise]);
       if (analysisData.error) throw new Error(analysisData.error);
 
+      // Translate band_descriptor / level_descriptor into nativeLang when level is Easy
+      if (isEasy && !isEnglish && analysisData.scoring_breakdown) {
+        const descriptorKey = analysisData.scoring_breakdown.band_descriptor ? 'band_descriptor' : 'level_descriptor';
+        const descriptorText = analysisData.scoring_breakdown[descriptorKey];
+        if (descriptorText) {
+          try {
+            const descTranslation = await fetch(`${getBackendOrigin()}/api/translate-ui-labels`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ language: languageToUse, isEasyLevel: true, sourceLabels: { descriptor: descriptorText } })
+            }).then(res => res.json());
+            if (descTranslation?.labels?.descriptor) {
+              analysisData.scoring_breakdown[descriptorKey] = descTranslation.labels.descriptor;
+            }
+          } catch (err) { console.error('Descriptor translation failed:', err); }
+        }
+      }
+
       setAnalysisResult(analysisData);
       const finalLabels = translationData?.labels ? { ...defaultLabels, ...translationData.labels } : defaultLabels;
       setTranslatedLabels(finalLabels);
@@ -310,9 +329,10 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
     }
 
       setState(SessionState.RESULTS);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err: any) {
       setError(err.message || "Failed to analyze speech.");
-      setState(SessionState.PREP); 
+      setState(SessionState.PREP);
     }
   };
 
@@ -498,9 +518,12 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
                     </div>
                     <div className="flex justify-center min-h-[120px] items-center">
                         {state === SessionState.PREP ? (
-                            <button onClick={handleStartRecording} className="w-20 h-20 bg-stone-900 rounded-full flex items-center justify-center text-white shadow-xl hover:scale-105 transition-all">
-                                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" /></svg>
-                            </button>
+                            <div className="flex flex-col items-center gap-3">
+                                <button onClick={handleStartRecording} className="w-20 h-20 bg-stone-900 rounded-full flex items-center justify-center text-white shadow-xl hover:scale-105 transition-all">
+                                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" /></svg>
+                                </button>
+                                <p className="text-stone-400 text-sm font-medium">{translatedLabels.tapToStart}</p>
+                            </div>
                         ) : (
                             <AudioRecorder
                                 onRecordingComplete={handleRecordingComplete}

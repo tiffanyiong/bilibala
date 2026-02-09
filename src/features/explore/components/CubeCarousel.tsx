@@ -268,7 +268,7 @@ const CubeCarousel: React.FC<CubeCarouselProps> = ({
       {/* Carousel Container */}
       <div
         ref={containerRef}
-        className="relative w-full max-w-xl select-none h-[480px] sm:h-[520px] md:h-[540px] overflow-hidden"
+        className="relative w-full max-w-xl select-none h-[280px] sm:h-[300px] md:h-[320px] overflow-hidden"
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
         onMouseDown={handleMouseDown}

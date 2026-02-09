@@ -280,7 +280,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       setDuration(0);
       setIsPlaying(false);
       await stopRecordingCleanup();
-      startRecording();
+      setRecorderState(RecorderState.IDLE);
   };
 
   const togglePlayback = () => {
@@ -357,7 +357,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
   // --- RENDER FUNCTIONS ---
 
   const renderMinimized = () => (
-    <div className="w-full h-full flex items-center justify-between px-5 text-white">
+    <div className={`w-full h-full flex items-center px-5 text-white ${recorderState === RecorderState.IDLE ? 'justify-center' : 'justify-between'}`}>
         {/* LEFT: IDLE (Mic) OR Status Indicator */}
         {recorderState === RecorderState.IDLE ? (
             <button onClick={startRecording} className="w-8 h-8 bg-white text-stone-900 rounded-full flex items-center justify-center hover:scale-105 transition-transform" title="Start Recording">

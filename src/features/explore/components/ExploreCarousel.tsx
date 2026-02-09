@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ExploreVideo } from '../../../shared/types/database';
 import ExploreCard, { ExploreCardSkeleton } from './ExploreCard';
 
@@ -32,7 +32,7 @@ const ExploreCarousel: React.FC<ExploreCarouselProps> = ({
         const params = new URLSearchParams({
           targetLang,
           level,
-          limit: '8',
+          limit: '30',
         });
 
         const response = await fetch(`${API_BASE}/api/explore?${params}`);

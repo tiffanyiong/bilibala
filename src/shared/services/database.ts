@@ -15,6 +15,7 @@ import {
   InsertTopicQuestion,
   InsertPracticeSession,
   VideoHistoryItem,
+  DashboardPracticeSession,
 } from '../types/database';
 
 // ============================================
@@ -1347,5 +1348,96 @@ export async function removeFromLibrary(
   }
 
   return true;
+}
+
+/**
+ * Delete a practice session by ID (user must own it via RLS)
+ */
+export async function deletePracticeSession(
+  userId: string,
+  sessionId: string
+): Promise<boolean> {
+  const { error } = await supabase
+    .from('practice_sessions')
+    .delete()
+    .eq('id', sessionId)
+    .eq('user_id', userId);
+
+  if (error) {
+    console.error('Error deleting practice session:', error);
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Toggle the is_favorited flag on a practice session
+ */
+export async function togglePracticeSessionFavorite(
+  userId: string,
+  sessionId: string,
+  isFavorited: boolean
+): Promise<boolean> {
+  const { error } = await supabase
+    .from('practice_sessions')
+    .update({ is_favorited: isFavorited })
+    .eq('id', sessionId)
+    .eq('user_id', userId);
+
+  if (error) {
+    console.error('Error toggling favorite:', error);
+    return false;
+  }
+
+  return true;
+}
+
+// ============================================
+// REPORTS DASHBOARD
+// ============================================
+
+/**
+ * Fetch ALL practice sessions for a user across all videos,
+ * joined with video metadata from cached_analyses + global_videos.
+ * Used by the centralized reports dashboard.
+ */
+export async function getAllPracticeSessionsWithVideoMetadata(
+  userId: string
+): Promise<DashboardPracticeSession[]> {
+  const { data, error } = await supabase
+    .from('practice_sessions')
+    .select(`
+      *,
+      cached_analyses (
+        id,
+        target_lang,
+        level,
+        global_videos (
+          youtube_id,
+          title,
+          thumbnail_url
+        )
+      )
+    `)
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching all practice sessions:', error);
+    return [];
+  }
+
+  return (data || [])
+    .filter((s: any) => s.cached_analyses?.global_videos)
+    .map((s: any) => {
+      const { cached_analyses, ...session } = s;
+      return {
+        ...session,
+        videoTitle: cached_analyses.global_videos.title || 'Untitled Video',
+        videoThumbnailUrl: cached_analyses.global_videos.thumbnail_url,
+        youtubeId: cached_analyses.global_videos.youtube_id,
+      } as DashboardPracticeSession;
+    });
 }
 
