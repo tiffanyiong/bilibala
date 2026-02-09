@@ -544,6 +544,8 @@ router.post('/subscriptions/webhook', async (req, res) => {
             .update({
               tier: 'free',
               subscription_status: 'canceled',
+              current_period_end: null,
+              billing_interval: null,
               updated_at: new Date().toISOString(),
             })
             .eq('user_id', userSub.user_id);

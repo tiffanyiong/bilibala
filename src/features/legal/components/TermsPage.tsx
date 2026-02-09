@@ -77,9 +77,9 @@ const TermsPage: React.FC = () => {
             </li>
           </ul>
 
-          <h3 className="text-lg font-medium text-stone-700 mb-3 mt-6">5.2. 7-Day Money-Back Guarantee (Annual Plans Only)</h3>
+          <h3 className="text-lg font-medium text-stone-700 mb-3 mt-6">5.2. 48-Hour Money-Back Guarantee (Annual Plans Only)</h3>
           <p className="text-stone-600 leading-relaxed mb-2">
-            We want you to be satisfied with Bilibala. If you subscribe to the <strong>Annual Plan</strong> for the first time, you are eligible for a full refund if you contact us within <strong>seven (7) calendar days</strong> of your initial purchase.
+            We want you to be satisfied with Bilibala. If you subscribe to the <strong>Annual Plan</strong> for the first time, you are eligible for a full refund if you contact us within <strong>forty-eight (48) hours</strong> of your initial purchase.
           </p>
           <ul className="list-disc pl-6 text-stone-600 space-y-2">
             <li>To request a refund, please email <strong>support@bilibala.app</strong>.</li>
