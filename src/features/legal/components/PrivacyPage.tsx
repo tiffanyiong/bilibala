@@ -4,7 +4,7 @@ const PrivacyPage: React.FC = () => {
   return (
     <div className="max-w-3xl mx-auto px-4 pt-24 pb-12">
       <h1 className="text-3xl font-serif text-stone-800 mb-2">Privacy Policy</h1>
-      <p className="text-sm text-stone-500 mb-8">Last Updated: February 5, 2026</p>
+      <p className="text-sm text-stone-500 mb-8">Last Updated: February 8, 2026</p>
 
       <div className="prose prose-stone prose-sm max-w-none">
         <section className="mb-8">
