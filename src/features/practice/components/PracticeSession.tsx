@@ -86,7 +86,8 @@ const defaultLabels = {
     pronunciationGood: 'Good',
     pronunciationNeedsWorkLabel: 'Needs Work',
     pronunciationUnclear: 'Unclear',
-    tapToStart: 'Tap to start recording'
+    tapToStart: 'Tap to start recording',
+    retryPrompt: 'Try again with the feedback in mind!'
 };
 
 const PracticeSession: React.FC<PracticeSessionProps> = ({
@@ -402,7 +403,7 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
   const canGenerate = aiGeneratedCount < AI_GENERATED_LIMIT && !!onGenerateQuestion && !isAnalyzing;
 
   return (
-    <div className="min-h-screen bg-[#F6F4EF] p-6 lg:p-12 flex flex-col">
+    <div className="min-h-screen bg-[#F6F4EF] p-1 lg:p-6 flex flex-col">
       <div className="flex-1 max-w-5xl mx-auto w-full flex flex-col justify-start pt-4 space-y-10">
         <div className="text-center space-y-4 animate-in fade-in slide-in-from-top-4 duration-500">
             {/* Topic Navigation */}

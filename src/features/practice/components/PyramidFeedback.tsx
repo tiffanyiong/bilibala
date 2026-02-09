@@ -252,7 +252,8 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
     intonationOverlyExpressive: 'overly-expressive',
     pronunciationGood: 'Good',
     pronunciationNeedsWorkLabel: 'Needs Work',
-    pronunciationUnclear: 'Unclear'
+    pronunciationUnclear: 'Unclear',
+    retryPrompt: 'Try again with the feedback in mind!'
   };
 
 
@@ -752,10 +753,11 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
               
 
       {showRetry && !showRetakeModal && (
-          <div className="flex justify-center pt-8">
+          <div className="flex flex-col items-center pt-8 gap-4">
               <button onClick={handleOpenRetake} className="bg-stone-900 text-white w-20 h-20 md:w-24 md:h-24 rounded-full flex items-center justify-center hover:bg-black transition-all shadow-lg hover:shadow-xl hover:-translate-y-1 group">
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:rotate-180 transition-transform duration-500"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></svg>
               </button>
+              <p className="text-stone-500 text-sm font-medium">{labels.retryPrompt}</p>
           </div>
       )}
 

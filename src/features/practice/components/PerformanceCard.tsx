@@ -1,7 +1,7 @@
 import React from 'react';
-import { ScoringBreakdown } from '../../../shared/types';
-import { getScoringFramework } from '../../../shared/constants';
 import SubScoreBar from '../../../shared/components/SubScoreBar';
+import { getScoringFramework } from '../../../shared/constants';
+import { ScoringBreakdown } from '../../../shared/types';
 
 // ─── IELTS Band Descriptors (keyed by floor of band_score) ───
 const IELTS_COLORS: Record<number, { color: string; dot: string; bg: string }> = {
@@ -133,7 +133,14 @@ const PerformanceCard: React.FC<PerformanceCardProps> = ({
 
     return (
       <div className="bg-white/50 backdrop-blur-xl rounded-[20px] p-5 border border-white/50 shadow-[inset_0_1px_1px_rgba(255,255,255,0.6),inset_0_-1px_1px_rgba(0,0,0,0.02),0_1px_3px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.03)] ring-1 ring-black/[0.03] w-full mb-6">
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-2">
+          <div className="flex justify-start items-center"> 
+          {isDeliveryMode && (
+            <span className="text-[9px] font-medium text-stone-400 bg-stone-100 px-2 py-0.5 rounded-full uppercase tracking-wider flex-shrink-0 mt-1">
+              Delivery Score
+            </span>
+          )}
+        </div>
           {/* Header: descriptor + delivery label */}
           <div className="flex items-start justify-between gap-2">
             <div className={`flex items-start gap-2 ${colors.bg} px-3 py-2 rounded-xl`}>
@@ -142,11 +149,6 @@ const PerformanceCard: React.FC<PerformanceCardProps> = ({
                 {descriptor}
               </span>
             </div>
-            {isDeliveryMode && (
-              <span className="text-[9px] font-medium text-stone-400 bg-stone-100 px-2 py-0.5 rounded-full uppercase tracking-wider flex-shrink-0 mt-1">
-                Delivery Score
-              </span>
-            )}
           </div>
 
           {/* Band Score Display */}
@@ -185,6 +187,11 @@ const PerformanceCard: React.FC<PerformanceCardProps> = ({
     const colors = HSK_COLORS[levelFloor] || HSK_COLORS[1];
     const descriptor = b.level_descriptor || framework.bandDescriptors[levelFloor] || '';
 
+    // Calculate average from non-zero sub-scores
+    const hskSubs = [b.pronunciation_tones, b.vocabulary_grammar, b.fluency_coherence, b.content_expressiveness];
+    const nonZeroSubs = hskSubs.filter((v) => v > 0);
+    const avgSubScore = nonZeroSubs.length > 0 ? Math.round(nonZeroSubs.reduce((a, c) => a + c, 0) / nonZeroSubs.length) : score;
+
     return (
       <div className="bg-white/50 backdrop-blur-xl rounded-[20px] p-5 border border-white/50 shadow-[inset_0_1px_1px_rgba(255,255,255,0.6),inset_0_-1px_1px_rgba(0,0,0,0.02),0_1px_3px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.03)] ring-1 ring-black/[0.03] w-full mb-6">
         <div className="flex flex-col gap-3">
@@ -203,10 +210,10 @@ const PerformanceCard: React.FC<PerformanceCardProps> = ({
             )}
           </div>
 
-          {/* HSK Level Display */}
+          {/* Score Display — average of sub-scores */}
           <div className="flex items-baseline gap-2 pb-1">
             <span className={`text-3xl font-bold ${colors.color} tabular-nums`}>
-              {Math.round(b.hsk_level)}
+              {avgSubScore}
             </span>
             <span className="text-xs text-stone-400 font-medium">{framework.overallLabelNative?.[displayLang] || framework.overallLabel}</span>
           </div>
