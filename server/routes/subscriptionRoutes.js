@@ -504,16 +504,37 @@ router.post('/subscriptions/webhook', async (req, res) => {
         const customerId = subscription.customer;
 
         // Find user by Stripe customer ID
-        const { data: userSub } = await supabaseAdmin
+        let { data: userSub } = await supabaseAdmin
           .from('user_subscriptions')
           .select('user_id')
           .eq('stripe_customer_id', customerId)
           .single();
 
+        // Fallback: look up via Stripe customer metadata (handles race condition
+        // where customer.subscription.created fires before checkout.session.completed
+        // has saved the stripe_customer_id)
+        if (!userSub && stripe) {
+          try {
+            const customer = await stripe.customers.retrieve(customerId);
+            const metaUserId = customer?.metadata?.supabase_user_id;
+            if (metaUserId) {
+              // Save the stripe_customer_id so future lookups work
+              await supabaseAdmin
+                .from('user_subscriptions')
+                .update({ stripe_customer_id: customerId })
+                .eq('user_id', metaUserId);
+              userSub = { user_id: metaUserId };
+              console.log('[Webhook] Resolved user via Stripe customer metadata:', metaUserId);
+            }
+          } catch (err) {
+            console.error('[Webhook] Error looking up Stripe customer:', err.message);
+          }
+        }
+
         if (userSub) {
           const isActive = subscription.status === 'active' || subscription.status === 'trialing';
           const billingInterval = subscription.items?.data?.[0]?.plan?.interval || 'month';
-          await supabaseAdmin
+          const { error: updateError } = await supabaseAdmin
             .from('user_subscriptions')
             .update({
               tier: isActive ? 'pro' : 'free',
@@ -524,6 +545,14 @@ router.post('/subscriptions/webhook', async (req, res) => {
               updated_at: new Date().toISOString(),
             })
             .eq('user_id', userSub.user_id);
+
+          if (updateError) {
+            console.error('[Webhook] Error updating subscription:', updateError);
+          } else {
+            console.log(`[Webhook] ${event.type} - updated user:`, userSub.user_id);
+          }
+        } else {
+          console.warn(`[Webhook] ${event.type} - could not find user for customer:`, customerId);
         }
         break;
       }
