@@ -329,6 +329,15 @@ router.post('/subscriptions/sync', async (req, res) => {
     const subscription = subscriptions.data[0];
     const isActive = subscription.status === 'active' || subscription.status === 'trialing';
 
+    console.log('[Sync] Stripe subscription raw data:', {
+      userId: user.id,
+      subId: subscription.id,
+      status: subscription.status,
+      rawStart: subscription.current_period_start,
+      rawEnd: subscription.current_period_end,
+      interval: subscription.items?.data?.[0]?.plan?.interval,
+    });
+
     // Safely convert timestamps (handle null/undefined)
     const periodStart = subscription.current_period_start
       ? new Date(subscription.current_period_start * 1000).toISOString()
@@ -337,24 +346,33 @@ router.post('/subscriptions/sync', async (req, res) => {
       ? new Date(subscription.current_period_end * 1000).toISOString()
       : null;
 
-    // Update database with current Stripe status
+    // Update database with current Stripe status — always include period dates
     const billingInterval = subscription.items?.data?.[0]?.plan?.interval || 'month';
     const updateData = {
       tier: isActive ? 'pro' : 'free',
       stripe_subscription_id: subscription.id,
       subscription_status: subscription.status,
       billing_interval: billingInterval,
+      current_period_start: periodStart,
+      current_period_end: periodEnd,
       updated_at: new Date().toISOString(),
     };
-    if (periodStart) updateData.current_period_start = periodStart;
-    if (periodEnd) updateData.current_period_end = periodEnd;
 
-    await supabaseAdmin
+    const { data: updateResult, error: updateError } = await supabaseAdmin
       .from('user_subscriptions')
       .update(updateData)
-      .eq('user_id', user.id);
+      .eq('user_id', user.id)
+      .select('current_period_start, current_period_end');
 
-    console.log('[Sync] Updated subscription for user:', user.id, { tier: isActive ? 'pro' : 'free', status: subscription.status });
+    console.log('[Sync] Updated subscription for user:', user.id, {
+      tier: isActive ? 'pro' : 'free',
+      status: subscription.status,
+      periodStart,
+      periodEnd,
+      updateError,
+      rowsUpdated: updateResult?.length,
+      resultPeriodEnd: updateResult?.[0]?.current_period_end,
+    });
 
     res.json({
       synced: true,
