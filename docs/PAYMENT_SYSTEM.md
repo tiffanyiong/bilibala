@@ -227,8 +227,9 @@ const shouldSync =
 - Updates `subscription_status`, `current_period_end`
 
 ### `customer.subscription.deleted`
-- Fires when subscription is fully canceled
+- Fires when subscription is fully canceled (or immediately canceled for refunds)
 - Updates tier to 'free', status to 'canceled'
+- Clears `current_period_end` and `billing_interval` so the profile doesn't show a misleading "Access until" date
 
 ---
 
@@ -271,6 +272,44 @@ STRIPE_TOPUP_PRICE_ID=price_...        # $3
 - [ ] Canceled user keeps access until period end
 - [ ] After period end, user becomes free tier
 - [ ] Purchased credits remain after cancellation
+
+### 48-Hour Refund Tests (Annual Only)
+- [ ] Refunded user is immediately converted to free tier
+- [ ] Profile shows "Free" with no "Access until" date
+- [ ] Purchased credits (if any) remain after refund
+
+---
+
+## 48-Hour Money-Back Guarantee (Annual Plans Only)
+
+First-time Annual Plan subscribers can request a full refund within **48 hours** of purchase by emailing support@bilibala.app. This does not apply to Monthly subscriptions or renewal charges.
+
+### How to Process a Refund in Stripe
+
+1. **Issue the refund:**
+   - Go to [Stripe Dashboard → Payments](https://dashboard.stripe.com/payments)
+   - Find the user's payment and click **Refund**
+   - Select **Full refund**
+
+2. **Cancel the subscription immediately:**
+   - Go to [Stripe Dashboard → Subscriptions](https://dashboard.stripe.com/subscriptions)
+   - Find the user's subscription and click **Cancel subscription**
+   - Choose **"Immediately"** (NOT "At end of period")
+
+3. **What happens automatically:**
+   - Stripe fires a `customer.subscription.deleted` webhook
+   - The webhook handler sets `tier = 'free'`, `subscription_status = 'canceled'`
+   - `current_period_end` and `billing_interval` are cleared
+   - The user immediately loses Pro access and sees "Free" on their profile
+
+> **Important:** You must cancel **immediately** — not "at end of period". If you only cancel at period end, the user keeps Pro access for the rest of the year despite the refund.
+
+### Two Types of Annual Cancellation
+
+| Scenario | Stripe action | User sees | Access |
+|----------|--------------|-----------|--------|
+| **Normal cancel** (no refund) | Cancel at end of period | Amber "Canceled" badge + "Access until [date]" | Pro until period end |
+| **48-hour refund** | Refund + Cancel immediately | "Free" (no date shown) | Free immediately |
 
 ### Webhook Tests
 - [ ] Run `stripe listen --forward-to localhost:3001/api/subscriptions/webhook`
