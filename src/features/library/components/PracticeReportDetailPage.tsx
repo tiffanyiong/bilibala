@@ -325,25 +325,20 @@ const PracticeReportDetailPage: React.FC<PracticeReportDetailPageProps> = ({
       {/* Header */}
       <div className="bg-[#FAF9F6]">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-5">
-          {/* Breadcrumb and Export button */}
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2 text-sm">
-              <button
-                onClick={onBack}
-                className="text-stone-500 hover:text-stone-700 transition-colors flex items-center gap-1"
-              >
-                <BackIcon />
-                <span>Reports</span>
-              </button>
-              <span className="text-stone-300">/</span>
-              <span className="text-stone-700 font-medium">Feedback</span>
+          {/* Topic + back button + PDF export */}
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+            
+              <h1 className="text-xl font-semibold text-stone-800 truncate">
+                {session?.topic_text || 'Practice Session'}
+              </h1>
             </div>
             {/* Export PDF button */}
             {analysisData && canRenderPyramid && (
               <button
                 onClick={handleExportPdf}
                 disabled={isExporting || !canExportPdf}
-                className={`group flex items-center gap-1.5 rounded-full transition-all duration-300 ease-out ${
+                className={`group flex items-center gap-1.5 rounded-full transition-all duration-300 ease-out flex-shrink-0 ${
                   !canExportPdf
                     ? 'text-stone-300 cursor-not-allowed p-1.5 pr-1.5 hover:pr-3'
                     : isExporting
@@ -376,11 +371,6 @@ const PracticeReportDetailPage: React.FC<PracticeReportDetailPageProps> = ({
               </button>
             )}
           </div>
-
-          {/* Topic */}
-          <h1 className="text-xl font-semibold text-stone-800">
-            {session?.topic_text || 'Practice Session'}
-          </h1>
         </div>
       </div>
 

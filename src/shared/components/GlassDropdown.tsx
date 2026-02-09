@@ -84,7 +84,7 @@ const GlassDropdown: React.FC<GlassDropdownProps> = ({ value, onChange, options 
           {/* Top highlight — mimics light refraction on glass edge */}
           <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-stone-100 to-transparent" />
 
-          <div ref={listRef} className="max-h-64 overflow-y-auto py-1.5 px-1.5 space-y-0.5 scroll-smooth">
+          <div ref={listRef} className="max-h-44 overflow-y-auto py-1.5 px-1.5 space-y-0.5 scroll-smooth">
             {options.map((opt) => {
               const isSelected = opt.value === value;
               return (

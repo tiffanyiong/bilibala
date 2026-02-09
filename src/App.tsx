@@ -1,14 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ContentTabs from './features/content/components/ContentTabs';
 import TopicSelector from './features/content/components/TopicSelector';
-import { CubeCarousel } from './features/explore';
+import ExploreVideoCard from './features/explore/components/ExploreVideoCard';
+import LandingFormCard from './features/explore/components/LandingFormCard';
 import { PrivacyPage, TermsPage } from './features/legal';
 import PracticeReportDetailPage from './features/library/components/PracticeReportDetailPage';
-import PracticeReportsPage from './features/library/components/PracticeReportsPage';
 import VideoLibraryPage from './features/library/components/VideoLibraryPage';
 import FloatingTutorWindow from './features/live-voice/components/FloatingTutorWindow';
 import PracticeSession from './features/practice/components/PracticeSession';
 import { ProfilePage } from './features/profile';
+import ReportsDashboardPage from './features/reports/components/ReportsDashboardPage';
 import SettingsPage from './features/settings/components/SettingsPage';
 import SubscriptionPage from './features/subscription/components/SubscriptionPage';
 import UpgradeModal from './features/subscription/components/UpgradeModal';
@@ -54,7 +55,7 @@ import {
   UsageDisplayInfo
 } from './shared/services/usageTracking';
 import { AppState, PracticeTopic, TopicPoint, TopicQuestion, VideoData, VocabularyItem } from './shared/types';
-import { TIER_LIMITS, VideoHistoryItem } from './shared/types/database';
+import { ExploreVideo, TIER_LIMITS, VideoHistoryItem } from './shared/types/database';
 
 // Mobile-only translator selector component
 const MobileTranslatorSelector: React.FC<{
@@ -240,8 +241,32 @@ const App: React.FC = () => {
   // Practice reports full-page state
   const [currentReportsVideo, setCurrentReportsVideo] = useState<VideoHistoryItem | null>(null);
   const [currentReportSessionId, setCurrentReportSessionId] = useState<string | null>(null);
+  const [reportNavSource, setReportNavSource] = useState<'library' | 'dashboard'>('library');
 
   const [errorMsg, setErrorMsg] = useState('');
+  const [exploreVideos, setExploreVideos] = useState<ExploreVideo[]>([]);
+  const gridAnimStyle = 'stagger';
+  const [gridKey, setGridKey] = useState(0);
+
+  // Fetch explore videos for landing page
+  useEffect(() => {
+    if (appState !== AppState.LANDING) return;
+    const fetchVideos = async () => {
+      try {
+        const params = new URLSearchParams({ targetLang, level, limit: '8' });
+        const response = await fetch(`${getBackendOrigin()}/api/explore?${params}`);
+        if (response.ok) {
+          const data = await response.json();
+          setExploreVideos(data.videos || []);
+          setGridKey((k) => k + 1);
+        }
+      } catch (err) {
+        console.error('[App] Error fetching explore videos:', err);
+      }
+    };
+    const timeoutId = setTimeout(fetchVideos, 300);
+    return () => clearTimeout(timeoutId);
+  }, [appState, targetLang, level]);
 
   // Filter discussion topics to only show those with questions at the user's level
   useEffect(() => {
@@ -285,6 +310,9 @@ const App: React.FC = () => {
 
     if (parts.length === 0) {
       return { type: 'landing' as const };
+    }
+    if (parts[0] === 'reports' && parts.length === 1) {
+      return { type: 'reports-dashboard' as const };
     }
     if (parts[0] === 'library') {
       return { type: 'library' as const };
@@ -333,19 +361,16 @@ const App: React.FC = () => {
         setAppState(AppState.PRIVACY);
       } else if (route.type === 'terms') {
         setAppState(AppState.TERMS);
+      } else if (route.type === 'reports-dashboard') {
+        setAppState(AppState.REPORTS_DASHBOARD);
       } else if (route.type === 'library') {
         setCurrentReportsVideo(null);
         setCurrentReportSessionId(null);
         setAppState(AppState.VIDEO_LIBRARY);
       } else if (route.type === 'reports') {
-        if (currentReportsVideo && currentReportsVideo.analysisId === route.videoId) {
-          setCurrentReportSessionId(null);
-          setAppState(AppState.PRACTICE_REPORTS);
-        } else {
-          // No video context, redirect to library
-          setAppState(AppState.VIDEO_LIBRARY);
-          window.history.replaceState(null, '', '/library');
-        }
+        // Reports list page removed — redirect to library
+        setAppState(AppState.VIDEO_LIBRARY);
+        window.history.replaceState(null, '', '/library');
       } else if (route.type === 'report-detail') {
         if (currentReportsVideo && currentReportsVideo.analysisId === route.videoId) {
           setCurrentReportSessionId(route.sessionId);
@@ -410,8 +435,8 @@ const App: React.FC = () => {
       targetPath = '/terms';
     } else if (appState === AppState.VIDEO_LIBRARY) {
       targetPath = '/library';
-    } else if (appState === AppState.PRACTICE_REPORTS && currentReportsVideo) {
-      targetPath = `/${currentReportsVideo.analysisId}/reports`;
+    } else if (appState === AppState.REPORTS_DASHBOARD) {
+      targetPath = '/reports';
     } else if (appState === AppState.PRACTICE_REPORT_DETAIL && currentReportsVideo && currentReportSessionId) {
       targetPath = `/${currentReportsVideo.analysisId}/reports/${currentReportSessionId}`;
     }
@@ -470,7 +495,14 @@ const App: React.FC = () => {
       return;
     }
 
-    // Handle reports routes - redirect to library (need context to view reports)
+    // Handle reports dashboard route directly
+    if (route.type === 'reports-dashboard') {
+      setAppState(AppState.REPORTS_DASHBOARD);
+      isInitializedRef.current = true;
+      return;
+    }
+
+    // Handle per-video reports routes - redirect to library (need context to view reports)
     if (route.type === 'reports' || route.type === 'report-detail') {
       setAppState(AppState.VIDEO_LIBRARY);
       window.history.replaceState(null, '', '/library');
@@ -1394,35 +1426,71 @@ const App: React.FC = () => {
     }
   };
 
-  // Handle expanding reports from modal to full page
-  const handleExpandReports = (video: VideoHistoryItem, sessionId?: string) => {
-    setCurrentReportsVideo(video);
-    // Update language context so TranslationPopup uses the correct target language
-    setNativeLang(video.nativeLang);
-    setTargetLang(video.targetLang);
-    if (sessionId) {
-      setCurrentReportSessionId(sessionId);
-      setAppState(AppState.PRACTICE_REPORT_DETAIL);
-    } else {
-      setCurrentReportSessionId(null);
-      setAppState(AppState.PRACTICE_REPORTS);
-    }
-  };
-
-  // Handle viewing a report from the reports page
-  const handleViewReportFromPage = (session: { id: string }) => {
+  // Handle viewing a report from the dashboard
+  const handleViewReportFromDashboard = (session: { id: string; analysis_id: string | null; videoTitle: string; videoThumbnailUrl: string | null; youtubeId: string; target_lang: string; native_lang: string; level: string }) => {
+    // Construct a minimal VideoHistoryItem from dashboard session data
+    const minimalVideo: VideoHistoryItem = {
+      libraryId: '',
+      isFavorite: false,
+      practiceCount: 0,
+      lastScore: null,
+      lastAccessedAt: new Date().toISOString(),
+      addedAt: new Date().toISOString(),
+      analysisId: session.analysis_id || '',
+      analyzedAt: new Date().toISOString(),
+      level: session.level,
+      targetLang: session.target_lang,
+      nativeLang: session.native_lang,
+      videoId: '',
+      youtubeId: session.youtubeId,
+      title: session.videoTitle,
+      thumbnailUrl: session.videoThumbnailUrl,
+      reportCount: 0,
+    };
+    setCurrentReportsVideo(minimalVideo);
     setCurrentReportSessionId(session.id);
+    setReportNavSource('dashboard');
     setAppState(AppState.PRACTICE_REPORT_DETAIL);
   };
 
-  // Handle going back to reports list from report detail
+  // Handle navigating to a video's analysis page from the reports dashboard
+  const handleNavigateToVideoFromDashboard = (video: { analysisId: string; youtubeId: string; title: string; thumbnailUrl: string | null; targetLang: string; nativeLang: string; level: string }) => {
+    const minimalVideo: VideoHistoryItem = {
+      libraryId: '',
+      isFavorite: false,
+      practiceCount: 0,
+      lastScore: null,
+      lastAccessedAt: new Date().toISOString(),
+      addedAt: new Date().toISOString(),
+      analysisId: video.analysisId,
+      analyzedAt: new Date().toISOString(),
+      level: video.level,
+      targetLang: video.targetLang,
+      nativeLang: video.nativeLang,
+      videoId: '',
+      youtubeId: video.youtubeId,
+      title: video.title,
+      thumbnailUrl: video.thumbnailUrl,
+      reportCount: 0,
+    };
+    handleLoadFromLibrary(minimalVideo);
+  };
+
+  // Handle going back from report detail
   const handleBackToReportsList = () => {
-    // Use replaceState to avoid duplicate history entries
-    if (currentReportsVideo) {
-      window.history.replaceState(null, '', `/${currentReportsVideo.analysisId}/reports`);
+    // If came from dashboard, go back there
+    if (reportNavSource === 'dashboard') {
+      setCurrentReportsVideo(null);
+      setCurrentReportSessionId(null);
+      setReportNavSource('library');
+      setAppState(AppState.REPORTS_DASHBOARD);
+      return;
     }
+    // Otherwise go back to library
+    window.history.replaceState(null, '', '/library');
+    setCurrentReportsVideo(null);
     setCurrentReportSessionId(null);
-    setAppState(AppState.PRACTICE_REPORTS);
+    setAppState(AppState.VIDEO_LIBRARY);
   };
 
   // Handle going back to library from reports
@@ -1486,7 +1554,7 @@ const App: React.FC = () => {
   const translationPopupTargetLang = translatorTargetLang || nativeLang;
 
   const shouldShowHeader = appState === AppState.DASHBOARD || appState === AppState.PRACTICE_SESSION;
-  const isScrollable = appState === AppState.LANDING || appState === AppState.DASHBOARD || appState === AppState.PRACTICE_SESSION || appState === AppState.VIDEO_LIBRARY || appState === AppState.PRACTICE_REPORTS || appState === AppState.PRACTICE_REPORT_DETAIL || appState === AppState.SUBSCRIPTION || appState === AppState.PROFILE || appState === AppState.SETTINGS || appState === AppState.PRIVACY || appState === AppState.TERMS;
+  const isScrollable = appState === AppState.LANDING || appState === AppState.DASHBOARD || appState === AppState.PRACTICE_SESSION || appState === AppState.VIDEO_LIBRARY || appState === AppState.PRACTICE_REPORT_DETAIL || appState === AppState.REPORTS_DASHBOARD || appState === AppState.SUBSCRIPTION || appState === AppState.PROFILE || appState === AppState.SETTINGS || appState === AppState.PRIVACY || appState === AppState.TERMS;
   const shouldShowFooter = appState === AppState.LANDING || appState === AppState.PRIVACY || appState === AppState.TERMS || appState === AppState.SUBSCRIPTION;
 
   return (
@@ -1501,6 +1569,7 @@ const App: React.FC = () => {
         onOpenSubscription={() => setAppState(AppState.SUBSCRIPTION)}
         onOpenProfile={() => setAppState(AppState.PROFILE)}
         onOpenSettings={() => setAppState(AppState.SETTINGS)}
+        onOpenReports={() => setAppState(AppState.REPORTS_DASHBOARD)}
         onOpenPrivacy={() => setAppState(AppState.PRIVACY)}
         onOpenTerms={() => setAppState(AppState.TERMS)}
         translatorLang={shouldShowHeader && tier === 'pro' ? translationPopupTargetLang : undefined}
@@ -1509,8 +1578,8 @@ const App: React.FC = () => {
     >
       {/* 1. LANDING PAGE */}
       {appState === AppState.LANDING && (
-        <div className="min-h-[calc(100vh-5rem)] flex flex-col items-center justify-center p-4">
-          <CubeCarousel
+        <div className="flex flex-col items-center justify-start pt-2 sm:pt-[18vh] px-4 sm:px-10 pb-16">
+          <LandingFormCard
             videoUrl={videoUrl}
             setVideoUrl={setVideoUrl}
             nativeLang={nativeLang}
@@ -1521,8 +1590,29 @@ const App: React.FC = () => {
             setLevel={setLevel}
             onStart={handleStart}
             errorMsg={errorMsg}
-            onExploreVideoSelect={handleExploreVideoSelect}
           />
+
+          {/* Explore Videos Grid */}
+          {exploreVideos.length > 0 && (
+            <div className="w-full mt-4 sm:mt-16">
+              <h3 className="text-sm font-medium text-stone-400 uppercase tracking-wider mb-4 ml-1">
+                Explore
+              </h3>
+
+              <div
+                key={gridKey}
+                className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 grid-anim-${gridAnimStyle}`}
+              >
+                {exploreVideos.map((video) => (
+                  <ExploreVideoCard
+                    key={video.analysisId}
+                    video={video}
+                    onSelect={() => handleExploreVideoSelect(video.analysisId)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1559,50 +1649,53 @@ const App: React.FC = () => {
                  )}
                </div>
 
-               <div className="w-full aspect-video shrink-0 rounded-xl overflow-hidden shadow-sm border border-stone-200 bg-black">
-                   <VideoPlayer ref={playerRef} url={videoData.url} onError={handleVideoError} onTimeUpdate={setCurrentTime} />
-               </div>
+               {/* Video Card: player + title + actions */}
+               <div className="rounded-xl overflow-hidden bg-white/60 backdrop-blur-xl border border-white/70 shadow-[0_2px_16px_rgba(0,0,0,0.04)] ring-1 ring-white/40">
+                 <div className="w-full aspect-video shrink-0 bg-black">
+                     <VideoPlayer ref={playerRef} url={videoData.url} onError={handleVideoError} onTimeUpdate={setCurrentTime} />
+                 </div>
 
-               {/* Video Title & Actions */}
-               <div className="flex items-start justify-between gap-4">
-                 <h1 className="text-[15px] md:text-[17px] font-semibold text-stone-700 leading-snug line-clamp-2 tracking-tight">
-                   {videoData.title}
-                 </h1>
-                 {user && (() => {
-                   // Compute UI text based on level
-                   const isEasy = level.toLowerCase() === 'easy';
-                   const uiLang = isEasy ? nativeLang : targetLang;
-                   const uiText = UI_TRANSLATIONS[uiLang] || UI_TRANSLATIONS['English'];
-                   return (
-                   <div className="flex items-center gap-2 shrink-0">
-                     {libraryEntry ? (
-                       <button
-                         onClick={handleToggleFavorite}
-                         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${
-                           libraryEntry.isFavorite
-                             ? 'bg-amber-500 text-white border-amber-500 hover:bg-amber-600'
-                             : 'bg-white/50 text-stone-600 border-white/60 backdrop-blur-sm ring-1 ring-black/[0.04] hover:border-amber-200 hover:text-amber-600'
-                         }`}
-                       >
-                         <svg width="16" height="16" viewBox="0 0 24 24" fill={libraryEntry.isFavorite ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                           <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
-                         </svg>
-                         {libraryEntry.isFavorite ? uiText.favorited : uiText.favorite}
-                       </button>
-                     ) : (
-                       <button
-                         onClick={handleSaveToLibrary}
-                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-stone-800 text-white hover:bg-stone-900 transition-all"
-                       >
-                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                           <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
-                         </svg>
-                         {uiText.saveToLibrary}
-                       </button>
-                     )}
-                   </div>
-                   );
-                 })()}
+                 {/* Video Title & Actions */}
+                 <div className="flex items-center justify-between gap-4 px-4 py-3.5">
+                   <h1 className="text-sm font-semibold text-stone-800 uppercase tracking-wide line-clamp-2">
+                     {videoData.title}
+                   </h1>
+                   {user && (() => {
+                     // Compute UI text based on level
+                     const isEasy = level.toLowerCase() === 'easy';
+                     const uiLang = isEasy ? nativeLang : targetLang;
+                     const uiText = UI_TRANSLATIONS[uiLang] || UI_TRANSLATIONS['English'];
+                     return (
+                     <div className="flex items-center gap-2 shrink-0">
+                       {libraryEntry ? (
+                         <button
+                           onClick={handleToggleFavorite}
+                           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${
+                             libraryEntry.isFavorite
+                               ? 'bg-amber-500 text-white border-amber-500 hover:bg-amber-600'
+                               : 'bg-white/50 text-stone-600 border-white/60 backdrop-blur-sm ring-1 ring-black/[0.04] hover:border-amber-200 hover:text-amber-600'
+                           }`}
+                         >
+                           <svg width="16" height="16" viewBox="0 0 24 24" fill={libraryEntry.isFavorite ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                             <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+                           </svg>
+                           {libraryEntry.isFavorite ? uiText.favorited : uiText.favorite}
+                         </button>
+                       ) : (
+                         <button
+                           onClick={handleSaveToLibrary}
+                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-stone-800 text-white hover:bg-stone-900 transition-all"
+                         >
+                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                             <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+                           </svg>
+                           {uiText.saveToLibrary}
+                         </button>
+                       )}
+                     </div>
+                     );
+                   })()}
+                 </div>
                </div>
 
                {/* TopicSelector - Only show here on desktop */}
@@ -1696,20 +1789,10 @@ const App: React.FC = () => {
       {appState === AppState.VIDEO_LIBRARY && (
         <VideoLibraryPage
           onSelectVideo={handleLoadFromLibrary}
-          onExpandReports={handleExpandReports}
         />
       )}
 
-      {/* 6. PRACTICE REPORTS PAGE (full page) */}
-      {appState === AppState.PRACTICE_REPORTS && currentReportsVideo && (
-        <PracticeReportsPage
-          video={currentReportsVideo}
-          onBack={handleBackFromReportsToLibrary}
-          onViewReport={handleViewReportFromPage}
-        />
-      )}
-
-      {/* 7. PRACTICE REPORT DETAIL PAGE (full page) */}
+      {/* 6. PRACTICE REPORT DETAIL PAGE (full page) */}
       {appState === AppState.PRACTICE_REPORT_DETAIL && currentReportsVideo && currentReportSessionId && (
         <PracticeReportDetailPage
           sessionId={currentReportSessionId}
@@ -1719,7 +1802,15 @@ const App: React.FC = () => {
         />
       )}
 
-      {/* 8. SUBSCRIPTION PAGE */}
+      {/* 8. REPORTS DASHBOARD */}
+      {appState === AppState.REPORTS_DASHBOARD && (
+        <ReportsDashboardPage
+          onViewReport={handleViewReportFromDashboard}
+          onNavigateToVideo={handleNavigateToVideoFromDashboard}
+        />
+      )}
+
+      {/* 9. SUBSCRIPTION PAGE */}
       {appState === AppState.SUBSCRIPTION && (
         <SubscriptionPage
           onOpenAuthModal={() => setShowAuthModal(true)}
@@ -1753,8 +1844,8 @@ const App: React.FC = () => {
       {tier === 'pro' &&
         (appState === AppState.DASHBOARD ||
         appState === AppState.PRACTICE_SESSION ||
-        appState === AppState.PRACTICE_REPORTS ||
-        appState === AppState.PRACTICE_REPORT_DETAIL) && (
+        appState === AppState.PRACTICE_REPORT_DETAIL ||
+        appState === AppState.REPORTS_DASHBOARD) && (
         <TranslationPopup
           targetLang={translationPopupTargetLang}
         />

@@ -213,6 +213,8 @@ const VideoLibraryModal: React.FC<VideoLibraryModalProps> = ({
           videoTitle={selectedVideoForReports.title}
           targetLang={selectedVideoForReports.targetLang}
           level={selectedVideoForReports.level}
+          youtubeId={selectedVideoForReports.youtubeId}
+          thumbnailUrl={selectedVideoForReports.thumbnailUrl}
         />
       )}
     </div>

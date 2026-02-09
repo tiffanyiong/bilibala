@@ -2,6 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 @layer base {
   body {
     @apply bg-[#F6F4EF] text-stone-800 antialiased;
@@ -46,4 +56,62 @@
     opacity: 1;
     transform: translateY(0) scale(1);
   }
+}
+
+/* ── Staggered grid animation (desktop only) ── */
+
+@keyframes gridFadeSlideUp {
+  0% {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (min-width: 640px) {
+  .grid-anim-stagger > * {
+    animation: gridFadeSlideUp 0.4s cubic-bezier(0.25, 1, 0.5, 1) both;
+  }
+  .grid-anim-stagger > *:nth-child(1) { animation-delay: 0ms; }
+  .grid-anim-stagger > *:nth-child(2) { animation-delay: 60ms; }
+  .grid-anim-stagger > *:nth-child(3) { animation-delay: 120ms; }
+  .grid-anim-stagger > *:nth-child(4) { animation-delay: 180ms; }
+  .grid-anim-stagger > *:nth-child(5) { animation-delay: 240ms; }
+  .grid-anim-stagger > *:nth-child(6) { animation-delay: 300ms; }
+  .grid-anim-stagger > *:nth-child(7) { animation-delay: 360ms; }
+  .grid-anim-stagger > *:nth-child(8) { animation-delay: 420ms; }
+}
+
+/* ── Explore video card ── */
+
+.explore-video-card {
+  box-shadow: none;
+}
+
+.explore-video-card:hover {
+  background-color: var(--card-hover-bg);
+  box-shadow: 0 4px 20px var(--card-hover-shadow);
+  transform: translateY(-2px);
+}
+
+/* ── Report cards color hover ── */
+
+.report-video-group {
+  transition: all 0.3s ease;
+}
+.report-video-group:not(.expanded):hover {
+  background-color: var(--card-hover-bg);
+  box-shadow: 0 4px 20px var(--card-hover-shadow);
+  transform: translateY(-1px);
+}
+
+.report-card-row {
+  transition: all 0.2s ease;
+}
+.report-card-row:hover {
+  background-color: var(--card-hover-bg);
+  box-shadow: 0 2px 12px var(--card-hover-shadow);
 }

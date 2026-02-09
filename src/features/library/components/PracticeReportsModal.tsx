@@ -1,13 +1,15 @@
-import React, { useEffect, useState, Component, ReactNode } from 'react';
-import { DbPracticeSession } from '../../../shared/types/database';
+import React, { useEffect, useState, useMemo, Component, ReactNode } from 'react';
+import { DbPracticeSession, DashboardPracticeSession } from '../../../shared/types/database';
 import { SpeechAnalysisResult } from '../../../shared/types';
 import { getPracticeSessionsForAnalysis } from '../../../shared/services/database';
 import { useAuth } from '../../../shared/context/AuthContext';
 import { useSubscription } from '../../../shared/context/SubscriptionContext';
-import { PracticeReportTable, PracticeReportTableSkeleton } from './PracticeReportCard';
+import { PracticeReportTableSkeleton } from './PracticeReportCard';
+import DashboardReportCard from '../../reports/components/DashboardReportCard';
 import PyramidFeedback from '../../practice/components/PyramidFeedback';
 import { exportPracticeReportToPdf } from '../../../shared/utils/pdfExport';
 import { getBackendOrigin } from '../../../shared/services/backend';
+import { getScoringFramework } from '../../../shared/constants';
 
 // Stable default labels object to prevent infinite re-renders in PyramidFeedback
 const DEFAULT_LABELS = {
@@ -198,10 +200,37 @@ interface PracticeReportsModalProps {
   videoTitle: string;
   targetLang: string;
   level: string;
-  onExpand?: (sessionId?: string) => void;
+  youtubeId: string;
+  thumbnailUrl: string | null;
 }
 
 type ViewMode = 'list' | 'report';
+
+// Hash-based topic color (matches ReportsVideoGroup pattern)
+const TOPIC_COLORS = [
+  { bg: 'bg-red-50', text: 'text-red-600', dot: 'bg-red-400' },
+  { bg: 'bg-orange-50', text: 'text-orange-600', dot: 'bg-orange-400' },
+  { bg: 'bg-amber-50', text: 'text-amber-600', dot: 'bg-amber-400' },
+  { bg: 'bg-lime-50', text: 'text-lime-600', dot: 'bg-lime-400' },
+  { bg: 'bg-green-50', text: 'text-green-600', dot: 'bg-green-400' },
+  { bg: 'bg-teal-50', text: 'text-teal-600', dot: 'bg-teal-400' },
+  { bg: 'bg-cyan-50', text: 'text-cyan-600', dot: 'bg-cyan-400' },
+  { bg: 'bg-sky-50', text: 'text-sky-600', dot: 'bg-sky-400' },
+  { bg: 'bg-blue-50', text: 'text-blue-600', dot: 'bg-blue-400' },
+  { bg: 'bg-indigo-50', text: 'text-indigo-600', dot: 'bg-indigo-400' },
+  { bg: 'bg-violet-50', text: 'text-violet-600', dot: 'bg-violet-400' },
+  { bg: 'bg-purple-50', text: 'text-purple-600', dot: 'bg-purple-400' },
+  { bg: 'bg-fuchsia-50', text: 'text-fuchsia-600', dot: 'bg-fuchsia-400' },
+  { bg: 'bg-pink-50', text: 'text-pink-600', dot: 'bg-pink-400' },
+];
+
+function getTopicColor(topic: string) {
+  let hash = 0;
+  for (let i = 0; i < topic.length; i++) {
+    hash = topic.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return TOPIC_COLORS[Math.abs(hash) % TOPIC_COLORS.length];
+}
 
 const PracticeReportsModal: React.FC<PracticeReportsModalProps> = ({
   isOpen,
@@ -210,7 +239,8 @@ const PracticeReportsModal: React.FC<PracticeReportsModalProps> = ({
   videoTitle,
   targetLang,
   level,
-  onExpand,
+  youtubeId,
+  thumbnailUrl,
 }) => {
   const { user } = useAuth();
   const { canExportPdf, recordAction } = useSubscription();
@@ -299,6 +329,39 @@ const PracticeReportsModal: React.FC<PracticeReportsModalProps> = ({
       return () => document.removeEventListener('keydown', handleEscape);
     }
   }, [isOpen, viewMode, onClose]);
+
+  // Convert sessions to DashboardPracticeSession format and group by topic
+  const dashboardSessions: DashboardPracticeSession[] = useMemo(() =>
+    sessions.map((s) => ({
+      ...s,
+      videoTitle: videoTitle,
+      videoThumbnailUrl: thumbnailUrl,
+      youtubeId: youtubeId,
+    })),
+    [sessions, videoTitle, thumbnailUrl, youtubeId]
+  );
+
+  const avgScore = useMemo(() => {
+    const scored = sessions.filter((s) => s.score !== null && s.score !== undefined);
+    if (scored.length === 0) return null;
+    const genericAvg = scored.reduce((sum, s) => sum + (s.score || 0), 0) / scored.length;
+    const framework = getScoringFramework(targetLang);
+    if (framework) {
+      const native = framework.fromGenericScore(genericAvg);
+      return Math.round(native * 2) / 2;
+    }
+    return Math.round(genericAvg);
+  }, [sessions, targetLang]);
+
+  const topicGroups = useMemo(() => {
+    const map = new Map<string, DashboardPracticeSession[]>();
+    for (const s of dashboardSessions) {
+      const topic = s.topic_text || 'General';
+      if (!map.has(topic)) map.set(topic, []);
+      map.get(topic)!.push(s);
+    }
+    return Array.from(map.entries());
+  }, [dashboardSessions]);
 
   const handleViewReport = (session: DbPracticeSession) => {
     console.log('[PracticeReportsModal] handleViewReport called with session:', session);
@@ -402,14 +465,47 @@ const PracticeReportsModal: React.FC<PracticeReportsModalProps> = ({
                 <BackIcon />
               </button>
             )}
+            {viewMode === 'list' && (
+              <img
+                src={thumbnailUrl || `https://img.youtube.com/vi/${youtubeId}/mqdefault.jpg`}
+                alt=""
+                className="w-16 h-10 rounded-lg object-cover flex-shrink-0"
+              />
+            )}
             <div className="min-w-0 flex-1">
-              <h2 className="text-lg sm:text-xl font-semibold text-stone-800">
-                {viewMode === 'list' ? 'Practice Reports' : (selectedSession?.topic_text || 'Feedback Report')}
+              <h2 className="text-sm sm:text-base font-semibold text-stone-800 truncate">
+                {viewMode === 'list' ? videoTitle : (selectedSession?.topic_text || 'Feedback Report')}
               </h2>
               {viewMode === 'list' && (
-                <p className="text-sm text-stone-500 truncate">
-                  {videoTitle}
-                </p>
+                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                  <span className="text-[11px] text-stone-500">
+                    {sessions.length} session{sessions.length !== 1 ? 's' : ''}
+                  </span>
+                  {avgScore !== null && (() => {
+                    const framework = getScoringFramework(targetLang);
+                    const colorScore = framework ? framework.toGenericScore(avgScore) : avgScore;
+                    return (
+                      <>
+                        <span className="text-stone-300">·</span>
+                        <span className={`text-[11px] font-medium ${
+                          colorScore >= 80 ? 'text-emerald-600' : colorScore >= 60 ? 'text-amber-600' : 'text-red-500'
+                        }`}>
+                          avg {framework ? (framework.id === 'hsk' ? Math.round(avgScore) : avgScore.toFixed(1)) : avgScore}
+                        </span>
+                      </>
+                    );
+                  })()}
+                  <span className="text-stone-300">·</span>
+                  <span className="text-[11px] text-stone-400">{targetLang}</span>
+                  <span className="text-stone-300">·</span>
+                  <span className={`text-[11px] px-1.5 py-0.5 rounded font-medium ${
+                    level === 'Easy' ? 'bg-green-50 text-green-600' :
+                    level === 'Hard' ? 'bg-red-50 text-red-600' :
+                    'bg-amber-50 text-amber-600'
+                  }`}>
+                    {level}
+                  </span>
+                </div>
               )}
             </div>
           </div>
@@ -428,16 +524,6 @@ const PracticeReportsModal: React.FC<PracticeReportsModalProps> = ({
                 title={!canExportPdf ? "Pro feature" : isExporting ? "Exporting..." : "Export as PDF"}
               >
                 {isExporting ? <SpinnerIcon /> : <DownloadIcon />}
-              </button>
-            )}
-            {onExpand && (
-              <button
-                onClick={() => onExpand(viewMode === 'report' ? selectedSession?.id : undefined)}
-                className="text-stone-400 hover:text-stone-600 transition-colors"
-                aria-label="Expand to full page"
-                title="Expand to full page"
-              >
-                <ExpandIcon />
               </button>
             )}
             <button
@@ -483,12 +569,36 @@ const PracticeReportsModal: React.FC<PracticeReportsModalProps> = ({
                 </div>
               )}
 
-              {/* Sessions table */}
+              {/* Sessions grouped by topic */}
               {!loading && !error && sessions.length > 0 && (
-                <PracticeReportTable
-                  sessions={sessions}
-                  onViewReport={handleViewReport}
-                />
+                <div className="space-y-3">
+                  {topicGroups.map(([topic, topicSessions]) => {
+                    const color = getTopicColor(topic);
+                    return (
+                      <div key={topic}>
+                        {/* Topic sub-header */}
+                        <div className="flex items-center gap-2 mb-1.5 px-1">
+                          <span className={`w-1.5 h-1.5 rounded-full ${color.dot} flex-shrink-0`} />
+                          <span className={`text-xs font-medium ${color.text}`}>{topic}</span>
+                          <span className="text-[10px] text-stone-400">
+                            {topicSessions.length} session{topicSessions.length !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+                        {/* Cards for this topic */}
+                        <div className="space-y-1.5">
+                          {topicSessions.map((session) => (
+                            <DashboardReportCard
+                              key={session.id}
+                              session={session}
+                              showThumbnail={false}
+                              onViewFullReport={() => handleViewReport(session)}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </>
           )}
@@ -588,15 +698,6 @@ const CloseIcon = () => (
 const BackIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="15 18 9 12 15 6"></polyline>
-  </svg>
-);
-
-const ExpandIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="15 3 21 3 21 9"></polyline>
-    <polyline points="9 21 3 21 3 15"></polyline>
-    <line x1="21" y1="3" x2="14" y2="10"></line>
-    <line x1="3" y1="21" x2="10" y2="14"></line>
   </svg>
 );
 
