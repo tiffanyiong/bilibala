@@ -16,6 +16,7 @@ interface LayoutProps {
   onOpenSubscription?: () => void;
   onOpenProfile?: () => void;
   onOpenSettings?: () => void;
+  onOpenReports?: () => void;
   onOpenPrivacy?: () => void;
   onOpenTerms?: () => void;
   // Translator language selector
@@ -24,7 +25,7 @@ interface LayoutProps {
   showFooter?: boolean;
 }
 
-const Layout: React.FC<LayoutProps> = ({ children, onLogoClick, targetLang, level, isScrollable = false, authModalOpen, onAuthModalClose, onOpenVideoLibrary, onOpenSubscription, onOpenProfile, onOpenSettings, onOpenPrivacy, onOpenTerms, translatorLang, onTranslatorLangChange, showFooter = false }) => {
+const Layout: React.FC<LayoutProps> = ({ children, onLogoClick, targetLang, level, isScrollable = false, authModalOpen, onAuthModalClose, onOpenVideoLibrary, onOpenSubscription, onOpenProfile, onOpenSettings, onOpenReports, onOpenPrivacy, onOpenTerms, translatorLang, onTranslatorLangChange, showFooter = false }) => {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isTranslatorOpen, setIsTranslatorOpen] = useState(false);
   const translatorRef = useRef<HTMLDivElement>(null);
@@ -156,7 +157,7 @@ const Layout: React.FC<LayoutProps> = ({ children, onLogoClick, targetLang, leve
           )}
 
           {/* User Menu (Sign in button or Avatar with dropdown) */}
-          <UserMenu onOpenAuthModal={() => setIsAuthModalOpen(true)} onOpenVideoLibrary={onOpenVideoLibrary} onOpenSubscription={onOpenSubscription} onOpenProfile={onOpenProfile} onOpenSettings={onOpenSettings} />
+          <UserMenu onOpenAuthModal={() => setIsAuthModalOpen(true)} onOpenVideoLibrary={onOpenVideoLibrary} onOpenSubscription={onOpenSubscription} onOpenProfile={onOpenProfile} onOpenSettings={onOpenSettings} onOpenReports={onOpenReports} />
         </div>
       </header>
 

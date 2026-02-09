@@ -1,6 +1,6 @@
-import crypto from 'node:crypto';
 import { Type } from '@google/genai';
 import { Router } from 'express';
+import crypto from 'node:crypto';
 import { config } from '../config/env.js';
 import { getConfigNumber } from '../services/configService.js';
 import { createAi } from '../services/geminiService.js';
@@ -23,6 +23,11 @@ router.post('/analyze-speech', async (req, res) => {
     // RETAKE MODE: If referenceTranscript is provided, user is practicing the improved version
     // Focus on delivery scoring, not content restructuring
     const isRetakeMode = !!referenceTranscript;
+
+    // Detect language-specific scoring framework
+    const baseLang = (targetLang || 'English').split(/[\s(]/)[0];
+    const isIELTS = baseLang === 'English';
+    const isHSK = baseLang === 'Chinese';
 
     const ai = createAi();
 
@@ -65,6 +70,25 @@ router.post('/analyze-speech', async (req, res) => {
       - Do NOT restructure or re-improve the content
       - improvements array: empty (no language polish needed)
       - IMPORTANT: Do NOT mention "PRACTICE_DELIVERY" or framework names in feedback text - just give natural delivery feedback
+      ${isIELTS ? `
+      - ALSO provide feedback.breakdown with IELTS delivery sub-scores:
+        { "framework": "ielts", "band_score": <0-9>, "fluency_coherence": <0-9>, "lexical_resource": <0-9>, "grammatical_range": <0-9>, "pronunciation": <0-9>, "band_descriptor": "..." }
+        ALL 4 sub-scores MUST be non-zero. Even in delivery mode, evaluate each category:
+        - fluency_coherence: How smoothly they delivered (pauses, hesitations, flow)
+        - lexical_resource: How accurately they reproduced the vocabulary from the reference
+        - grammatical_range: How correctly they produced the grammar structures when speaking aloud
+        - pronunciation: Clarity, word stress, intonation
+        Each sub-score should reflect what you hear — do NOT set any to 0.
+      ` : isHSK ? `
+      - ALSO provide feedback.breakdown with HSK delivery sub-scores:
+        { "framework": "hsk", "hsk_level": <1-6>, "pronunciation_tones": <0-100>, "vocabulary_grammar": <0-100>, "fluency_coherence": <0-100>, "content_expressiveness": <0-100>, "level_descriptor": "..." }
+        ALL 4 sub-scores MUST be non-zero. Even in delivery mode, evaluate each category:
+        - pronunciation_tones: Tone accuracy and clarity when speaking aloud
+        - vocabulary_grammar: How accurately they reproduced vocabulary and grammar structures
+        - fluency_coherence: Smoothness, pacing, natural flow
+        - content_expressiveness: Confidence, emotion, and expressiveness in delivery
+        Each sub-score should reflect what you hear — do NOT set any to 0.
+      ` : ''}
 
       ## IF FULL ANALYSIS MODE (new answer):
       - detected_framework: Detect their actual framework (STAR, PREP, MINTO, etc.)
@@ -172,7 +196,7 @@ router.post('/analyze-speech', async (req, res) => {
       **GOAL:** Reorganize the thoughts into the BEST SUITED framework.
 
       **CRITICAL INSTRUCTION FOR LEARNERS:**
-      - The "AI Improved" graph is a **LEARNING TOOL**.
+      - The "AI Improved" graph is a **LEARNING TOOL** and must display in targetLang, but the "critique" field for each point should be in nativeLang to explain WHY it's a strength or weakness when the learner's level is easy. For medium and hard levels, all fields can be in targetLang.
       - **Headline:** A short summary of the step (e.g., "The Situation").
       - **Elaboration:** The **EXACT MODEL SENTENCE** the user *should have used*.
         - *Bad Elaboration:* "Explain the context of the podcast."
@@ -202,22 +226,80 @@ router.post('/analyze-speech', async (req, res) => {
       - GOOD (fluent): "As a solo photographer, I once found myself in a challenging situation - managing an entire wedding shoot by myself. My main task was to handle all aspects of the photography..."
 
       # TASK 4: COACHING FEEDBACK
-      - **Score:** Provide a score from 0 to 100 (MUST be an integer between 0-100, NOT 0-10).
+      - **Score:** Provide an integer from 0-100 based on the following encouraging rubric:
 
-        **SCORING GUIDELINES (be encouraging, not harsh):**
-        - 85-100: Excellent - Well-structured, clear communication, minor polish needed
-        - 70-84: Good - Solid attempt with clear ideas, some structure improvements possible
-        - 55-69: Developing - Ideas present but organization needs work
-        - 40-54: Needs Work - Significant structure/clarity issues
-        - Below 40: Major issues - Very unclear or off-topic
+        **SCORING LEVELS:**
+        - 90-100 (Mastery): The answer is logical, uses the framework perfectly, and has high fluency.
+        - 75-89 (Solid): Clear structure with 1-2 minor logic gaps or pronunciation slips. (Target for most learners).
+        - 60-74 (Steady): Good effort; the main point is clear even if the framework (e.g., STAR) is slightly messy.
+        - 45-59 (Beginner): The user tried, but logic is fragmented. Focus feedback on 1 key improvement.
+        - Below 45: Only used for completely off-topic or silent responses.
 
-        **IMPORTANT:** Most learners who attempt to answer should score 50-80.
+        **COACHING RULE:** If a user makes a brave attempt but struggles with grammar, do NOT penalize the score heavily. Prioritize "Communication Success" over "Perfect Grammar."
+
+        **IMPORTANT:**
         A score of 7.5 is WRONG (that's 0-10 scale). Convert to 75.
         Be encouraging - focus on what they did well, not just what's missing.
 
+      ${isIELTS ? `
+      **IELTS SPEAKING BREAKDOWN (REQUIRED for English):**
+      You are also an expert IELTS Speaking Examiner. You MUST provide a "breakdown" object inside the "feedback" field.
+
+      Evaluate the response on the official IELTS band scale (0-9, in 0.5 increments) for each of these 4 equally weighted categories:
+
+      1. **Fluency & Coherence (fluency_coherence):** Ability to speak without long pauses, logical flow, and use of cohesive devices like "however" or "consequently".
+      2. **Lexical Resource (lexical_resource):** Range and precision of vocabulary. Look for idiomatic expressions and less common words for higher scores.
+      3. **Grammatical Range & Accuracy (grammatical_range):** Use of complex structures (conditionals, relative clauses) and the number of errors.
+      4. **Pronunciation (pronunciation):** Clarity of speech, use of intonation, and correct word stress.
+
+      **IELTS Band Reference:**
+      - Band 9 (Expert): Fluent, accurate, idiomatic, full range of complex grammar, rare errors.
+      - Band 8 (Very Good): Fully operational, occasional unsystematic inaccuracies, wide vocabulary for precise meaning.
+      - Band 7 (Good): Operational command, occasional inaccuracies, handles complex language well.
+      - Band 6 (Competent): Generally effective, some inaccuracies, mix of simple/complex sentences.
+      - Band 5 (Modest): Partial command, maintains flow but relies on repetition and basic connectors.
+      - Band 4 (Limited): Noticeable pauses, very basic vocabulary, frequent errors hinder communication.
+      - Band 3 (Extremely Limited): Great difficulty, long pauses, can only convey general meaning.
+      - Band 1-2: No ability / intermittent ability to use English beyond isolated words.
+
+      **Calculate band_score** as the average of the 4 sub-scores, rounded to nearest 0.5.
+      **CONSISTENCY RULE:** Band 7+ = Score 75+, Band 6 = ~65-74, Band 5 = ~55-64, Band 4 = ~45-54, Below 4 = below 45.
+
+      **CRITICAL: Each sub-score MUST be evaluated INDEPENDENTLY.** Do NOT give the same band score to all 4 categories — that is unrealistic. A speaker's fluency, vocabulary, grammar, and pronunciation are almost never at the same level. For example, a learner might have Band 7.0 fluency but Band 5.5 grammar. Differentiate based on what you actually hear.
+
+      Output format for feedback.breakdown:
+      { "framework": "ielts", "band_score": 6.5, "fluency_coherence": 7.0, "lexical_resource": 6.0, "grammatical_range": 5.5, "pronunciation": 7.5, "band_descriptor": "Competent User" }
+      ` : isHSK ? `
+      **HSK SPEAKING BREAKDOWN (REQUIRED for Chinese):**
+      You are also an expert HSK Speaking (HSKK) examiner. You MUST provide a "breakdown" object inside the "feedback" field.
+
+      Evaluate the response for each of these 4 categories (0-100 each):
+
+      1. **Pronunciation & Tones (pronunciation_tones):** Correct tones (1st-4th + neutral tone), initial/final sounds, tone sandhi accuracy.
+      2. **Vocabulary & Grammar (vocabulary_grammar):** Range of vocabulary, correct measure words, sentence patterns, grammar structures.
+      3. **Fluency & Coherence (fluency_coherence):** Natural flow, logical organization, use of connective words (因为、所以、虽然...但是).
+      4. **Content & Expressiveness (content_expressiveness):** Relevance, depth of content, appropriate register, cultural awareness.
+
+      **HSK Level Reference:**
+      - Level 6 (Advanced/高级): Score 85+. Can express complex ideas fluently, discuss abstract topics.
+      - Level 5 (Upper-Intermediate/中高级): Score 70-84. Can discuss a wide range of topics with good vocabulary.
+      - Level 4 (Intermediate/中级): Score 55-69. Can communicate on common topics, express opinions.
+      - Level 3 (Elementary/初级): Score 40-54. Can handle most basic daily conversations.
+      - Level 2 (Beginner/入门): Score 25-39. Can communicate about simple daily topics.
+      - Level 1 (Starter/起步): Score below 25. Can understand and use simple words.
+
+      **Calculate hsk_level** from the average of the 4 sub-scores mapped to 1-6 scale.
+      **CONSISTENCY RULE:** The 0-100 score should match the hsk_level mapping above.
+
+      **CRITICAL: Each sub-score MUST be evaluated INDEPENDENTLY.** Do NOT give the same score to all 4 categories — that is unrealistic. A speaker's tones, vocabulary, fluency, and expressiveness are almost never at the same level. For example, a learner might score 75 on fluency but 50 on pronunciation/tones. Differentiate based on what you actually hear.
+
+      Output format for feedback.breakdown:
+      { "framework": "hsk", "hsk_level": 4, "pronunciation_tones": 55, "vocabulary_grammar": 60, "fluency_coherence": 70, "content_expressiveness": 50, "level_descriptor": "Intermediate (中级)" }
+      ` : ''}
+
       - **Gap Analysis:** Explain why the new structure is better.
 
-      # TASK 5: PRONUNCIATION & INTONATION ANALYSIS (POC)
+      # TASK 5: PRONUNCIATION & INTONATION ANALYSIS 
       Listen carefully to HOW the user speaks, not just WHAT they say.
 
       **Analyze:**
@@ -388,7 +470,31 @@ router.post('/analyze-speech', async (req, res) => {
                 score: { type: Type.NUMBER },
                 strengths: { type: Type.ARRAY, items: { type: Type.STRING } },
                 weaknesses: { type: Type.ARRAY, items: { type: Type.STRING } },
-                suggestions: { type: Type.ARRAY, items: { type: Type.STRING } }
+                suggestions: { type: Type.ARRAY, items: { type: Type.STRING } },
+                ...((isIELTS || isHSK) ? {
+                  breakdown: {
+                    type: Type.OBJECT,
+                    properties: {
+                      framework: { type: Type.STRING, enum: ['ielts', 'hsk'] },
+                      // IELTS fields
+                      band_score: { type: Type.NUMBER },
+                      fluency_coherence: { type: Type.NUMBER },
+                      lexical_resource: { type: Type.NUMBER },
+                      grammatical_range: { type: Type.NUMBER },
+                      pronunciation: { type: Type.NUMBER },
+                      band_descriptor: { type: Type.STRING },
+                      // HSK fields
+                      hsk_level: { type: Type.NUMBER },
+                      pronunciation_tones: { type: Type.NUMBER },
+                      vocabulary_grammar: { type: Type.NUMBER },
+                      content_expressiveness: { type: Type.NUMBER },
+                      level_descriptor: { type: Type.STRING },
+                    },
+                    required: isIELTS
+                      ? ['framework', 'band_score', 'fluency_coherence', 'lexical_resource', 'grammatical_range', 'pronunciation', 'band_descriptor']
+                      : ['framework', 'hsk_level', 'pronunciation_tones', 'vocabulary_grammar', 'fluency_coherence', 'content_expressiveness', 'level_descriptor']
+                  }
+                } : {})
               },
               required: ['score', 'strengths', 'weaknesses', 'suggestions']
             },
@@ -490,7 +596,47 @@ router.post('/analyze-speech', async (req, res) => {
       json.feedback.score = Math.max(0, Math.min(100, Math.round(json.feedback.score)));
     }
 
-    console.log(`[analyze-speech] Successfully parsed response, score: ${json.feedback?.score}, framework: ${json.detected_framework}${json.detected_framework === 'PRACTICE_DELIVERY' ? ' (retake/delivery mode)' : ''}`);
+    // BREAKDOWN NORMALIZATION: Validate and clamp language-specific sub-scores
+    if (json.feedback?.breakdown?.framework === 'ielts') {
+      const b = json.feedback.breakdown;
+      const clampBand = (v) => Math.max(0, Math.min(9, Math.round((v || 0) * 2) / 2));
+      b.band_score = clampBand(b.band_score);
+      b.fluency_coherence = clampBand(b.fluency_coherence);
+      b.lexical_resource = clampBand(b.lexical_resource);
+      b.grammatical_range = clampBand(b.grammatical_range);
+      b.pronunciation = clampBand(b.pronunciation);
+      // Safety net: if any sub-score is 0, estimate from band_score (AI should never return 0)
+      const ieltsSubs = ['fluency_coherence', 'lexical_resource', 'grammatical_range', 'pronunciation'];
+      for (const key of ieltsSubs) {
+        if (b[key] === 0 && b.band_score > 0) {
+          b[key] = Math.max(1, clampBand(b.band_score + (Math.random() > 0.5 ? 0.5 : -0.5)));
+          console.warn(`[analyze-speech] IELTS ${key} was 0, estimated as ${b[key]} from band_score ${b.band_score}`);
+        }
+      }
+      console.log(`[analyze-speech] IELTS breakdown: band=${b.band_score}, FC=${b.fluency_coherence}, LR=${b.lexical_resource}, GR=${b.grammatical_range}, P=${b.pronunciation}`);
+    }
+    if (json.feedback?.breakdown?.framework === 'hsk') {
+      const b = json.feedback.breakdown;
+      const clamp100 = (v) => Math.max(0, Math.min(100, Math.round(v || 0)));
+      b.hsk_level = Math.max(1, Math.min(6, Math.round((b.hsk_level || 1) * 2) / 2));
+      b.pronunciation_tones = clamp100(b.pronunciation_tones);
+      b.vocabulary_grammar = clamp100(b.vocabulary_grammar);
+      b.fluency_coherence = clamp100(b.fluency_coherence);
+      b.content_expressiveness = clamp100(b.content_expressiveness);
+      // Safety net: if any sub-score is 0, estimate from overall score (AI should never return 0)
+      const overallScore = json.feedback.score || 50;
+      const hskSubs = ['pronunciation_tones', 'vocabulary_grammar', 'fluency_coherence', 'content_expressiveness'];
+      for (const key of hskSubs) {
+        if (b[key] === 0) {
+          b[key] = Math.max(10, Math.round(overallScore * (0.85 + Math.random() * 0.3)));
+          b[key] = Math.min(100, b[key]);
+          console.warn(`[analyze-speech] HSK ${key} was 0, estimated as ${b[key]} from overall score ${overallScore}`);
+        }
+      }
+      console.log(`[analyze-speech] HSK breakdown: level=${b.hsk_level}, PT=${b.pronunciation_tones}, VG=${b.vocabulary_grammar}, FC=${b.fluency_coherence}, CE=${b.content_expressiveness}`);
+    }
+
+    console.log(`[analyze-speech] Successfully parsed response, score: ${json.feedback?.score}, framework: ${json.detected_framework}${json.detected_framework === 'PRACTICE_DELIVERY' ? ' (retake/delivery mode)' : ''}${json.feedback?.breakdown ? `, breakdown: ${json.feedback.breakdown.framework}` : ''}`);
     res.json(json);
 
   } catch (err) {

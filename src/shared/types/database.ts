@@ -136,6 +136,7 @@ export interface DbPracticeSession {
   transcription: string | null;
   score: number | null;
   feedback_data: object | null;
+  is_favorited: boolean;
   created_at: string;
 }
 
@@ -204,6 +205,13 @@ export interface VideoHistoryItem {
 
   // Computed: actual count of practice reports for this video (from practice_sessions)
   reportCount: number;
+}
+
+// For centralized reports dashboard (practice session + video metadata)
+export interface DashboardPracticeSession extends DbPracticeSession {
+  videoTitle: string;
+  videoThumbnailUrl: string | null;
+  youtubeId: string;
 }
 
 // For Explore section on landing page (public videos, no user-specific fields)
