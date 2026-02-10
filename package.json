@@ -1,14 +1,16 @@
 {
   "name": "bilibala",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.1.0-beta.1",
   "type": "module",
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "scripts": {
     "dev": "vite",
     "dev:server": "node server/index.js",
+    "version:update": "node scripts/update-version.js",
+    "prebuild": "npm run version:update",
     "build": "vite build",
     "preview": "vite preview",
     "start": "node server/index.js",

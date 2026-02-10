@@ -369,12 +369,12 @@ with check (auth.uid() = user_id);
 create or replace function handle_new_user_subscription()
 returns trigger as $$
 begin
-  insert into user_subscriptions (user_id, tier)
+  insert into public.user_subscriptions (user_id, tier)
   values (new.id, 'free')
   on conflict (user_id) do nothing;
   return new;
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql security definer set search_path = public;
 
 -- Trigger on auth.users insert
 create or replace trigger on_auth_user_created_subscription

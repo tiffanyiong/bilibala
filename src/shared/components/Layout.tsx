@@ -1,5 +1,6 @@
 import React, { ReactNode, useEffect, useRef, useState } from 'react';
 import AuthModal from './AuthModal';
+import Footer from './Footer';
 import UserMenu from './UserMenu';
 import { DEEPL_SUPPORTED_LANGUAGES } from '../constants';
 
@@ -15,12 +16,16 @@ interface LayoutProps {
   onOpenSubscription?: () => void;
   onOpenProfile?: () => void;
   onOpenSettings?: () => void;
+  onOpenReports?: () => void;
+  onOpenPrivacy?: () => void;
+  onOpenTerms?: () => void;
   // Translator language selector
   translatorLang?: string; // Current effective translator language (e.g., "Chinese (Mandarin - 中文)")
   onTranslatorLangChange?: (lang: string) => void;
+  showFooter?: boolean;
 }
 
-const Layout: React.FC<LayoutProps> = ({ children, onLogoClick, targetLang, level, isScrollable = false, authModalOpen, onAuthModalClose, onOpenVideoLibrary, onOpenSubscription, onOpenProfile, onOpenSettings, translatorLang, onTranslatorLangChange }) => {
+const Layout: React.FC<LayoutProps> = ({ children, onLogoClick, targetLang, level, isScrollable = false, authModalOpen, onAuthModalClose, onOpenVideoLibrary, onOpenSubscription, onOpenProfile, onOpenSettings, onOpenReports, onOpenPrivacy, onOpenTerms, translatorLang, onTranslatorLangChange, showFooter = false }) => {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isTranslatorOpen, setIsTranslatorOpen] = useState(false);
   const translatorRef = useRef<HTMLDivElement>(null);
@@ -104,11 +109,11 @@ const Layout: React.FC<LayoutProps> = ({ children, onLogoClick, targetLang, leve
           {/* Language, level, and translator badges */}
           {targetLang && level && (
             <nav className="hidden md:flex gap-3">
-              <span className="flex items-center gap-2 bg-[#FAF9F6] border border-stone-200 text-stone-600 px-3 py-1 rounded-md shadow-sm text-xs font-medium uppercase tracking-wide">
-                <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 border border-yellow-600"></span>
+              <span className="flex items-center gap-2 bg-white/50 backdrop-blur-sm border border-white/60 text-stone-600 px-3 py-1 rounded-lg shadow-sm ring-1 ring-black/[0.04] text-xs font-medium uppercase tracking-wide">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 border border-amber-500"></span>
                 {targetLang}
               </span>
-              <span className="flex items-center gap-2 bg-[#FAF9F6] border border-stone-200 text-stone-600 px-3 py-1 rounded-md shadow-sm text-xs font-medium uppercase tracking-wide">
+              <span className="flex items-center gap-2 bg-white/50 backdrop-blur-sm border border-white/60 text-stone-600 px-3 py-1 rounded-lg shadow-sm ring-1 ring-black/[0.04] text-xs font-medium uppercase tracking-wide">
                 <span className="w-1.5 h-1.5 rounded-full bg-stone-400"></span>
                 {level}
               </span>
@@ -118,7 +123,7 @@ const Layout: React.FC<LayoutProps> = ({ children, onLogoClick, targetLang, leve
                 <div className="relative" ref={translatorRef}>
                   <button
                     onClick={() => setIsTranslatorOpen(!isTranslatorOpen)}
-                    className="flex items-center gap-2 bg-[#FAF9F6] border border-stone-200 text-stone-600 px-3 py-1 rounded-md shadow-sm text-xs font-medium uppercase tracking-wide hover:border-stone-300 hover:bg-stone-50 transition-all"
+                    className="flex items-center gap-2 bg-white/50 backdrop-blur-sm border border-white/60 text-stone-600 px-3 py-1 rounded-lg shadow-sm ring-1 ring-black/[0.04] text-xs font-medium uppercase tracking-wide hover:bg-white/70 hover:shadow-md transition-all"
                   >
                     <TranslateIcon />
                     {getShortLabel(translatorLang)}
@@ -127,7 +132,7 @@ const Layout: React.FC<LayoutProps> = ({ children, onLogoClick, targetLang, leve
 
                   {/* Dropdown */}
                   {isTranslatorOpen && (
-                    <div className="absolute right-0 mt-2 w-56 bg-[#FAF9F6] rounded-xl border border-stone-200 shadow-lg py-1 z-[300] max-h-72 overflow-y-auto">
+                    <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl border border-stone-100 shadow-[0_4px_24px_rgba(0,0,0,0.08)] py-1 z-[300] max-h-72 overflow-y-auto">
                       {DEEPL_SUPPORTED_LANGUAGES.map((lang) => (
                         <button
                           key={lang.code}
@@ -152,7 +157,7 @@ const Layout: React.FC<LayoutProps> = ({ children, onLogoClick, targetLang, leve
           )}
 
           {/* User Menu (Sign in button or Avatar with dropdown) */}
-          <UserMenu onOpenAuthModal={() => setIsAuthModalOpen(true)} onOpenVideoLibrary={onOpenVideoLibrary} onOpenSubscription={onOpenSubscription} onOpenProfile={onOpenProfile} onOpenSettings={onOpenSettings} />
+          <UserMenu onOpenAuthModal={() => setIsAuthModalOpen(true)} onOpenVideoLibrary={onOpenVideoLibrary} onOpenSubscription={onOpenSubscription} onOpenProfile={onOpenProfile} onOpenSettings={onOpenSettings} onOpenReports={onOpenReports} />
         </div>
       </header>
 
@@ -161,6 +166,9 @@ const Layout: React.FC<LayoutProps> = ({ children, onLogoClick, targetLang, leve
       <main className={`${classes.main} pt-20`}>
         {children}
       </main>
+      {showFooter && (
+        <Footer onOpenPrivacy={onOpenPrivacy} onOpenTerms={onOpenTerms} />
+      )}
     </div>
   );
 };

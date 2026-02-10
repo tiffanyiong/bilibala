@@ -1,6 +1,33 @@
 import React from 'react';
+import SubScoreBar from '../../../shared/components/SubScoreBar';
+import { getScoringFramework } from '../../../shared/constants';
+import { ScoringBreakdown } from '../../../shared/types';
 
-// Role configurations with multi-language labels
+// ─── IELTS Band Descriptors (keyed by floor of band_score) ───
+const IELTS_COLORS: Record<number, { color: string; dot: string; bg: string }> = {
+  9: { color: 'text-blue-600', dot: 'bg-blue-500', bg: 'bg-blue-50/60' },
+  8: { color: 'text-emerald-600', dot: 'bg-emerald-500', bg: 'bg-emerald-50/60' },
+  7: { color: 'text-indigo-600', dot: 'bg-indigo-500', bg: 'bg-indigo-50/60' },
+  6: { color: 'text-sky-600', dot: 'bg-sky-500', bg: 'bg-sky-50/60' },
+  5: { color: 'text-amber-600', dot: 'bg-amber-500', bg: 'bg-amber-50/60' },
+  4: { color: 'text-orange-600', dot: 'bg-orange-500', bg: 'bg-orange-50/60' },
+  3: { color: 'text-stone-600', dot: 'bg-stone-500', bg: 'bg-stone-100/80' },
+  2: { color: 'text-stone-500', dot: 'bg-stone-400', bg: 'bg-stone-100/60' },
+  1: { color: 'text-stone-500', dot: 'bg-stone-400', bg: 'bg-stone-100/50' },
+  0: { color: 'text-stone-400', dot: 'bg-stone-300', bg: 'bg-stone-100/40' },
+};
+
+// ─── HSK Level Colors ───
+const HSK_COLORS: Record<number, { color: string; dot: string; bg: string }> = {
+  6: { color: 'text-blue-600', dot: 'bg-blue-500', bg: 'bg-blue-50/60' },
+  5: { color: 'text-emerald-600', dot: 'bg-emerald-500', bg: 'bg-emerald-50/60' },
+  4: { color: 'text-indigo-600', dot: 'bg-indigo-500', bg: 'bg-indigo-50/60' },
+  3: { color: 'text-amber-600', dot: 'bg-amber-500', bg: 'bg-amber-50/60' },
+  2: { color: 'text-stone-600', dot: 'bg-stone-500', bg: 'bg-stone-100/80' },
+  1: { color: 'text-stone-500', dot: 'bg-stone-400', bg: 'bg-stone-100/50' },
+};
+
+// ─── Generic role config (legacy / non-framework languages) ───
 const ROLES_CONFIG: Record<string, {
   min: number;
   color: string;
@@ -9,242 +36,64 @@ const ROLES_CONFIG: Record<string, {
   labels: Record<string, string>;
 }> = {
   master: {
-    min: 95,
-    color: 'text-blue-600',
-    dot: 'bg-blue-500',
-    bg: 'bg-blue-50/60',
+    min: 95, color: 'text-blue-600', dot: 'bg-blue-500', bg: 'bg-blue-50/60',
     labels: {
-      'English': 'Language Master',
-      'Chinese (Mandarin - 中文)': '语言大师',
-      'Japanese (日本語)': '言語マスター',
-      'Korean (한국어)': '언어 마스터',
-      'Spanish (Español)': 'Maestro del Idioma',
-      'French (Français)': 'Maître de Langue',
-      'German (Deutsch)': 'Sprachmeister',
-      'Portuguese (Português)': 'Mestre do Idioma',
-      'Italian (Italiano)': 'Maestro della Lingua',
-      'Russian (Русский)': 'Мастер Языка',
-      'Arabic (العربية)': 'سيد اللغة',
-      'Hindi (हिन्दी)': 'भाषा मास्टर',
-      'Indonesian (Bahasa Indonesia)': 'Master Bahasa',
-      'Turkish (Türkçe)': 'Dil Ustası',
-      'Vietnamese (Tiếng Việt)': 'Bậc Thầy Ngôn Ngữ',
+      'English': 'Language Master', 'Chinese (Mandarin - 中文)': '语言大师',
+      'Japanese (日本語)': '言語マスター', 'Korean (한국어)': '언어 마스터',
+      'Spanish (Español)': 'Maestro del Idioma', 'French (Français)': 'Maître de Langue',
     }
   },
   expert: {
-    min: 85,
-    color: 'text-emerald-600',
-    dot: 'bg-emerald-500',
-    bg: 'bg-emerald-50/60',
+    min: 85, color: 'text-emerald-600', dot: 'bg-emerald-500', bg: 'bg-emerald-50/60',
     labels: {
-      'English': 'Fluency Expert',
-      'Chinese (Mandarin - 中文)': '流利专家',
-      'Japanese (日本語)': '流暢エキスパート',
-      'Korean (한국어)': '유창함 전문가',
-      'Spanish (Español)': 'Experto en Fluidez',
-      'French (Français)': 'Expert en Fluidité',
-      'German (Deutsch)': 'Fließend-Experte',
-      'Portuguese (Português)': 'Especialista em Fluência',
-      'Italian (Italiano)': 'Esperto di Fluenza',
-      'Russian (Русский)': 'Эксперт Беглости',
-      'Arabic (العربية)': 'خبير الطلاقة',
-      'Hindi (हिन्दी)': 'प्रवाह विशेषज्ञ',
-      'Indonesian (Bahasa Indonesia)': 'Ahli Kefasihan',
-      'Turkish (Türkçe)': 'Akıcılık Uzmanı',
-      'Vietnamese (Tiếng Việt)': 'Chuyên Gia Lưu Loát',
+      'English': 'Fluency Expert', 'Chinese (Mandarin - 中文)': '流利专家',
+      'Japanese (日本語)': '流暢エキスパート', 'Korean (한국어)': '유창함 전문가',
+      'Spanish (Español)': 'Experto en Fluidez', 'French (Français)': 'Expert en Fluidité',
     }
   },
   pioneer: {
-    min: 70,
-    color: 'text-indigo-600',
-    dot: 'bg-indigo-500',
-    bg: 'bg-indigo-50/60',
+    min: 70, color: 'text-indigo-600', dot: 'bg-indigo-500', bg: 'bg-indigo-50/60',
     labels: {
-      'English': 'Logic Pioneer',
-      'Chinese (Mandarin - 中文)': '逻辑先锋',
-      'Japanese (日本語)': 'ロジックパイオニア',
-      'Korean (한국어)': '논리 개척자',
-      'Spanish (Español)': 'Pionero Lógico',
-      'French (Français)': 'Pionnier Logique',
-      'German (Deutsch)': 'Logik-Pionier',
-      'Portuguese (Português)': 'Pioneiro da Lógica',
-      'Italian (Italiano)': 'Pioniere della Logica',
-      'Russian (Русский)': 'Пионер Логики',
-      'Arabic (العربية)': 'رائد المنطق',
-      'Hindi (हिन्दी)': 'तर्क अग्रणी',
-      'Indonesian (Bahasa Indonesia)': 'Pelopor Logika',
-      'Turkish (Türkçe)': 'Mantık Öncüsü',
-      'Vietnamese (Tiếng Việt)': 'Tiên Phong Logic',
+      'English': 'Logic Pioneer', 'Chinese (Mandarin - 中文)': '逻辑先锋',
+      'Japanese (日本語)': 'ロジックパイオニア', 'Korean (한국어)': '논리 개척자',
+      'Spanish (Español)': 'Pionero Lógico', 'French (Français)': 'Pionnier Logique',
     }
   },
   speaker: {
-    min: 55,
-    color: 'text-amber-600',
-    dot: 'bg-amber-500',
-    bg: 'bg-amber-50/60',
+    min: 55, color: 'text-amber-600', dot: 'bg-amber-500', bg: 'bg-amber-50/60',
     labels: {
-      'English': 'Active Speaker',
-      'Chinese (Mandarin - 中文)': '积极表达者',
-      'Japanese (日本語)': 'アクティブスピーカー',
-      'Korean (한국어)': '적극적 화자',
-      'Spanish (Español)': 'Hablante Activo',
-      'French (Français)': 'Orateur Actif',
-      'German (Deutsch)': 'Aktiver Sprecher',
-      'Portuguese (Português)': 'Falante Ativo',
-      'Italian (Italiano)': 'Oratore Attivo',
-      'Russian (Русский)': 'Активный Оратор',
-      'Arabic (العربية)': 'متحدث نشط',
-      'Hindi (हिन्दी)': 'सक्रिय वक्ता',
-      'Indonesian (Bahasa Indonesia)': 'Pembicara Aktif',
-      'Turkish (Türkçe)': 'Aktif Konuşmacı',
-      'Vietnamese (Tiếng Việt)': 'Người Nói Tích Cực',
+      'English': 'Active Speaker', 'Chinese (Mandarin - 中文)': '积极表达者',
+      'Japanese (日本語)': 'アクティブスピーカー', 'Korean (한국어)': '적극적 화자',
+      'Spanish (Español)': 'Hablante Activo', 'French (Français)': 'Orateur Actif',
     }
   },
   talent: {
-    min: 40,
-    color: 'text-stone-600',
-    dot: 'bg-stone-500',
-    bg: 'bg-stone-100/80',
+    min: 40, color: 'text-stone-600', dot: 'bg-stone-500', bg: 'bg-stone-100/80',
     labels: {
-      'English': 'Emerging Talent',
-      'Chinese (Mandarin - 中文)': '潜力新星',
-      'Japanese (日本語)': '新進タレント',
-      'Korean (한국어)': '떠오르는 인재',
-      'Spanish (Español)': 'Talento Emergente',
-      'French (Français)': 'Talent Émergent',
-      'German (Deutsch)': 'Aufstrebendes Talent',
-      'Portuguese (Português)': 'Talento Emergente',
-      'Italian (Italiano)': 'Talento Emergente',
-      'Russian (Русский)': 'Растущий Талант',
-      'Arabic (العربية)': 'موهبة ناشئة',
-      'Hindi (हिन्दी)': 'उभरती प्रतिभा',
-      'Indonesian (Bahasa Indonesia)': 'Bakat Berkembang',
-      'Turkish (Türkçe)': 'Yükselen Yetenek',
-      'Vietnamese (Tiếng Việt)': 'Tài Năng Mới',
+      'English': 'Emerging Talent', 'Chinese (Mandarin - 中文)': '潜力新星',
+      'Japanese (日本語)': '新進タレント', 'Korean (한국어)': '떠오르는 인재',
+      'Spanish (Español)': 'Talento Emergente', 'French (Français)': 'Talent Émergent',
     }
   },
   explorer: {
-    min: 0,
-    color: 'text-stone-500',
-    dot: 'bg-stone-400',
-    bg: 'bg-stone-100/50',
+    min: 0, color: 'text-stone-500', dot: 'bg-stone-400', bg: 'bg-stone-100/50',
     labels: {
-      'English': 'Explorer',
-      'Chinese (Mandarin - 中文)': '探索者',
-      'Japanese (日本語)': '探検者',
-      'Korean (한국어)': '탐험가',
-      'Spanish (Español)': 'Explorador',
-      'French (Français)': 'Explorateur',
-      'German (Deutsch)': 'Entdecker',
-      'Portuguese (Português)': 'Explorador',
-      'Italian (Italiano)': 'Esploratore',
-      'Russian (Русский)': 'Исследователь',
-      'Arabic (العربية)': 'مستكشف',
-      'Hindi (हिन्दी)': 'खोजकर्ता',
-      'Indonesian (Bahasa Indonesia)': 'Penjelajah',
-      'Turkish (Türkçe)': 'Kaşif',
-      'Vietnamese (Tiếng Việt)': 'Người Khám Phá',
+      'English': 'Explorer', 'Chinese (Mandarin - 中文)': '探索者',
+      'Japanese (日本語)': '探検者', 'Korean (한국어)': '탐험가',
+      'Spanish (Español)': 'Explorador', 'French (Français)': 'Explorateur',
     }
   },
 };
 
-// UI text translations
 const translations: Record<string, {
-  than: string;
-  peers: string;
-  nextGoal: string;
-  peak: string;
+  than: string; peers: string; nextGoal: string; peak: string;
 }> = {
-  'English': {
-    than: 'Performing better than',
-    peers: 'of learners',
-    nextGoal: 'NEXT MILESTONE:',
-    peak: 'Peak',
-  },
-  'Chinese (Mandarin - 中文)': {
-    than: '表现优于',
-    peers: '的学习者',
-    nextGoal: '下一目标:',
-    peak: '巅峰',
-  },
-  'Japanese (日本語)': {
-    than: '学習者の上位',
-    peers: 'のパフォーマンス',
-    nextGoal: '次の目標:',
-    peak: '頂点',
-  },
-  'Korean (한국어)': {
-    than: '학습자 중 상위',
-    peers: '의 성과',
-    nextGoal: '다음 목표:',
-    peak: '정점',
-  },
-  'Spanish (Español)': {
-    than: 'Mejor que',
-    peers: 'de los estudiantes',
-    nextGoal: 'PRÓXIMA META:',
-    peak: 'Cima',
-  },
-  'French (Français)': {
-    than: 'Meilleur que',
-    peers: 'des apprenants',
-    nextGoal: 'PROCHAIN OBJECTIF:',
-    peak: 'Sommet',
-  },
-  'German (Deutsch)': {
-    than: 'Besser als',
-    peers: 'der Lernenden',
-    nextGoal: 'NÄCHSTES ZIEL:',
-    peak: 'Spitze',
-  },
-  'Portuguese (Português)': {
-    than: 'Melhor que',
-    peers: 'dos alunos',
-    nextGoal: 'PRÓXIMA META:',
-    peak: 'Pico',
-  },
-  'Italian (Italiano)': {
-    than: 'Meglio di',
-    peers: 'degli studenti',
-    nextGoal: 'PROSSIMO TRAGUARDO:',
-    peak: 'Apice',
-  },
-  'Russian (Русский)': {
-    than: 'Лучше чем',
-    peers: 'учащихся',
-    nextGoal: 'СЛЕДУЮЩАЯ ЦЕЛЬ:',
-    peak: 'Пик',
-  },
-  'Arabic (العربية)': {
-    than: 'أفضل من',
-    peers: 'من المتعلمين',
-    nextGoal: 'الهدف التالي:',
-    peak: 'القمة',
-  },
-  'Hindi (हिन्दी)': {
-    than: 'से बेहतर',
-    peers: 'शिक्षार्थियों में',
-    nextGoal: 'अगला लक्ष्य:',
-    peak: 'शिखर',
-  },
-  'Indonesian (Bahasa Indonesia)': {
-    than: 'Lebih baik dari',
-    peers: 'pelajar',
-    nextGoal: 'TARGET BERIKUTNYA:',
-    peak: 'Puncak',
-  },
-  'Turkish (Türkçe)': {
-    than: 'Öğrencilerin',
-    peers: 'inden daha iyi',
-    nextGoal: 'SONRAKİ HEDEF:',
-    peak: 'Zirve',
-  },
-  'Vietnamese (Tiếng Việt)': {
-    than: 'Vượt trội hơn',
-    peers: 'người học',
-    nextGoal: 'MỤC TIÊU TIẾP:',
-    peak: 'Đỉnh cao',
-  },
+  'English': { than: 'Performing better than', peers: 'of learners', nextGoal: 'NEXT MILESTONE:', peak: 'Peak' },
+  'Chinese (Mandarin - 中文)': { than: '表现优于', peers: '的学习者', nextGoal: '下一目标:', peak: '巅峰' },
+  'Japanese (日本語)': { than: '学習者の上位', peers: 'のパフォーマンス', nextGoal: '次の目標:', peak: '頂点' },
+  'Korean (한국어)': { than: '학습자 중 상위', peers: '의 성과', nextGoal: '다음 목표:', peak: '정점' },
+  'Spanish (Español)': { than: 'Mejor que', peers: 'de los estudiantes', nextGoal: 'PRÓXIMA META:', peak: 'Cima' },
+  'French (Français)': { than: 'Meilleur que', peers: 'des apprenants', nextGoal: 'PROCHAIN OBJECTIF:', peak: 'Sommet' },
 };
 
 interface PerformanceCardProps {
@@ -252,18 +101,145 @@ interface PerformanceCardProps {
   targetLang?: string;
   nativeLang?: string;
   level?: string;
+  breakdown?: ScoringBreakdown | null;
+  isDeliveryMode?: boolean;
+}
+
+/** Get a sub-score label in the appropriate language (native for Easy level, target otherwise) */
+function getSubLabel(sub: { label: string; labelZh?: string; labelNative?: Record<string, string> }, displayLang: string): string {
+  if (sub.labelNative?.[displayLang]) return sub.labelNative[displayLang];
+  if (displayLang.includes('中文') && sub.labelZh) return sub.labelZh;
+  return sub.label;
 }
 
 const PerformanceCard: React.FC<PerformanceCardProps> = ({
   score,
   targetLang = 'English',
   nativeLang = 'English',
-  level = 'Medium'
+  level = 'Medium',
+  breakdown,
+  isDeliveryMode = false,
 }) => {
-  // Determine which language to use based on level
   const isEasy = level.toLowerCase() === 'easy';
   const displayLang = isEasy ? nativeLang : targetLang;
+  const framework = getScoringFramework(targetLang);
 
+  // ─── IELTS Layout ───
+  if (breakdown?.framework === 'ielts' && framework) {
+    const b = breakdown;
+    const bandFloor = Math.floor(b.band_score);
+    const colors = IELTS_COLORS[bandFloor] || IELTS_COLORS[0];
+    const descriptor = b.band_descriptor || framework.bandDescriptors[bandFloor] || '';
+
+    return (
+      <div className="bg-white/50 backdrop-blur-xl rounded-[20px] p-5 border border-white/50 shadow-[inset_0_1px_1px_rgba(255,255,255,0.6),inset_0_-1px_1px_rgba(0,0,0,0.02),0_1px_3px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.03)] ring-1 ring-black/[0.03] w-full mb-6">
+        <div className="flex flex-col gap-2">
+          <div className="flex justify-start items-center"> 
+          {isDeliveryMode && (
+            <span className="text-[9px] font-medium text-stone-400 bg-stone-100 px-2 py-0.5 rounded-full uppercase tracking-wider flex-shrink-0 mt-1">
+              Delivery Score
+            </span>
+          )}
+        </div>
+          {/* Header: descriptor + delivery label */}
+          <div className="flex items-start justify-between gap-2">
+            <div className={`flex items-start gap-2 ${colors.bg} px-3 py-2 rounded-xl`}>
+              <div className={`w-1.5 h-1.5 rounded-full ${colors.dot} mt-1.5 flex-shrink-0`} />
+              <span className={`text-xs leading-relaxed ${colors.color}`}>
+                {descriptor}
+              </span>
+            </div>
+          </div>
+
+          {/* Band Score Display */}
+          <div className="flex items-baseline gap-2 pb-1">
+            <span className={`text-3xl font-bold ${colors.color} tabular-nums`}>
+              {b.band_score.toFixed(1)}
+            </span>
+            <span className="text-xs text-stone-400 font-medium">{framework.overallLabelNative?.[displayLang] || framework.overallLabel}</span>
+          </div>
+
+          {/* Sub-Score Bars — hide 0-score entries (old sessions with missing data) */}
+          <div className="space-y-2 pt-1">
+            {framework.subScores
+              .filter((sub) => ((b as unknown as Record<string, number>)[sub.key] ?? 0) > 0)
+              .map((sub) => {
+                const val = (b as unknown as Record<string, number>)[sub.key] ?? 0;
+                return (
+                  <SubScoreBar
+                    key={sub.key}
+                    label={getSubLabel(sub, displayLang)}
+                    value={val}
+                    max={sub.max}
+                  />
+                );
+              })}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── HSK Layout ───
+  if (breakdown?.framework === 'hsk' && framework) {
+    const b = breakdown;
+    const levelFloor = Math.floor(b.hsk_level);
+    const colors = HSK_COLORS[levelFloor] || HSK_COLORS[1];
+    const descriptor = b.level_descriptor || framework.bandDescriptors[levelFloor] || '';
+
+    // Calculate average from non-zero sub-scores
+    const hskSubs = [b.pronunciation_tones, b.vocabulary_grammar, b.fluency_coherence, b.content_expressiveness];
+    const nonZeroSubs = hskSubs.filter((v) => v > 0);
+    const avgSubScore = nonZeroSubs.length > 0 ? Math.round(nonZeroSubs.reduce((a, c) => a + c, 0) / nonZeroSubs.length) : score;
+
+    return (
+      <div className="bg-white/50 backdrop-blur-xl rounded-[20px] p-5 border border-white/50 shadow-[inset_0_1px_1px_rgba(255,255,255,0.6),inset_0_-1px_1px_rgba(0,0,0,0.02),0_1px_3px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.03)] ring-1 ring-black/[0.03] w-full mb-6">
+        <div className="flex flex-col gap-3">
+          {/* Header */}
+          <div className="flex items-start justify-between gap-2">
+            <div className={`flex items-start gap-2 ${colors.bg} px-3 py-2 rounded-xl`}>
+              <div className={`w-1.5 h-1.5 rounded-full ${colors.dot} mt-1.5 flex-shrink-0`} />
+              <span className={`text-xs leading-relaxed ${colors.color}`}>
+                {descriptor}
+              </span>
+            </div>
+            {isDeliveryMode && (
+              <span className="text-[9px] font-medium text-stone-400 bg-stone-100 px-2 py-0.5 rounded-full uppercase tracking-wider flex-shrink-0 mt-1">
+                Delivery Score
+              </span>
+            )}
+          </div>
+
+          {/* Score Display — average of sub-scores */}
+          <div className="flex items-baseline gap-2 pb-1">
+            <span className={`text-3xl font-bold ${colors.color} tabular-nums`}>
+              {avgSubScore}
+            </span>
+            <span className="text-xs text-stone-400 font-medium">{framework.overallLabelNative?.[displayLang] || framework.overallLabel}</span>
+          </div>
+
+          {/* Sub-Score Bars — hide 0-score entries (old sessions with missing data) */}
+          <div className="space-y-2 pt-1">
+            {framework.subScores
+              .filter((sub) => ((b as unknown as Record<string, number>)[sub.key] ?? 0) > 0)
+              .map((sub) => {
+                const val = (b as unknown as Record<string, number>)[sub.key] ?? 0;
+                return (
+                  <SubScoreBar
+                    key={sub.key}
+                    label={getSubLabel(sub, displayLang)}
+                    value={val}
+                    max={sub.max}
+                  />
+                );
+              })}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Generic Layout (legacy / non-framework languages) ───
   const t = translations[displayLang] || translations['English'];
 
   const getRoleInfo = (s: number) => {
@@ -284,27 +260,31 @@ const PerformanceCard: React.FC<PerformanceCardProps> = ({
   const progress = score >= 95 ? 100 : (score / role.nextScore) * 100;
 
   return (
-    <div className="bg-white rounded-[20px] p-5 border border-stone-200/60 w-full mb-6 shadow-sm">
+    <div className="bg-white/50 backdrop-blur-xl rounded-[20px] p-5 border border-white/50 shadow-[inset_0_1px_1px_rgba(255,255,255,0.6),inset_0_-1px_1px_rgba(0,0,0,0.02),0_1px_3px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.03)] ring-1 ring-black/[0.03] w-full mb-6">
       <div className="flex flex-col gap-4">
-
-        {/* Role Badge - Matched to Screenshot Pill Style */}
-        <div className="flex justify-start">
+        {/* Role Badge */}
+        <div className="flex items-center justify-between">
           <div className={`inline-flex items-center gap-1.5 ${role.bg} px-2.5 py-1 rounded-full`}>
             <div className={`w-1.5 h-1.5 rounded-full ${role.dot}`} />
             <span className={`text-[9px] font-black ${role.color} uppercase tracking-widest`}>
               {role.title}
             </span>
           </div>
+          {isDeliveryMode && (
+            <span className="text-[9px] font-medium text-stone-400 bg-stone-100 px-2 py-0.5 rounded-full uppercase tracking-wider">
+              Delivery Score
+            </span>
+          )}
         </div>
 
-        {/* Narrative Title - Clean, matched weight */}
+        {/* Percentile */}
         <div className="pb-1">
           <p className="text-stone-500 text-[15px] font-medium leading-tight">
             {t.than} <span className="text-indigo-600 font-bold">{fakePercentile}%</span> {t.peers}
           </p>
         </div>
 
-        {/* Progress System - Professional Line Style */}
+        {/* Progress */}
         <div className="space-y-2.5 pt-2">
           <div className="h-[2px] w-full bg-stone-100 rounded-full overflow-hidden">
             <div
@@ -317,11 +297,10 @@ const PerformanceCard: React.FC<PerformanceCardProps> = ({
               {t.nextGoal}
             </span>
             <span className="text-[9px] font-bold text-stone-400 uppercase tracking-tight">
-                {role.next}
+              {role.next}
             </span>
           </div>
         </div>
-
       </div>
     </div>
   );

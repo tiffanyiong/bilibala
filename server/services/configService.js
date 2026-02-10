@@ -99,8 +99,8 @@ export function getAllConfig() {
   return result;
 }
 
-// Auto-refresh every 5 minutes
-const REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+// Auto-refresh every 60 minutes
+const REFRESH_INTERVAL_MS = 60 * 60 * 1000;
 
 export function startConfigRefresh() {
   // Initial load
