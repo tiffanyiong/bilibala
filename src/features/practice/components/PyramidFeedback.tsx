@@ -2,55 +2,139 @@ import PerformanceCard from '@/features/practice/components/PerformanceCard';
 import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
 import ReactFlow, { Background, Controls, Handle, MiniMap, Node, Position, ReactFlowProvider, useEdgesState, useNodesState, useReactFlow } from 'reactflow';
 import 'reactflow/dist/style.css';
+import { useTTS } from '../../../shared/hooks/useTTS';
+import { getBreakdown } from '../../../shared/utils/scoringUtils';
+import { useAudioPlayer } from '../../../shared/hooks/useAudioPlayer';
 import { checkAnonymousPracticeLimit } from '../../../shared/services/usageTracking';
 import { SpeechAnalysisResult } from '../../../shared/types';
 import { generateFlowData } from '../utils/transformPyramid';
 import AudioRecorder from './AudioRecorder';
 
+const WORD_TTS_API = (import.meta.env.VITE_API_URL || '') + '/api/tts';
+
 // --- WORD WITH TOOLTIP COMPONENT ---
-const WordWithTooltip = ({ word }: { word: { word: string; status: 'good' | 'needs-work' | 'unclear'; feedback?: string } }) => {
+const WordWithTooltip = ({ word, lang }: {
+    word: { word: string; status: 'good' | 'needs-work' | 'unclear'; feedback?: string };
+    lang?: string;
+}) => {
     const wordRef = useRef<HTMLDivElement>(null);
     const tooltipRef = useRef<HTMLDivElement>(null);
-    const [tooltipStyle, setTooltipStyle] = useState<React.CSSProperties>({});
-    const [arrowStyle, setArrowStyle] = useState<React.CSSProperties>({});
+    const [tapped, setTapped] = useState(false);
+    const [nudge, setNudge] = useState(0);
+    const [speaking, setSpeaking] = useState(false);
+    const audioRef = useRef<HTMLAudioElement | null>(null);
 
-    const handleMouseEnter = () => {
-        if (!wordRef.current || !tooltipRef.current) return;
-        const wordRect = wordRef.current.getBoundingClientRect();
-        const tooltipRect = tooltipRef.current.getBoundingClientRect();
-        const viewportWidth = window.innerWidth;
-        const padding = 16;
-        let left = wordRect.left + wordRect.width / 2 - tooltipRect.width / 2;
-        if (left < padding) left = padding;
-        else if (left + tooltipRect.width > viewportWidth - padding) left = viewportWidth - padding - tooltipRect.width;
-        const top = wordRect.top - tooltipRect.height - 8;
-        const wordCenterX = wordRect.left + wordRect.width / 2;
-        const arrowLeft = wordCenterX - left;
+    const instanceId = useRef(Math.random().toString(36));
 
-        setTooltipStyle({ left: `${left}px`, top: `${top}px`, transform: 'none' });
-        setArrowStyle({ left: `${arrowLeft}px`, transform: 'translateX(-50%)' });
+    const speakWord = async (text: string) => {
+        // Stop any currently playing word audio
+        if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+        setSpeaking(true);
+        try {
+            const res = await fetch(WORD_TTS_API, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text, language: lang || 'English' }),
+            });
+            if (!res.ok) throw new Error('TTS failed');
+            const data = await res.json();
+            let url: string;
+            let shouldRevoke = false;
+            if (data.audioUrl) {
+                url = data.audioUrl;
+            } else if (data.audioContent) {
+                const bytes = atob(data.audioContent);
+                const arr = new Uint8Array(bytes.length);
+                for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+                url = URL.createObjectURL(new Blob([arr], { type: 'audio/mp3' }));
+                shouldRevoke = true;
+            } else throw new Error('No audio');
+            const audio = new Audio(url);
+            audioRef.current = audio;
+            audio.onended = () => { setSpeaking(false); if (shouldRevoke) URL.revokeObjectURL(url); };
+            audio.onerror = () => { setSpeaking(false); if (shouldRevoke) URL.revokeObjectURL(url); };
+            await audio.play();
+        } catch {
+            setSpeaking(false);
+        }
     };
+
+    const handleClick = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (tapped) { setTapped(false); return; }
+        // Close any other open tooltip first
+        window.dispatchEvent(new CustomEvent('close-word-tooltip', { detail: instanceId.current }));
+        setTapped(true);
+        speakWord(word.word);
+    };
+
+    // Close when another tooltip opens, or when clicking outside
+    useEffect(() => {
+        const onOtherOpen = (e: Event) => {
+            if ((e as CustomEvent).detail !== instanceId.current) setTapped(false);
+        };
+        const dismiss = (e: MouseEvent) => {
+            if (wordRef.current && !wordRef.current.contains(e.target as globalThis.Node)) setTapped(false);
+        };
+        window.addEventListener('close-word-tooltip', onOtherOpen);
+        document.addEventListener('click', dismiss);
+        return () => {
+            window.removeEventListener('close-word-tooltip', onOtherOpen);
+            document.removeEventListener('click', dismiss);
+        };
+    }, []);
+
+    // Nudge tooltip horizontally if it overflows the viewport
+    useEffect(() => {
+        if (!tapped) { setNudge(0); return; }
+        requestAnimationFrame(() => {
+            if (!tooltipRef.current) return;
+            const rect = tooltipRef.current.getBoundingClientRect();
+            const pad = 12;
+            if (rect.left < pad) setNudge(pad - rect.left);
+            else if (rect.right > window.innerWidth - pad) setNudge(window.innerWidth - pad - rect.right);
+            else setNudge(0);
+        });
+    }, [tapped]);
 
     return (
         <div
             ref={wordRef}
-            onMouseEnter={handleMouseEnter}
-            className={`group relative px-3 py-1.5 rounded-lg text-sm font-medium transition-all cursor-default ${
+            onClick={handleClick}
+            className={`relative px-3 py-1.5 rounded-lg text-sm font-medium transition-all cursor-pointer active:scale-95 ${
                 word.status === 'good' ? 'bg-green-100 text-green-800 border border-green-200' :
                 word.status === 'needs-work' ? 'bg-amber-100 text-amber-800 border border-amber-200' :
                 'bg-red-100 text-red-800 border border-red-200'
-            }`}
+            } ${speaking ? 'ring-2 ring-blue-400 ring-offset-1' : ''}`}
         >
             {word.word}
             {word.status === 'good' && <span className="ml-1">✓</span>}
-            {word.feedback && (
+            {speaking && (
+                <span className="ml-1 inline-flex items-center gap-[2px]">
+                    <span className="w-[3px] h-[10px] bg-current rounded-full animate-[soundbar_0.5s_ease-in-out_infinite_alternate]" />
+                    <span className="w-[3px] h-[14px] bg-current rounded-full animate-[soundbar_0.5s_ease-in-out_0.15s_infinite_alternate]" />
+                    <span className="w-[3px] h-[8px] bg-current rounded-full animate-[soundbar_0.5s_ease-in-out_0.3s_infinite_alternate]" />
+                </span>
+            )}
+            {word.feedback && tapped && (
                 <div
                     ref={tooltipRef}
-                    style={tooltipStyle}
-                    className="fixed px-3 py-2 bg-stone-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none max-w-[calc(100vw-32px)]"
+                    style={{
+                        left: `calc(50% + ${nudge}px)`,
+                        background: 'linear-gradient(135deg, rgba(255,255,255,0.85), rgba(255,255,255,0.65))',
+                        backdropFilter: 'blur(40px) saturate(1.8)',
+                        WebkitBackdropFilter: 'blur(40px) saturate(1.8)',
+                        border: '1px solid rgba(255,255,255,0.5)',
+                        boxShadow: '0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.6)',
+                    }}
+                    className="absolute top-full mt-2 -translate-x-1/2 px-3 py-2 text-stone-800 text-xs rounded-2xl z-50 pointer-events-none w-max max-w-[min(300px,calc(100vw-32px))]"
                 >
+                    {/* Arrow pointing up */}
+                    <div
+                        style={{ left: `calc(50% - ${nudge}px)`, transform: 'translateX(-50%)' }}
+                        className="absolute bottom-full border-4 border-transparent border-b-white/60"
+                    />
                     {word.feedback}
-                    <div style={arrowStyle} className="absolute top-full border-4 border-transparent border-t-stone-900"></div>
                 </div>
             )}
         </div>
@@ -86,7 +170,7 @@ interface PyramidFeedbackProps {
     analysis: SpeechAnalysisResult;
     onRetry: () => void;
     audioUrl?: string | null;
-    startRetake: (audioData: string) => void;
+    startRetake: (audioData: string, mimeType?: string, referenceTranscript?: string) => void;
     level: string;
     nativeLang: string;
     targetLang: string;
@@ -107,14 +191,17 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
     showRetry = true,
     onRequireAuth,
 }) => {
-  const { structure, improved_structure, feedback, transcription, detected_framework, improvements, pronunciation } = analysis;
+  const { structure, improved_structure, improved_transcription, feedback, transcription, detected_framework, improvements, pronunciation } = analysis;
   const [viewMode, setViewMode] = useState<'user' | 'ai'>('user');
+  const [transcriptViewMode, setTranscriptViewMode] = useState<'user' | 'ai'>('user');
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [showRetakeModal, setShowRetakeModal] = useState(false);
   const [isRecorderMinimized, setIsRecorderMinimized] = useState(false);
   const [isMapVisible, setIsMapVisible] = useState(false);
   const { fitView } = useReactFlow();
+  const { speak, stop: stopTTS, togglePlayPause: toggleTTS, seek: seekTTS, isSpeaking, isPaused: isTTSPaused, progress: ttsProgress, currentTime: ttsCurrentTime, duration: ttsDuration, formatTime: formatTTSTime } = useTTS(targetLang);
+  const { stop: stopUserAudio, togglePlayPause: toggleUserAudio, seek: seekUserAudio, isPlaying: userAudioPlaying, progress: userProgress, currentTime: userCurrentTime, duration: userDuration, formatTime: formatUserTime } = useAudioPlayer(audioUrl);
 
   const labels = preFetchedLabels || {
     communicationLogic: 'Communication Logic',
@@ -135,6 +222,7 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
     actionableTips: 'Actionable Tips',
     transcription: 'Transcription',
     yourRecording: 'Your Recording',
+    aiVoice: 'AI Voice',
     recordAnswer: 'Record Answer',
     reviewAnswer: 'Review Answer',
     takeYourTime: 'Take your time',
@@ -164,7 +252,8 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
     intonationOverlyExpressive: 'overly-expressive',
     pronunciationGood: 'Good',
     pronunciationNeedsWorkLabel: 'Needs Work',
-    pronunciationUnclear: 'Unclear'
+    pronunciationUnclear: 'Unclear',
+    retryPrompt: 'Try again with the feedback in mind!'
   };
 
 
@@ -192,12 +281,18 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
   const hideMap = () => setIsMapVisible(false);
 
 
-  useEffect(() => { 
-      const checkMobile = () => setIsMobile(window.innerWidth < 768); 
-      checkMobile(); 
-      window.addEventListener('resize', checkMobile); 
-      return () => window.removeEventListener('resize', checkMobile); 
+  useEffect(() => {
+      const checkMobile = () => setIsMobile(window.innerWidth < 768);
+      checkMobile();
+      window.addEventListener('resize', checkMobile);
+      return () => window.removeEventListener('resize', checkMobile);
   }, []);
+
+  // Stop audio when switching between tabs
+  useEffect(() => {
+      stopTTS();
+      stopUserAudio();
+  }, [transcriptViewMode, stopTTS, stopUserAudio]);
 
   const { nodes: initialNodes, edges: initialEdges } = useMemo(() => {
       const targetStructure = viewMode === 'ai' && improved_structure ? improved_structure : structure;
@@ -212,7 +307,40 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
 
   const onNodeClick = (_: React.MouseEvent, node: Node) => { if ((viewMode === 'user' && node.data.critique) || (viewMode === 'ai' && node.data.elaboration)) setSelectedNodeId(node.id); else setSelectedNodeId(null); };
   const selectedNodeData = useMemo(() => { if (!selectedNodeId) return null; return nodes.find(n => n.id === selectedNodeId)?.data; }, [selectedNodeId, nodes]);
-  const handleRetakeComplete = (audioData: string) => { startRetake(audioData); setShowRetakeModal(false); };
+
+  // Use improved_transcription if available (fluent AI-generated speech),
+  // fallback to concatenated structure for backward compatibility
+  const aiImprovedText = useMemo(() => {
+    // Prefer the fluent improved_transcription from the API
+    if (improved_transcription) return improved_transcription;
+
+    // Fallback: concatenate improved_structure for older data
+    if (!improved_structure) return null;
+    const parts: string[] = [];
+    if (improved_structure.conclusion) {
+      parts.push(improved_structure.conclusion);
+    }
+    if (improved_structure.arguments && improved_structure.arguments.length > 0) {
+      improved_structure.arguments.forEach((arg) => {
+        if (arg.headline) parts.push(arg.headline);
+        if (arg.elaboration) parts.push(arg.elaboration);
+        if (arg.sub_points) {
+          arg.sub_points.forEach((sub) => {
+            if (sub.headline) parts.push(sub.headline);
+            if (sub.elaboration) parts.push(sub.elaboration);
+          });
+        }
+      });
+    }
+    return parts.join(' ');
+  }, [improved_transcription, improved_structure]);
+
+  // Pass the improved transcription as reference so backend knows this is a "practice" session
+  // and should focus on delivery scoring, not content restructuring
+  const handleRetakeComplete = (audioData: string, mimeType?: string) => {
+    startRetake(audioData, mimeType, aiImprovedText || undefined);
+    setShowRetakeModal(false);
+  };
   const handleOpenRetake = async () => {
     if (onRequireAuth) {
       const practiceStatus = await checkAnonymousPracticeLimit();
@@ -242,11 +370,6 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
                   <h2 className="text-base md:text-xl font-serif font-black text-stone-800 tracking-tight">
                     {labels.communicationLogic}
                   </h2>
-                  {detected_framework && (
-                      <span className="text-[10px] text-indigo-500 font-black uppercase tracking-[0.2em]">
-                          {labels.detected}: {detected_framework.replace(/_/g, ' ')}
-                      </span>
-                  )}
               </div>
 
               <div className="bg-stone-200/50 p-1 rounded-full border border-stone-100 inline-flex shadow-inner">
@@ -294,7 +417,7 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
                 </div>
 
                 {/* RESTORED MINIMAP */}
-                <div className={`transition-opacity duration-300 ${isMapVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+                <div className={`hidden md:block transition-opacity duration-300 ${isMapVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
                     <MiniMap position="top-right" className="bg-white border border-stone-100 rounded-xl shadow-lg m-4" />
                 </div>
 
@@ -341,7 +464,7 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
               <h3 className="text-lg font-bold text-stone-800 font-serif border-b border-stone-200 pb-2">{labels.languagePolish}</h3>
               <div className="grid gap-6">
                   {improvements.map((imp, idx) => (
-                      <div key={idx} className="bg-white p-6 rounded-[24px] border border-stone-200 shadow-sm flex flex-col md:flex-row gap-6 items-start">
+                      <div key={idx} className="bg-white/50 backdrop-blur-xl p-6 rounded-[24px] border border-white/50 shadow-[inset_0_1px_1px_rgba(255,255,255,0.6),inset_0_-1px_1px_rgba(0,0,0,0.02),0_1px_3px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.03)] ring-1 ring-black/[0.03] flex flex-col md:flex-row gap-6 items-start">
                           <div className="flex-1 space-y-2">
                               <span className="text-[10px] uppercase font-bold text-red-400 tracking-wider px-2 py-0.5 bg-red-50 rounded-full">{labels.original}</span>
                               <p className="text-stone-600 italic leading-relaxed text-sm">"{imp.original}"</p>
@@ -369,7 +492,7 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
 
               {/* Overall Rating & Intonation */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm">
+                  <div className="bg-white/50 backdrop-blur-xl p-4 rounded-xl border border-white/50 shadow-[inset_0_1px_1px_rgba(255,255,255,0.6),inset_0_-1px_1px_rgba(0,0,0,0.02),0_1px_3px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.03)] ring-1 ring-black/[0.03]">
                       <div className="flex items-center justify-between mb-2">
                           <span className="text-[10px] uppercase font-bold text-stone-400 tracking-wider">{labels.overallPronunciation}</span>
                           <span className={`px-2 py-1 rounded-full text-xs font-bold ${
@@ -384,7 +507,7 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
                       <p className="text-sm text-stone-600">{pronunciation.summary}</p>
                   </div>
 
-                  <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm">
+                  <div className="bg-white/50 backdrop-blur-xl p-4 rounded-xl border border-white/50 shadow-[inset_0_1px_1px_rgba(255,255,255,0.6),inset_0_-1px_1px_rgba(0,0,0,0.02),0_1px_3px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.03)] ring-1 ring-black/[0.03]">
                       <div className="flex items-center justify-between mb-2">
                           <span className="text-[10px] uppercase font-bold text-stone-400 tracking-wider">{labels.intonation}</span>
                           <span className={`px-2 py-1 rounded-full text-xs font-bold ${
@@ -400,11 +523,11 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
               </div>
 
               {/* Pronunciation Heatmap & Restored Legend */}
-              <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm">
+              <div className="bg-white/50 backdrop-blur-xl p-4 rounded-xl border border-white/50 shadow-[inset_0_1px_1px_rgba(255,255,255,0.6),inset_0_-1px_1px_rgba(0,0,0,0.02),0_1px_3px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.03)] ring-1 ring-black/[0.03]">
                   <span className="text-[10px] uppercase font-bold text-stone-400 tracking-wider block mb-3">{labels.wordPronunciation}</span>
                   <div className="flex flex-wrap gap-2">
                       {pronunciation.words.map((w, idx) => (
-                          <WordWithTooltip key={idx} word={w} />
+                          <WordWithTooltip key={idx} word={w} lang={targetLang} />
                       ))}
                   </div>
                   
@@ -438,17 +561,19 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
                         targetLang={targetLang}
                         nativeLang={nativeLang}
                         level={level}
+                        breakdown={getBreakdown(feedback, targetLang)}
+                        isDeliveryMode={detected_framework === 'PRACTICE_DELIVERY'}
                     />
                 </div>
-                  <div className="bg-green-50 p-4 rounded-xl border border-green-100">
+                  <div className="bg-green-50/60 backdrop-blur-xl p-4 rounded-xl border border-green-100/50 shadow-[inset_0_1px_1px_rgba(255,255,255,0.6),inset_0_-1px_1px_rgba(0,0,0,0.02),0_1px_3px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.03)] ring-1 ring-green-900/[0.03]">
                       <h4 className="text-green-800 font-semibold text-sm mb-2">{labels.strengths}</h4>
                       <ul className="list-disc list-inside text-sm text-green-900 space-y-1">{feedback?.strengths?.map((s, i) => <li key={i}>{s}</li>) || <li>No feedback available.</li>}</ul>
                   </div>
-                  <div className="bg-amber-50 p-4 rounded-xl border border-amber-100">
+                  <div className="bg-yellow-50/60 backdrop-blur-xl p-4 rounded-xl border border-yellow-100/50 shadow-[inset_0_1px_1px_rgba(255,255,255,0.6),inset_0_-1px_1px_rgba(0,0,0,0.02),0_1px_3px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.03)] ring-1 ring-yellow-900/[0.03]">
                       <h4 className="text-amber-800 font-semibold text-sm mb-2">{labels.areasForImprovement}</h4>
                       <ul className="list-disc list-inside text-sm text-amber-900 space-y-1">{feedback?.weaknesses?.map((w, i) => <li key={i}>{w}</li>) || <li>No feedback available.</li>}</ul>
                   </div>
-                  <div className="bg-stone-100 p-4 rounded-xl border border-stone-200">
+                  <div className="bg-white/50 backdrop-blur-xl p-4 rounded-xl border border-white/50 shadow-[inset_0_1px_1px_rgba(255,255,255,0.6),inset_0_-1px_1px_rgba(0,0,0,0.02),0_1px_3px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.03)] ring-1 ring-black/[0.03]">
                       <h4 className="text-stone-800 font-semibold text-sm mb-2">{labels.actionableTips}</h4>
                       <ul className="list-disc list-inside text-sm text-stone-700 space-y-1">{feedback?.suggestions?.map((s, i) => <li key={i}>{s}</li>) || <li>No feedback available.</li>}</ul>
                   </div>
@@ -457,17 +582,168 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
         
           </div>
           <div className="space-y-4">
-              <h3 className="text-lg font-bold text-stone-800 font-serif border-b border-stone-200 pb-2">{labels.transcription}</h3>
-              {audioUrl && (
-                  <div className="bg-stone-50 p-3 rounded-lg border border-stone-200 flex items-center gap-3 mb-2">
-                      <div className="flex-1">
-                          <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wide mb-0.5">{labels.yourRecording}</p>
-                          <audio controls src={audioUrl} className="w-full h-6" />
+              <div className="flex items-center justify-between border-b border-stone-200 pb-2">
+                  <h3 className="text-lg font-bold text-stone-800 font-serif">{labels.transcription}</h3>
+                  {aiImprovedText && (
+                      <div className="bg-stone-200/50 p-0.5 rounded-full border border-stone-100 inline-flex shadow-inner">
+                          <button
+                              onClick={() => setTranscriptViewMode('user')}
+                              className={`px-3 py-1 rounded-full text-[9px] md:text-[10px] font-bold uppercase tracking-wider transition-all ${transcriptViewMode === 'user' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-400 hover:text-stone-600'}`}
+                          >
+                              {labels.original}
+                          </button>
+                          <button
+                              onClick={() => setTranscriptViewMode('ai')}
+                              className={`px-3 py-1 rounded-full text-[9px] md:text-[10px] font-bold uppercase tracking-wider transition-all ${transcriptViewMode === 'ai' ? 'bg-white text-sky-700 shadow-sm' : 'text-stone-400 hover:text-stone-600'}`}
+                          >
+                              {labels.aiImproved}
+                          </button>
                       </div>
-                  </div>
+                  )}
+              </div>
+              {/* Audio Player - switches between user recording and AI TTS */}
+              {transcriptViewMode === 'user' ? (
+                  audioUrl && (
+                      <div className="bg-white/50 backdrop-blur-xl rounded-xl border border-white/50 shadow-[inset_0_1px_1px_rgba(255,255,255,0.6),inset_0_-1px_1px_rgba(0,0,0,0.02),0_1px_3px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.03)] ring-1 ring-black/[0.03] overflow-hidden mb-2">
+                          <div className="flex items-center px-3 py-2.5 gap-3">
+                              <button
+                                  onClick={toggleUserAudio}
+                                  className={`w-9 h-9 flex items-center justify-center rounded-full transition-all ${userAudioPlaying ? 'bg-stone-500 hover:bg-stone-600' : 'bg-stone-100 hover:bg-stone-200'}`}
+                              >
+                                  {userAudioPlaying ? (
+                                      <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor">
+                                          <rect x="6" y="4" width="4" height="16" rx="1" />
+                                          <rect x="14" y="4" width="4" height="16" rx="1" />
+                                      </svg>
+                                  ) : (
+                                      <svg className="w-4 h-4 text-stone-600 ml-0.5" viewBox="0 0 24 24" fill="currentColor">
+                                          <path d="M8 5v14l11-7z" />
+                                      </svg>
+                                  )}
+                              </button>
+                              <div className="flex-1">
+                                  <div className="flex items-center justify-between mb-1.5">
+                                      <div className="flex items-center gap-2">
+                                          <span className="text-xs font-semibold text-stone-700">{labels.yourRecording}</span>
+                                          {userAudioPlaying && (
+                                              <div className="flex items-center gap-0.5">
+                                                  {[3,5,4,6,3,5].map((h, i) => (
+                                                      <div key={i} className="w-0.5 bg-stone-400 rounded-full animate-pulse" style={{ height: `${h * 2}px`, animationDelay: `${i * 0.08}s` }} />
+                                                  ))}
+                                              </div>
+                                          )}
+                                      </div>
+                                      <span className="text-[10px] text-stone-400 font-medium tabular-nums">
+                                          {formatUserTime(userCurrentTime)} / {userDuration > 0 ? formatUserTime(userDuration) : '--:--'}
+                                      </span>
+                                  </div>
+                                  {/* Clickable + touch-draggable progress bar */}
+                                  <div
+                                      className="h-2 bg-stone-100 rounded-full overflow-hidden cursor-pointer group touch-none"
+                                      onClick={(e) => {
+                                          const rect = e.currentTarget.getBoundingClientRect();
+                                          const percent = ((e.clientX - rect.left) / rect.width) * 100;
+                                          seekUserAudio(Math.max(0, Math.min(100, percent)));
+                                      }}
+                                      onTouchStart={(e) => {
+                                          const rect = e.currentTarget.getBoundingClientRect();
+                                          const percent = ((e.touches[0].clientX - rect.left) / rect.width) * 100;
+                                          seekUserAudio(Math.max(0, Math.min(100, percent)));
+                                      }}
+                                      onTouchMove={(e) => {
+                                          const rect = e.currentTarget.getBoundingClientRect();
+                                          const percent = ((e.touches[0].clientX - rect.left) / rect.width) * 100;
+                                          seekUserAudio(Math.max(0, Math.min(100, percent)));
+                                      }}
+                                  >
+                                      <div
+                                          className="h-full bg-gradient-to-r from-stone-400 to-stone-500 rounded-full transition-all duration-100 relative"
+                                          style={{ width: `${userProgress}%` }}
+                                      >
+                                          {/* Playhead dot */}
+                                          <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-md border-2 border-stone-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                      </div>
+                                  </div>
+                              </div>
+                          </div>
+                      </div>
+                  )
+              ) : (
+                  aiImprovedText && (
+                      <div className="bg-white/50 backdrop-blur-xl rounded-xl border border-white/50 shadow-[inset_0_1px_1px_rgba(255,255,255,0.6),inset_0_-1px_1px_rgba(0,0,0,0.02),0_1px_3px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.03)] ring-1 ring-black/[0.03] overflow-hidden mb-2">
+                          <div className="flex items-center px-3 py-2.5 gap-3">
+                              <button
+                                  onClick={() => {
+                                      if (isSpeaking || isTTSPaused) {
+                                          toggleTTS();
+                                      } else {
+                                          speak(aiImprovedText);
+                                      }
+                                  }}
+                                  className={`w-9 h-9 flex items-center justify-center rounded-full transition-all ${isSpeaking ? 'bg-sky-500 hover:bg-sky-600' : 'bg-sky-100 hover:bg-sky-200'}`}
+                              >
+                                  {isSpeaking ? (
+                                      <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor">
+                                          <rect x="6" y="4" width="4" height="16" rx="1" />
+                                          <rect x="14" y="4" width="4" height="16" rx="1" />
+                                      </svg>
+                                  ) : (
+                                      <svg className="w-4 h-4 text-sky-600 ml-0.5" viewBox="0 0 24 24" fill="currentColor">
+                                          <path d="M8 5v14l11-7z" />
+                                      </svg>
+                                  )}
+                              </button>
+                              <div className="flex-1">
+                                  <div className="flex items-center justify-between mb-1.5">
+                                      <div className="flex items-center gap-2">
+                                          <span className="text-xs font-semibold text-sky-700">{labels.aiVoice}</span>
+                                          {isSpeaking && (
+                                              <div className="flex items-center gap-0.5">
+                                                  {[3,5,4,6,3,5].map((h, i) => (
+                                                      <div key={i} className="w-0.5 bg-sky-400 rounded-full animate-pulse" style={{ height: `${h * 2}px`, animationDelay: `${i * 0.08}s` }} />
+                                                  ))}
+                                              </div>
+                                          )}
+                                      </div>
+                                      <span className="text-[10px] text-sky-400 font-medium tabular-nums">
+                                          {formatTTSTime(ttsCurrentTime)} / {ttsDuration > 0 ? formatTTSTime(ttsDuration) : '--:--'}
+                                      </span>
+                                  </div>
+                                  {/* Clickable + touch-draggable progress bar */}
+                                  <div
+                                      className="h-2 bg-sky-100 rounded-full overflow-hidden cursor-pointer group touch-none"
+                                      onClick={(e) => {
+                                          const rect = e.currentTarget.getBoundingClientRect();
+                                          const percent = ((e.clientX - rect.left) / rect.width) * 100;
+                                          seekTTS(Math.max(0, Math.min(100, percent)));
+                                      }}
+                                      onTouchStart={(e) => {
+                                          const rect = e.currentTarget.getBoundingClientRect();
+                                          const percent = ((e.touches[0].clientX - rect.left) / rect.width) * 100;
+                                          seekTTS(Math.max(0, Math.min(100, percent)));
+                                      }}
+                                      onTouchMove={(e) => {
+                                          const rect = e.currentTarget.getBoundingClientRect();
+                                          const percent = ((e.touches[0].clientX - rect.left) / rect.width) * 100;
+                                          seekTTS(Math.max(0, Math.min(100, percent)));
+                                      }}
+                                  >
+                                      <div
+                                          className="h-full bg-gradient-to-r from-sky-400 to-sky-500 rounded-full transition-all duration-100 relative"
+                                          style={{ width: `${ttsProgress}%` }}
+                                      >
+                                          {/* Playhead dot */}
+                                          <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-md border-2 border-sky-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                      </div>
+                                  </div>
+                              </div>
+                          </div>
+                      </div>
+                  )
               )}
-              <p className="text-stone-600 leading-relaxed text-sm bg-stone-50 p-4 rounded-lg min-h-[150px]">{transcription}</p>
-
+              <div className={`leading-relaxed text-sm p-4 rounded-xl min-h-[150px] bg-white/50 backdrop-blur-xl border border-white/50 shadow-[inset_0_1px_1px_rgba(255,255,255,0.6),inset_0_-1px_1px_rgba(0,0,0,0.02),0_1px_3px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.03)] ring-1 ring-black/[0.03] ${transcriptViewMode === 'ai' ? 'text-sky-900' : 'text-stone-600'}`}>
+                  {transcriptViewMode === 'ai' && aiImprovedText ? aiImprovedText : transcription}
+              </div>
           </div>
 
         
@@ -477,10 +753,11 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
               
 
       {showRetry && !showRetakeModal && (
-          <div className="flex justify-center pt-8">
+          <div className="flex flex-col items-center pt-8 gap-4">
               <button onClick={handleOpenRetake} className="bg-stone-900 text-white w-20 h-20 md:w-24 md:h-24 rounded-full flex items-center justify-center hover:bg-black transition-all shadow-lg hover:shadow-xl hover:-translate-y-1 group">
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:rotate-180 transition-transform duration-500"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></svg>
               </button>
+              <p className="text-stone-500 text-sm font-medium">{labels.retryPrompt}</p>
           </div>
       )}
 

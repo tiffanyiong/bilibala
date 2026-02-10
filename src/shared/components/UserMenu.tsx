@@ -8,9 +8,10 @@ interface UserMenuProps {
   onOpenSubscription?: () => void;
   onOpenProfile?: () => void;
   onOpenSettings?: () => void;
+  onOpenReports?: () => void;
 }
 
-const UserMenu: React.FC<UserMenuProps> = ({ onOpenAuthModal, onOpenVideoLibrary, onOpenSubscription, onOpenProfile, onOpenSettings }) => {
+const UserMenu: React.FC<UserMenuProps> = ({ onOpenAuthModal, onOpenVideoLibrary, onOpenSubscription, onOpenProfile, onOpenSettings, onOpenReports }) => {
   const { user, userProfile, loading, signOut } = useAuth();
   const { tier } = useSubscription();
   const [isOpen, setIsOpen] = useState(false);
@@ -49,6 +50,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ onOpenAuthModal, onOpenVideoLibrary
   const menuItems = [
     { label: 'Profile', icon: ProfileIcon, onClick: () => onOpenProfile?.() },
     { label: 'Video Library', icon: VideoIcon, onClick: () => onOpenVideoLibrary?.() },
+    { label: 'Practice Reports', icon: ReportsIcon, onClick: () => onOpenReports?.() },
     // { label: 'Vocabulary', icon: VocabularyIcon, onClick: () => console.log('Vocabulary clicked') }, // Hidden for now
     { label: 'Subscription Plan', icon: SubscriptionIcon, onClick: () => onOpenSubscription?.() },
     { label: 'Settings', icon: SettingsIcon, onClick: () => onOpenSettings?.() },
@@ -177,6 +179,13 @@ const VideoIcon = () => (
 //     <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
 //   </svg>
 // );
+
+const ReportsIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 3v18h18" />
+    <path d="M7 16l4-8 4 4 4-6" />
+  </svg>
+);
 
 const SubscriptionIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

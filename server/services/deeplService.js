@@ -25,7 +25,7 @@ const DEEPL_LANG_CODES = {
 };
 
 // Max characters allowed per translation request
-const MAX_CHARS = 200;
+const MAX_CHARS = 300;
 
 /**
  * Get DeepL language code from app language name

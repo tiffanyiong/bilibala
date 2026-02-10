@@ -136,6 +136,7 @@ export interface DbPracticeSession {
   transcription: string | null;
   score: number | null;
   feedback_data: object | null;
+  is_favorited: boolean;
   created_at: string;
 }
 
@@ -206,6 +207,13 @@ export interface VideoHistoryItem {
   reportCount: number;
 }
 
+// For centralized reports dashboard (practice session + video metadata)
+export interface DashboardPracticeSession extends DbPracticeSession {
+  videoTitle: string;
+  videoThumbnailUrl: string | null;
+  youtubeId: string;
+}
+
 // For Explore section on landing page (public videos, no user-specific fields)
 export interface ExploreVideo {
   // From cached_analyses
@@ -242,6 +250,7 @@ export interface DbUserSubscription {
   subscription_status: SubscriptionStatus;
   current_period_start: string | null;
   current_period_end: string | null;
+  billing_interval: 'month' | 'year';
   credits_balance: number;
   // Credit pack purchases (never expire, don't reset monthly)
   ai_tutor_credit_minutes: number;

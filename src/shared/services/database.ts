@@ -15,6 +15,7 @@ import {
   InsertTopicQuestion,
   InsertPracticeSession,
   VideoHistoryItem,
+  DashboardPracticeSession,
 } from '../types/database';
 
 // ============================================
@@ -611,16 +612,15 @@ export async function getQuestionsForTopic(
       use_count,
       cached_analyses (
         id,
-        global_videos ( title )
+        global_videos ( title, youtube_id )
       )
     `)
     .eq('topic_id', topicId)
     .eq('is_public', true);
 
-  // Filter by difficulty level if provided
-  // Show questions matching user's level OR questions with no level set (legacy data)
+  // Filter by difficulty level if provided (strict matching only)
   if (userLevel) {
-    query = query.or(`difficulty_level.eq.${userLevel.toLowerCase()},difficulty_level.is.null`);
+    query = query.eq('difficulty_level', userLevel.toLowerCase());
   }
 
   const { data, error } = await query.order('use_count', { ascending: false });
@@ -638,6 +638,7 @@ export async function getQuestionsForTopic(
     useCount: q.use_count,
     videoTitle: q.cached_analyses?.global_videos?.title || null,
     analysisId: q.analysis_id || null,
+    youtubeId: q.cached_analyses?.global_videos?.youtube_id || null,
   }));
 }
 
@@ -816,6 +817,31 @@ export async function getPracticeTopicsForAnalysis(
 }
 
 /**
+ * Get topic IDs that have at least one question at a specific difficulty level.
+ * Used to filter out topics with no questions for the user's selected level.
+ */
+export async function getTopicIdsWithQuestionsAtLevel(
+  topicIds: string[],
+  level: string
+): Promise<Set<string>> {
+  if (topicIds.length === 0) return new Set();
+
+  const { data, error } = await supabase
+    .from('topic_questions')
+    .select('topic_id')
+    .in('topic_id', topicIds)
+    .eq('difficulty_level', level.toLowerCase())
+    .eq('is_public', true);
+
+  if (error) {
+    console.error('Error fetching topics with questions:', error);
+    return new Set(topicIds); // On error, don't filter out any topics
+  }
+
+  return new Set((data || []).map((q: any) => q.topic_id));
+}
+
+/**
  * Update a video's category
  */
 export async function updateVideoCategory(
@@ -839,30 +865,42 @@ export async function updateVideoCategory(
 /**
  * Upload practice audio to Supabase Storage
  * Returns the public URL of the uploaded audio
+ * @param mimeType - The actual MIME type of the audio (e.g., 'audio/webm', 'audio/mp4')
  */
 export async function uploadPracticeAudio(
   userId: string,
-  audioBase64: string
+  audioBase64: string,
+  mimeType: string = 'audio/webm'
 ): Promise<string | null> {
   try {
-    // Convert base64 to blob
+    // Convert base64 to blob with the correct MIME type
     const byteCharacters = atob(audioBase64);
     const byteNumbers = new Array(byteCharacters.length);
     for (let i = 0; i < byteCharacters.length; i++) {
       byteNumbers[i] = byteCharacters.charCodeAt(i);
     }
     const byteArray = new Uint8Array(byteNumbers);
-    const blob = new Blob([byteArray], { type: 'audio/mp3' });
+    const blob = new Blob([byteArray], { type: mimeType });
 
-    // Generate unique filename
+    // Determine file extension based on MIME type
+    const extensionMap: Record<string, string> = {
+      'audio/webm': 'webm',
+      'audio/mp4': 'm4a',
+      'audio/aac': 'aac',
+      'audio/mpeg': 'mp3',
+      'audio/mp3': 'mp3',
+    };
+    const extension = extensionMap[mimeType] || 'webm';
+
+    // Generate unique filename with correct extension
     const timestamp = Date.now();
-    const filename = `${userId}/${timestamp}.mp3`;
+    const filename = `${userId}/${timestamp}.${extension}`;
 
-    // Upload to Supabase Storage
+    // Upload to Supabase Storage with correct content type
     const { data, error } = await supabase.storage
       .from('practice-recordings')
       .upload(filename, blob, {
-        contentType: 'audio/mp3',
+        contentType: mimeType,
         upsert: false,
       });
 
@@ -1310,5 +1348,96 @@ export async function removeFromLibrary(
   }
 
   return true;
+}
+
+/**
+ * Delete a practice session by ID (user must own it via RLS)
+ */
+export async function deletePracticeSession(
+  userId: string,
+  sessionId: string
+): Promise<boolean> {
+  const { error } = await supabase
+    .from('practice_sessions')
+    .delete()
+    .eq('id', sessionId)
+    .eq('user_id', userId);
+
+  if (error) {
+    console.error('Error deleting practice session:', error);
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Toggle the is_favorited flag on a practice session
+ */
+export async function togglePracticeSessionFavorite(
+  userId: string,
+  sessionId: string,
+  isFavorited: boolean
+): Promise<boolean> {
+  const { error } = await supabase
+    .from('practice_sessions')
+    .update({ is_favorited: isFavorited })
+    .eq('id', sessionId)
+    .eq('user_id', userId);
+
+  if (error) {
+    console.error('Error toggling favorite:', error);
+    return false;
+  }
+
+  return true;
+}
+
+// ============================================
+// REPORTS DASHBOARD
+// ============================================
+
+/**
+ * Fetch ALL practice sessions for a user across all videos,
+ * joined with video metadata from cached_analyses + global_videos.
+ * Used by the centralized reports dashboard.
+ */
+export async function getAllPracticeSessionsWithVideoMetadata(
+  userId: string
+): Promise<DashboardPracticeSession[]> {
+  const { data, error } = await supabase
+    .from('practice_sessions')
+    .select(`
+      *,
+      cached_analyses (
+        id,
+        target_lang,
+        level,
+        global_videos (
+          youtube_id,
+          title,
+          thumbnail_url
+        )
+      )
+    `)
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching all practice sessions:', error);
+    return [];
+  }
+
+  return (data || [])
+    .filter((s: any) => s.cached_analyses?.global_videos)
+    .map((s: any) => {
+      const { cached_analyses, ...session } = s;
+      return {
+        ...session,
+        videoTitle: cached_analyses.global_videos.title || 'Untitled Video',
+        videoThumbnailUrl: cached_analyses.global_videos.thumbnail_url,
+        youtubeId: cached_analyses.global_videos.youtube_id,
+      } as DashboardPracticeSession;
+    });
 }
 

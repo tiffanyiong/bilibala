@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { PracticeTopic, TopicQuestion } from '../../../shared/types';
 import { UI_TRANSLATIONS } from '../../../shared/constants';
 
@@ -23,10 +23,56 @@ const TopicSelector: React.FC<TopicSelectorProps> = ({
   nativeLang = 'English',
   targetLang = 'English'
 }) => {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
   // Determine which language to use for UI based on level
   const isEasy = level.toLowerCase() === 'easy';
   const uiLang = isEasy ? nativeLang : targetLang;
   const uiText = UI_TRANSLATIONS[uiLang] || UI_TRANSLATIONS['English'];
+
+  // Check scroll position to show/hide arrows (desktop only)
+  const checkScrollPosition = () => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const { scrollLeft, scrollWidth, clientWidth } = container;
+    setCanScrollLeft(scrollLeft > 0);
+    setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 1);
+  };
+
+  useEffect(() => {
+    checkScrollPosition();
+    const container = scrollContainerRef.current;
+    if (container) {
+      container.addEventListener('scroll', checkScrollPosition);
+      window.addEventListener('resize', checkScrollPosition);
+      return () => {
+        container.removeEventListener('scroll', checkScrollPosition);
+        window.removeEventListener('resize', checkScrollPosition);
+      };
+    }
+  }, [topics]);
+
+  const scroll = (direction: 'left' | 'right') => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    // Calculate scroll amount based on 3 topic buttons
+    const buttons = container.querySelectorAll('button');
+    let scrollAmount = 400; // fallback
+    if (buttons.length >= 3) {
+      const gap = 8;
+      scrollAmount = Array.from(buttons).slice(0, 3).reduce((sum, btn) => sum + btn.offsetWidth + gap, 0);
+    }
+
+    container.scrollBy({
+      left: direction === 'left' ? -scrollAmount : scrollAmount,
+      behavior: 'smooth'
+    });
+  };
+
   // Render if loading OR if there are topics
   if (!isLoading && (!topics || topics.length === 0)) return null;
 
@@ -41,7 +87,6 @@ const TopicSelector: React.FC<TopicSelectorProps> = ({
       return;
     }
 
-    // Use the topic's default question
     const defaultQuestion: TopicQuestion = {
       questionId: selectedTopic.questionId || '',
       question: selectedTopic.question,
@@ -53,8 +98,28 @@ const TopicSelector: React.FC<TopicSelectorProps> = ({
     onStartPractice(selectedTopic, defaultQuestion);
   };
 
+  // Topic button component to avoid duplication
+  const TopicButton = ({ item, index }: { item: PracticeTopic; index: number }) => {
+    const isSelected = selectedTopics.includes(item.topic);
+    return (
+      <button
+        key={index}
+        onClick={() => onTopicToggle(item.topic)}
+        className={`
+          px-3 py-1.5 rounded-full text-xs font-medium transition-all border text-left
+          ${isSelected
+            ? 'bg-stone-800 text-white border-stone-800 shadow-sm'
+            : 'bg-white/50 text-stone-600 border-white/60 backdrop-blur-sm ring-1 ring-black/[0.04] hover:bg-white/70 hover:shadow-sm'
+          }
+        `}
+      >
+        {item.topic}
+      </button>
+    );
+  };
+
   return (
-    <div className="bg-white rounded-xl border border-stone-200 p-5 shadow-sm">
+    <div className="bg-white/50 backdrop-blur-2xl rounded-2xl border border-white/60 p-5 shadow-[0_4px_24px_rgba(0,0,0,0.06)] ring-1 ring-black/[0.03]">
       <div className="mb-4">
         <h3 className="text-sm font-semibold text-stone-800 uppercase tracking-wide mb-1">
             {uiText.practiceTopics}
@@ -65,32 +130,83 @@ const TopicSelector: React.FC<TopicSelectorProps> = ({
       </div>
 
       {isLoading ? (
-        <div className="flex flex-wrap gap-2 animate-pulse mb-6">
-            {[1, 2, 3].map(i => (
-                <div key={i} className="h-8 bg-gray-100 rounded-full border border-gray-200" style={{ width: 80 + Math.random() * 60 }}></div>
+        <div className="flex flex-wrap md:flex-nowrap gap-2 animate-pulse mb-6 overflow-hidden">
+            {[1, 2, 3, 4].map(i => (
+                <div key={i} className="h-8 bg-gray-100 rounded-full border border-gray-200 shrink-0" style={{ width: 80 + Math.random() * 60 }}></div>
             ))}
         </div>
       ) : (
-        <div className="flex flex-wrap gap-2 mb-6">
-            {topics.map((item, index) => {
-            const isSelected = selectedTopics.includes(item.topic);
-            return (
-                <button
-                key={index}
-                onClick={() => onTopicToggle(item.topic)}
-                className={`
-                    px-3 py-1.5 rounded-full text-xs font-medium transition-all border text-left
-                    ${isSelected
-                    ? 'bg-stone-800 text-white border-stone-800 shadow-sm'
-                    : 'bg-stone-50 text-stone-600 border-stone-200 hover:bg-stone-100 hover:border-stone-300'
-                    }
-                `}
-                >
-                {item.topic}
-                </button>
-            );
-            })}
-        </div>
+        <>
+          {/* Mobile: Wrapped layout - show all topics */}
+          <div className="flex flex-wrap gap-2 mb-6 md:hidden">
+            {topics.map((item, index) => (
+              <TopicButton key={index} item={item} index={index} />
+            ))}
+          </div>
+
+          {/* Desktop: Horizontal carousel with arrows */}
+          <div className="relative mb-6 hidden md:block">
+            {/* Left Arrow */}
+            {canScrollLeft && (
+              <button
+                onClick={() => scroll('left')}
+                className="flex absolute left-0 top-1/2 -translate-y-1/2 -translate-x-2 z-10 w-8 h-8 bg-white/60 backdrop-blur-sm border border-white/60 rounded-full items-center justify-center shadow-md ring-1 ring-black/[0.04] hover:bg-white/80 transition-colors"
+                aria-label="Scroll left"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M15 18l-6-6 6-6" />
+                </svg>
+              </button>
+            )}
+
+            {/* Scrollable Topics Container */}
+            <div
+              ref={scrollContainerRef}
+              className="flex gap-2 overflow-x-auto scrollbar-hide scroll-smooth"
+              style={{
+                scrollbarWidth: 'none',
+                msOverflowStyle: 'none',
+              }}
+            >
+              <style>{`
+                .scrollbar-hide::-webkit-scrollbar {
+                  display: none;
+                }
+              `}</style>
+              {topics.map((item, index) => {
+                const isSelected = selectedTopics.includes(item.topic);
+                return (
+                  <button
+                    key={index}
+                    onClick={() => onTopicToggle(item.topic)}
+                    className={`
+                      px-3 py-1.5 rounded-full text-xs font-medium transition-all border whitespace-nowrap shrink-0
+                      ${isSelected
+                        ? 'bg-stone-800 text-white border-stone-800 shadow-sm'
+                        : 'bg-white/50 text-stone-600 border-white/60 backdrop-blur-sm ring-1 ring-black/[0.04] hover:bg-white/70 hover:shadow-sm'
+                      }
+                    `}
+                  >
+                    {item.topic}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Right Arrow */}
+            {canScrollRight && (
+              <button
+                onClick={() => scroll('right')}
+                className="flex absolute right-0 top-1/2 -translate-y-1/2 translate-x-2 z-10 w-8 h-8 bg-white/60 backdrop-blur-sm border border-white/60 rounded-full items-center justify-center shadow-md ring-1 ring-black/[0.04] hover:bg-white/80 transition-colors"
+                aria-label="Scroll right"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 18l6-6-6-6" />
+                </svg>
+              </button>
+            )}
+          </div>
+        </>
       )}
 
       {/* Start Speaking Practice Button */}

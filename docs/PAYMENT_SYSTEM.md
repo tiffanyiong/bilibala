@@ -146,13 +146,19 @@ practice_session_credits: 0
 
 ## Smart Sync Logic
 
-The app includes a "smart sync" feature to handle missed webhooks. It only triggers when:
+The app includes a "smart sync" feature to handle missed webhooks or incomplete data. It triggers when:
 
 ```javascript
-const shouldSync =
-  sub?.stripe_subscription_id &&      // Has a subscription ID (not just customer ID)
-  sub?.subscription_status === 'active' && // Status shows active
-  sub?.tier === 'free';               // But tier is free (mismatch!)
+const hasMissingData = sub?.stripe_subscription_id &&
+  sub?.subscription_status === 'active' &&
+  sub?.tier === 'pro' &&
+  (!sub.current_period_start || !sub.current_period_end || !sub.billing_interval);
+
+const hasTierMismatch = sub?.stripe_subscription_id &&
+  sub?.subscription_status === 'active' &&
+  sub?.tier === 'free';
+
+const shouldSync = (hasTierMismatch || hasMissingData) && session?.access_token;
 ```
 
 **Why these conditions?**
@@ -166,10 +172,11 @@ const shouldSync =
 **Scenarios that WON'T trigger sync:**
 - Free user who bought Starter Pack (no `subscription_id`)
 - Canceled Pro user (status is `canceled`, not `active`)
-- Active Pro user (tier is already `pro`)
+- Active Pro user with complete data (tier is `pro`, period dates populated)
 
 **Scenarios that WILL trigger sync:**
-- User paid for Pro, webhook failed, database shows free but has active subscription
+- User paid for Pro, webhook failed, database shows free but has active subscription (tier mismatch)
+- User is Pro but `current_period_start`, `current_period_end`, or `billing_interval` are NULL (missing data)
 
 ---
 
@@ -198,6 +205,22 @@ const shouldSync =
 
 ## Webhook Events
 
+### Stripe API Version Note (stripe ^20.x)
+
+Stripe SDK v20+ uses API version `2025-03-31` which **moved `current_period_start` and `current_period_end` from the subscription object to subscription items**. All webhook handlers and the sync endpoint read period dates from `items.data[0]` with a fallback:
+
+```javascript
+const subItem = subscription.items?.data?.[0];
+const rawStart = subItem?.current_period_start ?? subscription.current_period_start;
+const rawEnd = subItem?.current_period_end ?? subscription.current_period_end;
+```
+
+See: https://docs.stripe.com/changelog/basil/2025-03-31/deprecate-subscription-current-period-start-and-end
+
+### Race Condition: `customer.subscription.created` vs `checkout.session.completed`
+
+Stripe may fire `customer.subscription.created` **before** `checkout.session.completed`. Since the `stripe_customer_id` is saved during checkout, the subscription handler may not find the user by customer ID. The handler includes a fallback that looks up the user via Stripe customer metadata (`supabase_user_id`).
+
 ### `checkout.session.completed`
 
 **For Subscriptions (mode: 'subscription'):**
@@ -207,7 +230,8 @@ const shouldSync =
   subscription: 'sub_xxx',
   metadata: { supabase_user_id: 'uuid' }
 }
-// → Update tier to 'pro', save subscription_id
+// → Retrieve subscription from Stripe, update tier to 'pro',
+//   save subscription_id, period dates, billing_interval
 ```
 
 **For Credit Packs (mode: 'payment'):**
@@ -222,13 +246,15 @@ const shouldSync =
 // → Add credits, don't change tier
 ```
 
-### `customer.subscription.updated`
-- Fires when subscription status changes
-- Updates `subscription_status`, `current_period_end`
+### `customer.subscription.created` / `customer.subscription.updated`
+- Fires when subscription is created or status changes
+- Looks up user by `stripe_customer_id`, falls back to Stripe customer metadata
+- Updates `tier`, `subscription_status`, `billing_interval`, `current_period_start`, `current_period_end`
 
 ### `customer.subscription.deleted`
-- Fires when subscription is fully canceled
+- Fires when subscription is fully canceled (or immediately canceled for refunds)
 - Updates tier to 'free', status to 'canceled'
+- Clears `current_period_end` and `billing_interval` so the profile doesn't show a misleading "Access until" date
 
 ---
 
@@ -271,6 +297,44 @@ STRIPE_TOPUP_PRICE_ID=price_...        # $3
 - [ ] Canceled user keeps access until period end
 - [ ] After period end, user becomes free tier
 - [ ] Purchased credits remain after cancellation
+
+### 48-Hour Refund Tests (Annual Only)
+- [ ] Refunded user is immediately converted to free tier
+- [ ] Profile shows "Free" with no "Access until" date
+- [ ] Purchased credits (if any) remain after refund
+
+---
+
+## 48-Hour Money-Back Guarantee (Annual Plans Only)
+
+First-time Annual Plan subscribers can request a full refund within **48 hours** of purchase by emailing support@bilibala.app. This does not apply to Monthly subscriptions or renewal charges.
+
+### How to Process a Refund in Stripe
+
+1. **Issue the refund:**
+   - Go to [Stripe Dashboard → Payments](https://dashboard.stripe.com/payments)
+   - Find the user's payment and click **Refund**
+   - Select **Full refund**
+
+2. **Cancel the subscription immediately:**
+   - Go to [Stripe Dashboard → Subscriptions](https://dashboard.stripe.com/subscriptions)
+   - Find the user's subscription and click **Cancel subscription**
+   - Choose **"Immediately"** (NOT "At end of period")
+
+3. **What happens automatically:**
+   - Stripe fires a `customer.subscription.deleted` webhook
+   - The webhook handler sets `tier = 'free'`, `subscription_status = 'canceled'`
+   - `current_period_end` and `billing_interval` are cleared
+   - The user immediately loses Pro access and sees "Free" on their profile
+
+> **Important:** You must cancel **immediately** — not "at end of period". If you only cancel at period end, the user keeps Pro access for the rest of the year despite the refund.
+
+### Two Types of Annual Cancellation
+
+| Scenario | Stripe action | User sees | Access |
+|----------|--------------|-----------|--------|
+| **Normal cancel** (no refund) | Cancel at end of period | Amber "Canceled" badge + "Access until [date]" | Pro until period end |
+| **48-hour refund** | Refund + Cancel immediately | "Free" (no date shown) | Free immediately |
 
 ### Webhook Tests
 - [ ] Run `stripe listen --forward-to localhost:3001/api/subscriptions/webhook`

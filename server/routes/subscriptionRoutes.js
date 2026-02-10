@@ -329,30 +329,55 @@ router.post('/subscriptions/sync', async (req, res) => {
     const subscription = subscriptions.data[0];
     const isActive = subscription.status === 'active' || subscription.status === 'trialing';
 
+    // Stripe API 2025-03-31+: period dates moved from subscription to subscription items
+    const item = subscription.items?.data?.[0];
+    const rawStart = item?.current_period_start ?? subscription.current_period_start;
+    const rawEnd = item?.current_period_end ?? subscription.current_period_end;
+
+    console.log('[Sync] Stripe subscription raw data:', {
+      userId: user.id,
+      subId: subscription.id,
+      status: subscription.status,
+      rawStart,
+      rawEnd,
+      interval: item?.plan?.interval,
+    });
+
     // Safely convert timestamps (handle null/undefined)
-    const periodStart = subscription.current_period_start
-      ? new Date(subscription.current_period_start * 1000).toISOString()
+    const periodStart = rawStart
+      ? new Date(rawStart * 1000).toISOString()
       : null;
-    const periodEnd = subscription.current_period_end
-      ? new Date(subscription.current_period_end * 1000).toISOString()
+    const periodEnd = rawEnd
+      ? new Date(rawEnd * 1000).toISOString()
       : null;
 
-    // Update database with current Stripe status
+    // Update database with current Stripe status — always include period dates
+    const billingInterval = subscription.items?.data?.[0]?.plan?.interval || 'month';
     const updateData = {
       tier: isActive ? 'pro' : 'free',
       stripe_subscription_id: subscription.id,
       subscription_status: subscription.status,
+      billing_interval: billingInterval,
+      current_period_start: periodStart,
+      current_period_end: periodEnd,
       updated_at: new Date().toISOString(),
     };
-    if (periodStart) updateData.current_period_start = periodStart;
-    if (periodEnd) updateData.current_period_end = periodEnd;
 
-    await supabaseAdmin
+    const { data: updateResult, error: updateError } = await supabaseAdmin
       .from('user_subscriptions')
       .update(updateData)
-      .eq('user_id', user.id);
+      .eq('user_id', user.id)
+      .select('current_period_start, current_period_end');
 
-    console.log('[Sync] Updated subscription for user:', user.id, { tier: isActive ? 'pro' : 'free', status: subscription.status });
+    console.log('[Sync] Updated subscription for user:', user.id, {
+      tier: isActive ? 'pro' : 'free',
+      status: subscription.status,
+      periodStart,
+      periodEnd,
+      updateError,
+      rowsUpdated: updateResult?.length,
+      resultPeriodEnd: updateResult?.[0]?.current_period_end,
+    });
 
     res.json({
       synced: true,
@@ -468,28 +493,67 @@ router.post('/subscriptions/webhook', async (req, res) => {
         if (userId && subscriptionId) {
           try {
             const stripeSubscription = await stripe.subscriptions.retrieve(subscriptionId);
-            const { error: upsertError } = await supabaseAdmin
+            // Stripe API 2025-03-31+: period dates moved to subscription items
+            const subItem = stripeSubscription.items?.data?.[0];
+            const billingInterval = subItem?.plan?.interval || 'month';
+            const rawStart = subItem?.current_period_start ?? stripeSubscription.current_period_start;
+            const rawEnd = subItem?.current_period_end ?? stripeSubscription.current_period_end;
+            const periodStart = rawStart ? new Date(rawStart * 1000).toISOString() : null;
+            const periodEnd = rawEnd ? new Date(rawEnd * 1000).toISOString() : null;
+
+            console.log('[Webhook] checkout subscription data:', {
+              userId,
+              subscriptionId,
+              billingInterval,
+              periodStart,
+              periodEnd,
+              rawStart,
+              rawEnd,
+            });
+
+            // Use update first (row should already exist from signup trigger)
+            const { data: updateData, error: updateError } = await supabaseAdmin
               .from('user_subscriptions')
-              .upsert({
-                user_id: userId,
+              .update({
                 tier: 'pro',
                 stripe_customer_id: customerId,
                 stripe_subscription_id: subscriptionId,
                 subscription_status: 'active',
-                current_period_start: new Date(stripeSubscription.current_period_start * 1000).toISOString(),
-                current_period_end: new Date(stripeSubscription.current_period_end * 1000).toISOString(),
+                billing_interval: billingInterval,
+                current_period_start: periodStart,
+                current_period_end: periodEnd,
                 updated_at: new Date().toISOString(),
-              }, { onConflict: 'user_id' });
+              })
+              .eq('user_id', userId)
+              .select();
 
-            if (upsertError) {
-              console.error('[Webhook] Supabase upsert error:', upsertError);
+            if (updateError) {
+              console.error('[Webhook] Update failed, trying upsert:', updateError);
+              const { error: upsertError } = await supabaseAdmin
+                .from('user_subscriptions')
+                .upsert({
+                  user_id: userId,
+                  tier: 'pro',
+                  stripe_customer_id: customerId,
+                  stripe_subscription_id: subscriptionId,
+                  subscription_status: 'active',
+                  billing_interval: billingInterval,
+                  current_period_start: periodStart,
+                  current_period_end: periodEnd,
+                  updated_at: new Date().toISOString(),
+                }, { onConflict: 'user_id' });
+
+              if (upsertError) {
+                console.error('[Webhook] Upsert also failed:', upsertError);
+              }
             } else {
-              console.log('[Webhook] Successfully upgraded user to pro:', userId);
+              console.log('[Webhook] Successfully upgraded user to pro:', userId, 'rows affected:', updateData?.length);
             }
           } catch (err) {
-            // Non-fatal: customer.subscription.created handles the upgrade as backup
-            console.error('[Webhook] Error processing checkout (non-fatal):', err.message);
+            console.error('[Webhook] Error processing checkout:', err.message);
           }
+        } else {
+          console.warn('[Webhook] checkout.session.completed missing userId or subscriptionId:', { userId, subscriptionId });
         }
         break;
       }
@@ -500,24 +564,68 @@ router.post('/subscriptions/webhook', async (req, res) => {
         const customerId = subscription.customer;
 
         // Find user by Stripe customer ID
-        const { data: userSub } = await supabaseAdmin
+        let { data: userSub } = await supabaseAdmin
           .from('user_subscriptions')
           .select('user_id')
           .eq('stripe_customer_id', customerId)
           .single();
 
+        // Fallback: look up via Stripe customer metadata (handles race condition
+        // where customer.subscription.created fires before checkout.session.completed
+        // has saved the stripe_customer_id)
+        if (!userSub && stripe) {
+          try {
+            const customer = await stripe.customers.retrieve(customerId);
+            const metaUserId = customer?.metadata?.supabase_user_id;
+            if (metaUserId) {
+              // Save the stripe_customer_id so future lookups work
+              await supabaseAdmin
+                .from('user_subscriptions')
+                .update({ stripe_customer_id: customerId })
+                .eq('user_id', metaUserId);
+              userSub = { user_id: metaUserId };
+              console.log('[Webhook] Resolved user via Stripe customer metadata:', metaUserId);
+            }
+          } catch (err) {
+            console.error('[Webhook] Error looking up Stripe customer:', err.message);
+          }
+        }
+
         if (userSub) {
           const isActive = subscription.status === 'active' || subscription.status === 'trialing';
-          await supabaseAdmin
+          // Stripe API 2025-03-31+: period dates moved to subscription items
+          const subItem = subscription.items?.data?.[0];
+          const billingInterval = subItem?.plan?.interval || 'month';
+          const rawStart = subItem?.current_period_start ?? subscription.current_period_start;
+          const rawEnd = subItem?.current_period_end ?? subscription.current_period_end;
+          const periodStart = rawStart ? new Date(rawStart * 1000).toISOString() : null;
+          const periodEnd = rawEnd ? new Date(rawEnd * 1000).toISOString() : null;
+
+          console.log(`[Webhook] ${event.type} - updating user:`, userSub.user_id, {
+            isActive, billingInterval, periodStart, periodEnd,
+            rawStart, rawEnd,
+          });
+
+          const { data: updateData, error: updateError } = await supabaseAdmin
             .from('user_subscriptions')
             .update({
               tier: isActive ? 'pro' : 'free',
               subscription_status: subscription.status,
-              current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-              current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+              billing_interval: billingInterval,
+              current_period_start: periodStart,
+              current_period_end: periodEnd,
               updated_at: new Date().toISOString(),
             })
-            .eq('user_id', userSub.user_id);
+            .eq('user_id', userSub.user_id)
+            .select();
+
+          if (updateError) {
+            console.error('[Webhook] Error updating subscription:', updateError);
+          } else {
+            console.log(`[Webhook] ${event.type} - updated user:`, userSub.user_id, 'rows:', updateData?.length, 'period_end:', updateData?.[0]?.current_period_end);
+          }
+        } else {
+          console.warn(`[Webhook] ${event.type} - could not find user for customer:`, customerId);
         }
         break;
       }
@@ -538,6 +646,8 @@ router.post('/subscriptions/webhook', async (req, res) => {
             .update({
               tier: 'free',
               subscription_status: 'canceled',
+              current_period_end: null,
+              billing_interval: null,
               updated_at: new Date().toISOString(),
             })
             .eq('user_id', userSub.user_id);

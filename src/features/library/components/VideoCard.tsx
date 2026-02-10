@@ -127,7 +127,7 @@ const VideoCard: React.FC<VideoCardProps> = ({ video, onClick, onViewReports, on
                 ? 'text-amber-600'
                 : 'text-red-600'
           }`}>
-            {video.level === 'Easy' ? 'Beginner' : video.level === 'Medium' ? 'Intermediate' : video.level === 'Hard' ? 'Advanced' : video.level}
+            {video.level}
           </span>
           <span className="text-stone-300">·</span>
           <span className="text-[10px] text-stone-500 font-medium">
