@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../../shared/context/AuthContext';
 import { useSubscription } from '../../../shared/context/SubscriptionContext';
 
@@ -7,10 +7,11 @@ interface ProfilePageProps {
 }
 
 const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenSubscription }) => {
-  const { userProfile, user, updatePassword, isOAuthOnly } = useAuth();
+  const { userProfile, user, updatePassword, updateName, isOAuthOnly } = useAuth();
   const {
     tier,
     status,
+    billingInterval,
     subscription,
     usage,
     videosLimit,
@@ -18,9 +19,26 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenSubscription }) => {
     aiTutorMinutesLimit,
     aiTutorCreditMinutes,
     practiceSessionCredits,
+    videoCredits,
     createPortal,
     isLoading,
   } = useSubscription();
+
+  const hasAnyCredits = videoCredits > 0 || practiceSessionCredits > 0 || aiTutorCreditMinutes > 0;
+
+  const [profileUsageTab, setProfileUsageTab] = useState<'monthly' | 'credits'>('monthly');
+
+  // Name editing state
+  const [firstName, setFirstName] = useState(userProfile?.firstName || '');
+  const [lastName, setLastName] = useState(userProfile?.lastName || '');
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [nameSuccess, setNameSuccess] = useState(false);
+  const [isUpdatingName, setIsUpdatingName] = useState(false);
+
+  useEffect(() => {
+    setFirstName(userProfile?.firstName || '');
+    setLastName(userProfile?.lastName || '');
+  }, [userProfile?.firstName, userProfile?.lastName]);
 
   // Password change state
   const [newPassword, setNewPassword] = useState('');
@@ -43,6 +61,29 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenSubscription }) => {
     const url = await createPortal();
     if (url) {
       window.location.href = url;
+    }
+  };
+
+  const handleNameChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setNameError(null);
+    setNameSuccess(false);
+
+    const trimmedFirst = firstName.trim();
+    if (!trimmedFirst) {
+      setNameError('First name cannot be empty');
+      return;
+    }
+
+    setIsUpdatingName(true);
+    const { error } = await updateName(trimmedFirst, lastName.trim());
+    setIsUpdatingName(false);
+
+    if (error) {
+      setNameError(error);
+    } else {
+      setNameSuccess(true);
+      setTimeout(() => setNameSuccess(false), 3000);
     }
   };
 
@@ -103,178 +144,243 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenSubscription }) => {
   };
 
   return (
-    <div className="min-h-screen pt-20 pb-12 px-4">
+    <div className="min-h-screen pt-20 pb-12 px-4 bg-stone-100/60">
       <div className="max-w-md mx-auto">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-serif text-stone-800">Profile</h1>
-        </div>
-
-        {/* User info card */}
-        <div className="bg-[#FAF9F6] border border-stone-200 rounded-xl p-6 mb-6 text-center">
-          {/* Avatar */}
+        {/* Header with avatar */}
+        <div className="text-center mb-6">
           {userProfile?.avatarUrl ? (
             <img
               src={userProfile.avatarUrl}
               alt={userProfile.name || 'Profile'}
-              className="w-20 h-20 rounded-full mx-auto mb-4 object-cover border-2 border-stone-200"
+              className="w-20 h-20 rounded-full mx-auto mb-3 object-cover shadow-sm"
             />
           ) : (
-            <div className="w-20 h-20 rounded-full mx-auto mb-4 bg-stone-200 flex items-center justify-center text-stone-600 text-xl font-medium">
+            <div className="w-20 h-20 rounded-full mx-auto mb-3 bg-gradient-to-br from-stone-300 to-stone-400 flex items-center justify-center text-white text-2xl font-medium shadow-sm">
               {userProfile?.initials || '?'}
             </div>
           )}
-
-          {/* Name */}
-          <h2 className="text-lg font-medium text-stone-800">
+          <h1 className="text-lg font-semibold text-stone-900">
             {userProfile?.name || 'User'}
-          </h2>
-
-          {/* Email */}
-          <p className="text-sm text-stone-500 mt-1">
+          </h1>
+          <p className="text-sm text-stone-400 mt-0.5">
             {userProfile?.email || user?.email || 'No email'}
           </p>
         </div>
 
-        {/* Subscription card */}
-        <div className="bg-[#FAF9F6] border border-stone-200 rounded-xl p-6">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-stone-400 mb-4">
-            Subscription
-          </h3>
-
-          {isLoading ? (
-            <div className="text-sm text-stone-500">Loading...</div>
-          ) : (
-            <>
-              <div className="flex items-center justify-between mb-2">
-                <div>
-                  <span className="text-lg font-medium text-stone-800">
-                    {tier === 'pro' ? 'Pro Plan' : 'Free Plan'}
-                  </span>
+        {/* Subscription & Usage */}
+        <div className="mb-6">
+          <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+            <div className="bg-stone-200/60 px-4 py-2.5">
+              <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider">
+                Subscription
+              </p>
+            </div>
+            {isLoading ? (
+              <div className="px-4 py-3 text-sm text-stone-500">Loading...</div>
+            ) : (
+              <>
+                {/* Plan row */}
+                <div className="flex items-center justify-between px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-stone-900">
+                      {tier === 'pro'
+                        ? (billingInterval === 'year' ? 'Pro Annual' : 'Pro')
+                        : 'Free'}
+                    </span>
+                    {tier === 'pro' && status && (
+                      <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded-full ${getStatusColor(status)}`}>
+                        {getStatusLabel(status)}
+                      </span>
+                    )}
+                  </div>
+                  {tier === 'pro' ? (
+                    <button
+                      onClick={handleManageBilling}
+                      className="text-sm text-blue-500 font-medium hover:text-blue-600 transition-colors"
+                    >
+                      Manage
+                    </button>
+                  ) : (
+                    <button
+                      onClick={onOpenSubscription}
+                      className="text-sm text-blue-500 font-medium hover:text-blue-600 transition-colors"
+                    >
+                      Upgrade
+                    </button>
+                  )}
                 </div>
-                {tier === 'pro' && status && (
-                  <span className={`text-xs font-medium px-2 py-1 rounded-full ${getStatusColor(status)}`}>
-                    {getStatusLabel(status)}
-                  </span>
+
+                {/* Renewal date row */}
+                {tier === 'pro' && subscription?.current_period_end && (
+                  <>
+                    <div className="h-px bg-stone-100 ml-4" />
+                    <div className="flex items-center justify-between px-4 py-3">
+                      <span className="text-sm text-stone-500">
+                        {status === 'canceled' ? 'Access until' : 'Renews'}
+                      </span>
+                      <span className="text-sm text-stone-900">
+                        {formatDate(subscription.current_period_end)}
+                      </span>
+                    </div>
+                  </>
                 )}
-              </div>
 
-              {/* Expiration date for Pro users */}
-              {tier === 'pro' && subscription?.current_period_end && (
-                <p className="text-xs text-stone-500 mb-4">
-                  {status === 'canceled' ? 'Access until: ' : 'Renews on: '}
-                  {formatDate(subscription.current_period_end)}
-                </p>
-              )}
+                {/* Usage tabs */}
+                {hasAnyCredits && (
+                  <div className="px-4 pt-3">
+                    <ProfileUsageTabs activeTab={profileUsageTab} onTabChange={setProfileUsageTab} />
+                  </div>
+                )}
 
-              {tier === 'pro' ? (
-                <button
-                  onClick={handleManageBilling}
-                  className="w-full bg-stone-200 text-stone-700 py-2.5 rounded-lg text-sm font-medium hover:bg-stone-300 transition-all"
-                >
-                  Manage Billing
-                </button>
-              ) : (
-                <button
-                  onClick={onOpenSubscription}
-                  className="w-full bg-stone-800 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-stone-900 transition-all"
-                >
-                  Upgrade to Pro
-                </button>
-              )}
-            </>
-          )}
+                {/* Monthly usage rows */}
+                {profileUsageTab === 'monthly' && (
+                  <>
+                    <UsageRow
+                      label="Videos"
+                      used={usage.videosUsed}
+                      limit={videosLimit}
+                    />
+                    <UsageRow
+                      label="AI Tutor"
+                      used={usage.aiTutorMinutesUsed}
+                      limit={aiTutorMinutesLimit}
+                      unit="min"
+                    />
+                    <UsageRow
+                      label="AI Report"
+                      used={usage.practiceSessionsUsed}
+                      limit={practiceSessionsLimit}
+                    />
+                  </>
+                )}
+
+                {/* Remaining credits rows */}
+                {profileUsageTab === 'credits' && hasAnyCredits && (
+                  <>
+                    <CreditRow label="Video Credits" remaining={videoCredits} />
+                    <CreditRow label="AI Tutor Credits" remaining={aiTutorCreditMinutes} unit="min" />
+                    <CreditRow label="AI Report Credits" remaining={practiceSessionCredits} />
+                  </>
+                )}
+              </>
+            )}
+          </div>
         </div>
 
-        {/* Usage card */}
-        {!isLoading && (
-          <div className="bg-[#FAF9F6] border border-stone-200 rounded-xl p-6 mt-6">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-stone-400 mb-4">
-              Monthly Usage
-            </h3>
-            <div className="grid grid-cols-2 gap-4">
-              <UsageMeter
-                label="Videos"
-                used={usage.videosUsed}
-                limit={videosLimit}
-              />
-              <UsageMeter
-                label="Practice"
-                used={usage.practiceSessionsUsed}
-                limit={practiceSessionsLimit}
-                creditText={practiceSessionCredits > 0 ? `+${practiceSessionCredits} credits` : undefined}
-              />
-              <UsageMeter
-                label="AI Tutor"
-                used={usage.aiTutorMinutesUsed}
-                limit={aiTutorMinutesLimit}
-                unit="min"
-                creditText={aiTutorCreditMinutes > 0 ? `+${aiTutorCreditMinutes} min credits` : undefined}
-              />
-              <UsageMeter
-                label="PDF Export"
-                used={usage.pdfExportsUsed}
-                limit={tier === 'pro' ? Infinity : 0}
-                showAsEnabled
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Security / Password card */}
-        <div className="bg-[#FAF9F6] border border-stone-200 rounded-xl p-6 mt-6">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-stone-400 mb-4">
-            Security
-          </h3>
-
-          {isOAuthOnly && (
-            <p className="text-xs text-stone-500 mb-4">
-              You signed in with Google. Set a password below to also enable email/password login.
-            </p>
-          )}
-
-          <form onSubmit={handlePasswordChange} className="space-y-4">
-            <div>
-              <label className="block text-sm text-stone-600 mb-1">
-                {isOAuthOnly ? 'Set Password' : 'New Password'}
-              </label>
-              <input
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="Enter new password"
-                className="w-full bg-white border border-stone-200 rounded-lg px-3 py-2 text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none focus:border-stone-400 focus:ring-1 focus:ring-stone-200"
-              />
+        {/* Personal Info */}
+        <div className="mb-6">
+          <form onSubmit={handleNameChange}>
+            <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+              <div className="bg-stone-200/60 px-4 py-2.5">
+                <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider">
+                  Personal Info
+                </p>
+              </div>
+              {/* First Name row */}
+              <div className="flex items-center px-4 py-3">
+                <label className="text-sm text-stone-900 w-28 shrink-0">First Name</label>
+                <input
+                  type="text"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  placeholder="First name"
+                  className="flex-1 text-sm text-stone-600 text-right bg-transparent outline-none placeholder:text-stone-300"
+                />
+              </div>
+              <div className="h-px bg-stone-100 ml-4" />
+              {/* Last Name row */}
+              <div className="flex items-center px-4 py-3">
+                <label className="text-sm text-stone-900 w-28 shrink-0">Last Name</label>
+                <input
+                  type="text"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  placeholder="Last name"
+                  className="flex-1 text-sm text-stone-600 text-right bg-transparent outline-none placeholder:text-stone-300"
+                />
+              </div>
             </div>
 
-            <div>
-              <label className="block text-sm text-stone-600 mb-1">
-                Confirm Password
-              </label>
-              <input
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Confirm new password"
-                className="w-full bg-white border border-stone-200 rounded-lg px-3 py-2 text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none focus:border-stone-400 focus:ring-1 focus:ring-stone-200"
-              />
-            </div>
-
-            {passwordError && (
-              <p className="text-xs text-red-600">{passwordError}</p>
+            {(nameError || nameSuccess) && (
+              <div className="px-4 mt-2">
+                {nameError && <p className="text-xs text-red-500">{nameError}</p>}
+                {nameSuccess && <p className="text-xs text-green-500">Name updated successfully!</p>}
+              </div>
             )}
 
-            {passwordSuccess && (
-              <p className="text-xs text-green-600">Password updated successfully!</p>
+            <div className="flex justify-end mt-3 px-1">
+              <button
+                type="submit"
+                disabled={isUpdatingName || (firstName.trim() === (userProfile?.firstName || '') && lastName.trim() === (userProfile?.lastName || ''))}
+                className="text-sm text-blue-500 font-medium hover:text-blue-600 transition-colors disabled:text-stone-300 disabled:cursor-not-allowed"
+              >
+                {isUpdatingName ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </form>
+        </div>
+
+        {/* Security */}
+        <div className="mb-6">
+          <form onSubmit={handlePasswordChange}>
+            <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+              <div className="bg-stone-200/60 px-4 py-2.5">
+                <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider">
+                  Security
+                </p>
+              </div>
+
+              {isOAuthOnly && (
+                <div className="px-4 pt-3">
+                  <p className="text-xs text-stone-400">
+                    You signed in with Google. Set a password to also enable email/password login.
+                  </p>
+                </div>
+              )}
+
+              {/* New Password row */}
+              <div className="flex items-center px-4 py-3">
+                <label className="text-sm text-stone-900 w-28 shrink-0">
+                  {isOAuthOnly ? 'Password' : 'New Password'}
+                </label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Enter password"
+                  className="flex-1 text-sm text-stone-600 text-right bg-transparent outline-none placeholder:text-stone-300"
+                />
+              </div>
+              <div className="h-px bg-stone-100 ml-4" />
+              {/* Confirm Password row */}
+              <div className="flex items-center px-4 py-3">
+                <label className="text-sm text-stone-900 w-28 shrink-0">Confirm</label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Confirm password"
+                  className="flex-1 text-sm text-stone-600 text-right bg-transparent outline-none placeholder:text-stone-300"
+                />
+              </div>
+            </div>
+
+            {(passwordError || passwordSuccess) && (
+              <div className="px-4 mt-2">
+                {passwordError && <p className="text-xs text-red-500">{passwordError}</p>}
+                {passwordSuccess && <p className="text-xs text-green-500">Password updated successfully!</p>}
+              </div>
             )}
 
-            <button
-              type="submit"
-              disabled={isUpdatingPassword || !newPassword || !confirmPassword}
-              className="w-full bg-stone-800 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-stone-900 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isUpdatingPassword ? 'Updating...' : isOAuthOnly ? 'Set Password' : 'Update Password'}
-            </button>
+            <div className="flex justify-end mt-3 px-1">
+              <button
+                type="submit"
+                disabled={isUpdatingPassword || !newPassword || !confirmPassword}
+                className="text-sm text-blue-500 font-medium hover:text-blue-600 transition-colors disabled:text-stone-300 disabled:cursor-not-allowed"
+              >
+                {isUpdatingPassword ? 'Updating...' : isOAuthOnly ? 'Set Password' : 'Update Password'}
+              </button>
+            </div>
           </form>
         </div>
       </div>
@@ -282,65 +388,96 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenSubscription }) => {
   );
 };
 
-// UsageMeter component
-const UsageMeter: React.FC<{
+// Tabs for switching between monthly usage and credits
+const ProfileUsageTabs: React.FC<{
+  activeTab: 'monthly' | 'credits';
+  onTabChange: (tab: 'monthly' | 'credits') => void;
+}> = ({ activeTab, onTabChange }) => (
+  <div className="flex gap-1 bg-stone-100 rounded-lg p-0.5">
+    <button
+      onClick={() => onTabChange('monthly')}
+      className={`flex-1 py-1.5 px-3 rounded-md text-xs font-medium transition-all ${
+        activeTab === 'monthly'
+          ? 'bg-white text-stone-800 shadow-sm'
+          : 'text-stone-500 hover:text-stone-700'
+      }`}
+    >
+      Monthly Allowance
+    </button>
+    <button
+      onClick={() => onTabChange('credits')}
+      className={`flex-1 py-1.5 px-3 rounded-md text-xs font-medium transition-all ${
+        activeTab === 'credits'
+          ? 'bg-white text-stone-800 shadow-sm'
+          : 'text-stone-500 hover:text-stone-700'
+      }`}
+    >
+      Remaining Credits
+    </button>
+  </div>
+);
+
+// Inline usage row component
+const UsageRow: React.FC<{
   label: string;
   used: number;
   limit: number;
   unit?: string;
-  showAsEnabled?: boolean;
-  creditText?: string;
-}> = ({ label, used, limit, unit = '', showAsEnabled, creditText }) => {
-  if (showAsEnabled) {
-    const enabled = limit > 0 || limit === Infinity;
-    return (
-      <div>
-        <div className="text-xs text-stone-500 mb-1">{label}</div>
-        {enabled ? (
-          <div className="text-sm font-medium text-green-600">Enabled</div>
-        ) : (
-          <span className="inline-block text-xs font-medium text-stone-500 bg-stone-100 px-2 py-0.5 rounded-full">
-            Pro only
-          </span>
-        )}
-      </div>
-    );
-  }
-
+}> = ({ label, used, limit, unit = '' }) => {
   const isUnlimited = limit === Infinity;
-  const percentage = isUnlimited ? 0 : limit > 0 ? Math.min((used / limit) * 100, 100) : 0;
-  const isNearLimit = !isUnlimited && limit > 0 && percentage >= 80;
+  // Cap monthly usage at the limit — any overflow was consumed from credits
+  const monthlyUsed = isUnlimited ? used : Math.min(used, limit);
+  const remaining = Math.max(limit - monthlyUsed, 0);
+  const isNearLimit = !isUnlimited && limit > 0 && (monthlyUsed / limit) >= 0.8;
+
+  const valueText = limit === 0
+    ? 'Pro only'
+    : isUnlimited
+      ? `${used}${unit} used`
+      : remaining === 0
+        ? `${limit}${unit} / ${limit}${unit}`
+        : `${monthlyUsed}${unit} / ${limit}${unit}`;
+
+  const valueColor = limit === 0
+    ? 'text-stone-400'
+    : isNearLimit
+      ? 'text-amber-500'
+      : 'text-stone-900';
+
+  const percentage = !isUnlimited && limit > 0 ? Math.min((monthlyUsed / limit) * 100, 100) : 0;
 
   return (
-    <div>
-      <div className="text-xs text-stone-500 mb-1">{label}</div>
-      {limit === 0 && !creditText ? (
-        <span className="inline-block text-xs font-medium text-stone-500 bg-stone-100 px-2 py-0.5 rounded-full">
-          Pro only
-        </span>
-      ) : limit === 0 && creditText ? (
-        // Free user with credits - show credits only
-        <p className="text-sm font-medium text-green-600">{creditText}</p>
-      ) : (
-        <div className={`text-sm font-medium ${isNearLimit ? 'text-amber-600' : 'text-stone-700'}`}>
-          {isUnlimited ? `${used}${unit} used` : `${used}${unit} / ${limit}${unit}`}
-        </div>
-      )}
+    <div className="px-4 py-3">
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-sm text-stone-500">{label}</span>
+        <span className={`text-sm font-medium ${valueColor}`}>{valueText}</span>
+      </div>
       {!isUnlimited && limit > 0 && (
-        <div className="mt-1 h-1.5 bg-stone-200 rounded-full overflow-hidden">
+        <div className="h-1.5 bg-stone-100 rounded-full overflow-hidden">
           <div
-            className={`h-full rounded-full transition-all ${
-              isNearLimit ? 'bg-amber-500' : 'bg-stone-500'
-            }`}
+            className={`h-full rounded-full transition-all ${isNearLimit ? 'bg-amber-400' : 'bg-stone-400'}`}
             style={{ width: `${percentage}%` }}
           />
         </div>
       )}
-      {limit > 0 && creditText && (
-        <p className="text-xs text-green-600 mt-1">{creditText}</p>
-      )}
     </div>
   );
 };
+
+// Credit row component
+const CreditRow: React.FC<{
+  label: string;
+  remaining: number;
+  unit?: string;
+}> = ({ label, remaining, unit = '' }) => (
+  <div className="px-4 py-3">
+    <div className="flex items-center justify-between">
+      <span className="text-sm text-stone-500">{label}</span>
+      <span className="text-sm font-medium text-green-600">
+        {remaining}{unit && ` ${unit}`} remaining
+      </span>
+    </div>
+  </div>
+);
 
 export default ProfilePage;

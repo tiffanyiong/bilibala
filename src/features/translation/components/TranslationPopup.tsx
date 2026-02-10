@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { getBackendOrigin } from '../../../shared/services/backend';
 
-const MAX_CHARS = 200; // Max characters allowed for translation
+const MAX_CHARS = 300; // Max characters allowed for translation
 
 // Localized error messages keyed by language name
 const ERROR_MESSAGES: Record<string, { notAvailable: string; tooLong: string }> = {
@@ -18,6 +18,14 @@ const ERROR_MESSAGES: Record<string, { notAvailable: string; tooLong: string }> 
 };
 
 const DEFAULT_ERRORS = { notAvailable: 'Translation is currently not available', tooLong: 'Selection too long' };
+
+const GLASS_STYLE: React.CSSProperties = {
+  background: 'linear-gradient(135deg, rgba(255,255,255,0.72), rgba(255,255,255,0.48))',
+  backdropFilter: 'blur(40px) saturate(1.8)',
+  WebkitBackdropFilter: 'blur(40px) saturate(1.8)',
+  border: '1px solid rgba(255,255,255,0.5)',
+  boxShadow: '0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.6)',
+};
 
 interface TranslationPopupProps {
   sourceLang?: string; // e.g., "English" - optional, DeepL auto-detects if not provided
@@ -54,6 +62,8 @@ const TranslationPopup: React.FC<TranslationPopupProps> = ({
   const abortControllerRef = useRef<AbortController | null>(null);
   // Track the last processed text to avoid duplicate triggers
   const lastProcessedTextRef = useRef<string>('');
+  // Timer for delayed iOS selection clear
+  const iosClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Translate text via backend API
   const translateText = useCallback(async (text: string) => {
@@ -113,7 +123,7 @@ const TranslationPopup: React.FC<TranslationPopupProps> = ({
   }, [sourceLang, targetLang]);
 
   // Shared selection processing logic (works for both mouse and touch)
-  const processSelection = useCallback(() => {
+  const processSelection = useCallback((fromTouch: boolean) => {
     const selection = window.getSelection();
     const selectedText = selection?.toString().trim();
 
@@ -135,16 +145,36 @@ const TranslationPopup: React.FC<TranslationPopupProps> = ({
       }
     }
 
-    // Get position from the selection range (works on both desktop and mobile)
+    // Get position from the selection range
     const range = selection?.getRangeAt(0);
     if (!range) return;
 
     const rect = range.getBoundingClientRect();
-    // Position popup above the center of the selection
     const posX = rect.left + rect.width / 2;
     const posY = rect.top;
 
     lastProcessedTextRef.current = selectedText;
+
+    // On touch devices, handle iOS native callout (Copy/Find) overlap
+    if (fromTouch) {
+      // Clear any previous timer
+      if (iosClearTimerRef.current) {
+        clearTimeout(iosClearTimerRef.current);
+        iosClearTimerRef.current = null;
+      }
+
+      const viewportHeight = window.innerHeight;
+      if (rect.top >= viewportHeight * 0.5) {
+        // Selection is in the bottom half — iOS callout appears ABOVE the selection,
+        // which overlaps our tooltip. Give user 3s to use Copy/Find, then dismiss it.
+        iosClearTimerRef.current = setTimeout(() => {
+          window.getSelection()?.removeAllRanges();
+          iosClearTimerRef.current = null;
+        }, 2000);
+      }
+      // Selection in top half — iOS callout goes below selection,
+      // our tooltip sits above — no overlap, keep both
+    }
 
     // Check character limit
     if (selectedText.length > MAX_CHARS) {
@@ -183,14 +213,13 @@ const TranslationPopup: React.FC<TranslationPopupProps> = ({
 
   // Desktop: handle mouseup
   const handleMouseUp = useCallback(() => {
-    setTimeout(processSelection, 10);
+    setTimeout(() => processSelection(false), 10);
   }, [processSelection]);
 
   // Mobile/Tablet: handle touchend
-  // On touch devices, users long-press to select text, then the selection
-  // is finalized on touchend. We use a longer delay to let the OS finish.
+  // Longer delay to let the OS finalize the selection before we capture + clear it
   const handleTouchEnd = useCallback(() => {
-    setTimeout(processSelection, 300);
+    setTimeout(() => processSelection(true), 300);
   }, [processSelection]);
 
   // Dismiss popup on outside click/tap
@@ -198,6 +227,10 @@ const TranslationPopup: React.FC<TranslationPopupProps> = ({
     if (popupRef.current && !popupRef.current.contains(event.target as Node)) {
       setPopup(prev => ({ ...prev, visible: false }));
       lastProcessedTextRef.current = '';
+      if (iosClearTimerRef.current) {
+        clearTimeout(iosClearTimerRef.current);
+        iosClearTimerRef.current = null;
+      }
       window.getSelection()?.removeAllRanges();
     }
   }, []);
@@ -207,6 +240,10 @@ const TranslationPopup: React.FC<TranslationPopupProps> = ({
     if (event.key === 'Escape') {
       setPopup(prev => ({ ...prev, visible: false }));
       lastProcessedTextRef.current = '';
+      if (iosClearTimerRef.current) {
+        clearTimeout(iosClearTimerRef.current);
+        iosClearTimerRef.current = null;
+      }
       window.getSelection()?.removeAllRanges();
     }
   }, []);
@@ -235,6 +272,9 @@ const TranslationPopup: React.FC<TranslationPopupProps> = ({
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
+      if (iosClearTimerRef.current) {
+        clearTimeout(iosClearTimerRef.current);
+      }
     };
   }, [containerRef, handleMouseUp, handleTouchEnd, handleDismiss, handleKeyDown]);
 
@@ -255,9 +295,9 @@ const TranslationPopup: React.FC<TranslationPopupProps> = ({
         adjustedX = rect.width / 2 + 16;
       }
 
-      // Adjust vertical position (show below if not enough space above)
+      // Showing above selection. If not enough space above, flip below.
       if (popup.y - rect.height - 8 < 16) {
-        adjustedY = popup.y + 30; // Show below selection
+        adjustedY = popup.y + 30;
       }
 
       if (adjustedX !== popup.x || adjustedY !== popup.y) {
@@ -271,35 +311,41 @@ const TranslationPopup: React.FC<TranslationPopupProps> = ({
   return (
     <div
       ref={popupRef}
-      className="fixed z-[1000] transform -translate-x-1/2 -translate-y-full"
+      className="fixed z-[1000] transform -translate-x-1/2 -translate-y-full -mt-2"
       style={{ left: popup.x, top: popup.y }}
     >
-      <div className="bg-stone-900 text-white rounded-lg shadow-xl px-4 py-3 max-w-xs animate-in fade-in zoom-in-95 duration-150">
+      <div
+        className="relative rounded-2xl px-4 py-3 max-w-xs animate-in fade-in zoom-in-95 duration-150"
+        style={GLASS_STYLE}
+      >
         {/* Loading state */}
         {popup.loading && (
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-            <span className="text-sm text-stone-300">Translating...</span>
+            <div className="w-4 h-4 border-2 border-stone-300/50 border-t-stone-600 rounded-full animate-spin" />
+            <span className="text-sm text-stone-500">Translating...</span>
           </div>
         )}
 
         {/* Error state */}
         {popup.error && (
-          <div className="text-sm text-red-400">{popup.error}</div>
+          <div className="text-sm text-red-500/80">{popup.error}</div>
         )}
 
         {/* Translation result */}
         {popup.translation && !popup.loading && !popup.error && (
           <div className="space-y-1">
-            <p className="text-sm font-medium">{popup.translation}</p>
-            <p className="text-xs text-stone-400 truncate max-w-[200px]">
+            <p className="text-sm font-semibold text-stone-800">{popup.translation}</p>
+            <p className="text-xs text-stone-500 truncate max-w-[200px]">
               {popup.text}
             </p>
           </div>
         )}
 
         {/* Arrow pointing down */}
-        <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-8 border-r-8 border-t-8 border-transparent border-t-stone-900" />
+        <div
+          className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-8 border-r-8 border-t-8 border-transparent"
+          style={{ borderTopColor: 'rgba(255,255,255,0.6)' }}
+        />
       </div>
     </div>
   );

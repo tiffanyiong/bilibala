@@ -18,44 +18,76 @@ jobs:
         with:
           fetch-depth: 0  # Fetch all history for tags
 
-      - name: Get latest tag
+      - name: Determine version bump type
+        id: bump_type
+        run: |
+          # Get the commit message
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+          echo "Commit message: $COMMIT_MSG"
+
+          # Check for version bump keywords
+          if echo "$COMMIT_MSG" | grep -qiE '\[major\]|BREAKING CHANGE'; then
+            echo "bump=major" >> $GITHUB_OUTPUT
+            echo "Detected: MAJOR version bump"
+          elif echo "$COMMIT_MSG" | grep -qiE '\[minor\]|^feat:|feat\('; then
+            echo "bump=minor" >> $GITHUB_OUTPUT
+            echo "Detected: MINOR version bump"
+          else
+            echo "bump=patch" >> $GITHUB_OUTPUT
+            echo "Detected: PATCH version bump (default)"
+          fi
+
+      - name: Get latest tag and calculate new version
         id: get_tag
         run: |
           BRANCH="${{ github.ref_name }}"
+          BUMP_TYPE="${{ steps.bump_type.outputs.bump }}"
+
+          # Get latest production tag (v*.*.* without -beta)
+          LATEST_TAG=$(git tag -l "v[0-9]*.[0-9]*.[0-9]*" --sort=-v:refname | grep -v beta | head -n1)
+
+          if [[ -z "$LATEST_TAG" ]]; then
+            MAJOR=1
+            MINOR=0
+            PATCH=0
+          else
+            VERSION=${LATEST_TAG#v}
+            MAJOR=$(echo $VERSION | cut -d. -f1)
+            MINOR=$(echo $VERSION | cut -d. -f2)
+            PATCH=$(echo $VERSION | cut -d. -f3)
+          fi
+
+          echo "Current version: v${MAJOR}.${MINOR}.${PATCH}"
 
           if [[ "$BRANCH" == "production" ]]; then
-            # Get latest production tag (v*.*.* without -beta)
-            LATEST_TAG=$(git tag -l "v[0-9]*.[0-9]*.[0-9]*" --sort=-v:refname | grep -v beta | head -n1)
-
-            if [[ -z "$LATEST_TAG" ]]; then
-              NEW_TAG="v1.0.0"
+            # Apply version bump based on commit message
+            if [[ "$BUMP_TYPE" == "major" ]]; then
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+            elif [[ "$BUMP_TYPE" == "minor" ]]; then
+              MINOR=$((MINOR + 1))
+              PATCH=0
             else
-              # Extract version numbers
-              VERSION=${LATEST_TAG#v}
-              MAJOR=$(echo $VERSION | cut -d. -f1)
-              MINOR=$(echo $VERSION | cut -d. -f2)
-              PATCH=$(echo $VERSION | cut -d. -f3)
-
-              # Increment patch version
               PATCH=$((PATCH + 1))
-              NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
             fi
 
+            NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
             echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
             echo "prerelease=false" >> $GITHUB_OUTPUT
             echo "name=Release $NEW_TAG" >> $GITHUB_OUTPUT
 
           elif [[ "$BRANCH" == "beta" ]]; then
-            # Get latest production version for base
-            LATEST_PROD=$(git tag -l "v[0-9]*.[0-9]*.[0-9]*" --sort=-v:refname | grep -v beta | head -n1)
-
-            if [[ -z "$LATEST_PROD" ]]; then
-              BASE_VERSION="1.0.0"
+            # For beta, use next minor version as base
+            if [[ "$BUMP_TYPE" == "major" ]]; then
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              BASE_VERSION="${MAJOR}.${MINOR}.0"
+            elif [[ "$BUMP_TYPE" == "minor" ]]; then
+              MINOR=$((MINOR + 1))
+              BASE_VERSION="${MAJOR}.${MINOR}.0"
             else
-              BASE_VERSION=${LATEST_PROD#v}
-              # Increment minor for beta
-              MAJOR=$(echo $BASE_VERSION | cut -d. -f1)
-              MINOR=$(echo $BASE_VERSION | cut -d. -f2)
+              # Default: increment minor for beta
               MINOR=$((MINOR + 1))
               BASE_VERSION="${MAJOR}.${MINOR}.0"
             fi
@@ -77,10 +109,13 @@ jobs:
             echo "name=Beta $NEW_TAG" >> $GITHUB_OUTPUT
           fi
 
+          echo "New tag: $NEW_TAG"
+
       - name: Generate release notes
         id: release_notes
         run: |
           BRANCH="${{ github.ref_name }}"
+          BUMP_TYPE="${{ steps.bump_type.outputs.bump }}"
 
           # Get commits since last tag
           if [[ "$BRANCH" == "production" ]]; then
@@ -98,11 +133,26 @@ jobs:
           # Write to file for multiline support
           echo "## What's Changed" > release_notes.md
           echo "" >> release_notes.md
+
+          # Add version bump type indicator
+          if [[ "$BUMP_TYPE" == "major" ]]; then
+            echo "⚠️ **MAJOR VERSION** - Breaking changes included" >> release_notes.md
+            echo "" >> release_notes.md
+          elif [[ "$BUMP_TYPE" == "minor" ]]; then
+            echo "✨ **MINOR VERSION** - New features added" >> release_notes.md
+            echo "" >> release_notes.md
+          fi
+
           echo "$COMMITS" | while read line; do
-            echo "- $line" >> release_notes.md
+            if [[ -n "$line" ]]; then
+              echo "- $line" >> release_notes.md
+            fi
           done
           echo "" >> release_notes.md
-          echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${{ steps.get_tag.outputs.tag }}" >> release_notes.md
+
+          if [[ -n "$PREV_TAG" ]]; then
+            echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${{ steps.get_tag.outputs.tag }}" >> release_notes.md
+          fi
 
       - name: Create tag
         run: |

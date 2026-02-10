@@ -11,12 +11,10 @@ import { TIER_LIMITS } from '../../../shared/types/database';
 
 interface VideoLibraryPageProps {
   onSelectVideo: (video: VideoHistoryItem) => void;
-  onExpandReports?: (video: VideoHistoryItem, sessionId?: string) => void;
 }
 
 const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({
   onSelectVideo,
-  onExpandReports,
 }) => {
   const { user } = useAuth();
   const { tier } = useSubscription();
@@ -250,7 +248,7 @@ const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({
         <div>
           {/* Loading state */}
           {loading && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 md:gap-7">
               {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
                 <VideoCardSkeleton key={i} />
               ))}
@@ -312,7 +310,7 @@ const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({
 
           {/* Video grid */}
           {!loading && !error && filteredVideos.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 md:gap-7">
               {filteredVideos.map((video) => (
                 <VideoCard
                   key={video.libraryId}
@@ -337,10 +335,8 @@ const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({
           videoTitle={selectedVideoForReports.title}
           targetLang={selectedVideoForReports.targetLang}
           level={selectedVideoForReports.level}
-          onExpand={onExpandReports ? (sessionId) => {
-            setSelectedVideoForReports(null); // Close modal
-            onExpandReports(selectedVideoForReports, sessionId);
-          } : undefined}
+          youtubeId={selectedVideoForReports.youtubeId}
+          thumbnailUrl={selectedVideoForReports.thumbnailUrl}
         />
       )}
     </div>

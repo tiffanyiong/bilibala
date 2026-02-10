@@ -27,14 +27,18 @@ router.post('/translate-ui-labels', async (req, res) => {
       return res.status(400).json({ error: 'Language is required' });
     }
 
+    // Cache key includes label count to invalidate when new labels are added
+    const labelCount = sourceLabels ? Object.keys(sourceLabels).length : 0;
+    const cacheKey = `${language}-${labelCount}`;
+
     // Check cache first
-    const cachedLabels = labelCache.get(language);
+    const cachedLabels = labelCache.get(cacheKey);
     if (cachedLabels) {
-      console.log(`[translate-ui-labels] Cache hit for ${language}`);
+      console.log(`[translate-ui-labels] Cache hit for ${cacheKey}`);
       return res.json({ labels: cachedLabels, cached: true });
     }
 
-    console.log(`[translate-ui-labels] Cache miss for ${language}, calling Gemini...`);
+    console.log(`[translate-ui-labels] Cache miss for ${cacheKey}, calling Gemini...`);
     const startTime = Date.now();
     const ai = createAi();
 
@@ -58,6 +62,7 @@ router.post('/translate-ui-labels', async (req, res) => {
       "actionableTips": "Actionable Tips",
       "transcription": "Transcription",
       "yourRecording": "Your Recording",
+      "aiVoice": "AI Voice",
       "recordAnswer": "Record Answer",
       "reviewAnswer": "Review Answer",
       "takeYourTime": "Take your time",
@@ -100,8 +105,8 @@ Return the same JSON structure with values translated to ${language}.`;
     const labels = safeJsonParse(candidates[0].content.parts[0].text);
 
     // Cache the result for future requests
-    labelCache.set(language, labels);
-    console.log(`[translate-ui-labels] Cached labels for ${language}`);
+    labelCache.set(cacheKey, labels);
+    console.log(`[translate-ui-labels] Cached labels for ${cacheKey}`);
 
     res.json({ labels, cached: false });
   } catch (err) {

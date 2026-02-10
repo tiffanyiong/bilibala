@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   PRO_ANNUAL_PRICE,
+  PRO_ANNUAL_TOTAL,
   PRO_MONTHLY_PRICE,
   STARTER_PACK_AI_TUTOR_MINUTES,
   STARTER_PACK_PRACTICE_SESSIONS,
@@ -55,12 +56,6 @@ const InfinityIcon = () => (
   </svg>
 );
 
-const StarIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-  </svg>
-);
-
 const LayersIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     <polygon points="12 2 2 7 12 12 22 7 12 2" />
@@ -95,6 +90,7 @@ const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ onOpenAuthModal }) 
   const {
     tier,
     status,
+    billingInterval,
     subscription,
     usage,
     videosLimit,
@@ -126,6 +122,9 @@ const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ onOpenAuthModal }) 
   const [creditCheckoutLoading, setCreditCheckoutLoading] = useState<string | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
   const [showCreditSuccess, setShowCreditSuccess] = useState<string | null>(null);
+  const [usageTab, setUsageTab] = useState<'monthly' | 'credits'>('monthly');
+
+  const hasAnyCredits = videoCredits > 0 || practiceSessionCredits > 0 || aiTutorCreditMinutes > 0;
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -214,43 +213,81 @@ const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ onOpenAuthModal }) 
         <div className="text-center mb-10">
           <h1 className="text-3xl font-serif text-stone-800 mb-2">Plan</h1>
           <p className="text-stone-500">
-            You're currently on a {tier === 'pro' ? 'Pro' : 'free'} plan. Select any of the plans or top-up options that fits your needs.
+            You're currently on a {tier === 'pro' ? 'Pro' : 'free'} plan. Here's what you can do right now.
           </p>
         </div>
 
         {/* Current usage (if logged in) */}
         {user && !isLoading && (
           <div className="bg-white border border-stone-200 rounded-2xl p-6 mb-8">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-stone-400 mb-4">
-              Current Usage — {tier === 'pro' ? 'Pro' : 'Free'} Plan
-            </h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-              <UsageMeter
-                label="Video"
-                used={usage.videosUsed}
-                limit={videosLimit}
-                credits={videoCredits}
-              />
-              <UsageMeter
-                label="AI Report"
-                used={usage.practiceSessionsUsed}
-                limit={practiceSessionsLimit}
-                credits={practiceSessionCredits}
-              />
-              <UsageMeter
-                label="AI Tutor"
-                used={usage.aiTutorMinutesUsed}
-                limit={aiTutorMinutesLimit}
-                unit="min"
-                credits={aiTutorCreditMinutes}
-              />
-              <UsageMeter
-                label="PDF Export"
-                used={usage.pdfExportsUsed}
-                limit={tier === 'pro' ? Infinity : 0}
-                showAsEnabled
-              />
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-stone-400">
+                Current Usage — {tier === 'pro' ? 'Pro' : 'Free'} Plan
+              </h3>
+
+              {/* Tabs — only show if user has any credits */}
+              {hasAnyCredits && (
+                <div className="flex gap-1 bg-stone-100 rounded-xl p-1">
+                  <button
+                    onClick={() => setUsageTab('monthly')}
+                    className={`py-1.5 px-3 rounded-lg text-xs font-medium transition-all ${
+                      usageTab === 'monthly'
+                        ? 'bg-white text-stone-800 shadow-sm'
+                        : 'text-stone-500 hover:text-stone-700'
+                    }`}
+                  >
+                    Monthly Allowance
+                  </button>
+                  <button
+                    onClick={() => setUsageTab('credits')}
+                    className={`py-1.5 px-3 rounded-lg text-xs font-medium transition-all ${
+                      usageTab === 'credits'
+                        ? 'bg-white text-stone-800 shadow-sm'
+                        : 'text-stone-500 hover:text-stone-700'
+                    }`}
+                  >
+                    Remaining Credits
+                  </button>
+                </div>
+              )}
             </div>
+
+            {/* Monthly Allowance tab */}
+            {usageTab === 'monthly' && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                <UsageMeter
+                  label="Video Analysis"
+                  used={usage.videosUsed}
+                  limit={videosLimit}
+                />
+                <UsageMeter
+                  label="AI Report"
+                  used={usage.practiceSessionsUsed}
+                  limit={practiceSessionsLimit}
+                />
+                <UsageMeter
+                  label="AI Tutor"
+                  used={usage.aiTutorMinutesUsed}
+                  limit={aiTutorMinutesLimit}
+                  unit="min"
+                />
+                <UsageMeter
+                  label="PDF Export"
+                  used={usage.pdfExportsUsed}
+                  limit={tier === 'pro' ? Infinity : 0}
+                  showAsEnabled
+                />
+              </div>
+            )}
+
+            {/* Remaining Credits tab */}
+            {usageTab === 'credits' && hasAnyCredits && (
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+                <CreditMeter label="Video Credits" remaining={videoCredits} />
+                <CreditMeter label="AI Report Credits" remaining={practiceSessionCredits} />
+                <CreditMeter label="AI Tutor Credits" remaining={aiTutorCreditMinutes} unit="min" />
+              </div>
+            )}
           </div>
         )}
 
@@ -269,6 +306,7 @@ const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ onOpenAuthModal }) 
               <p className="text-sm text-stone-500">Try Bilibala for free, no card required</p>
             </div>
 
+
             <ul className="space-y-4 flex-1">
               <li className="flex items-center gap-3 text-sm text-stone-600">
                 <span className="text-stone-400"><VideoIcon /></span>
@@ -276,7 +314,7 @@ const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ onOpenAuthModal }) 
               </li>
               <li className="flex items-center gap-3 text-sm text-stone-600">
                 <span className="text-stone-400"><WaveformIcon /></span>
-                <span>{freeLimits.practiceSessionsPerMonth} AI Report</span>
+                <span>{freeLimits.practiceSessionsPerMonth} AI Reports / month</span>
               </li>
               <li className="flex items-center gap-3 text-sm text-stone-600">
                 <span className="text-stone-400"><LayersIcon /></span>
@@ -330,13 +368,17 @@ const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ onOpenAuthModal }) 
                   <span className="text-lg text-stone-400 line-through">${PRO_MONTHLY_PRICE}</span>
                 )}
                 <span className="text-4xl font-semibold text-stone-800">
-                  ${tier === 'pro' ? PRO_MONTHLY_PRICE : (billingCycle === 'annual' ? PRO_ANNUAL_PRICE : PRO_MONTHLY_PRICE)}
+                  ${tier === 'pro'
+                    ? (billingInterval === 'year' ? PRO_ANNUAL_PRICE : PRO_MONTHLY_PRICE)
+                    : (billingCycle === 'annual' ? PRO_ANNUAL_PRICE : PRO_MONTHLY_PRICE)}
                 </span>
                 <span className="text-stone-500">/ month</span>
               </div>
               <p className="text-sm text-stone-500">
                 {tier === 'pro'
-                  ? 'Your current plan'
+                  ? (billingInterval === 'year'
+                    ? `Your current plan — billed $${PRO_ANNUAL_TOTAL}/year`
+                    : 'Your current plan — billed monthly')
                   : billingCycle === 'annual'
                     ? `Billed annually, save $${(PRO_MONTHLY_PRICE - PRO_ANNUAL_PRICE) * 12}/year`
                     : 'Billed monthly'
@@ -344,19 +386,23 @@ const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ onOpenAuthModal }) 
               </p>
             </div>
 
+
             <ul className="space-y-4 flex-1">
               <li className="flex items-center gap-3 text-sm text-stone-700">
                 <span className="text-stone-500"><VideoIcon /></span>
                 <span>{proLimits.videosPerMonth} videos / month</span>
               </li>
-      
               <li className="flex items-center gap-3 text-sm text-stone-700">
                 <span className="text-stone-500"><ChatIcon /></span>
                 <span>{proLimits.aiTutorMinutesPerMonth} min AI Tutor / month</span>
               </li>
+              <li className="flex items-center gap-3 text-sm text-stone-600">
+                <span className="text-stone-400"><LayersIcon /></span>
+                <span>Unlimited video storage</span>
+              </li>
               <li className="flex items-center gap-3 text-sm text-stone-700">
                 <span className="text-stone-500"><WaveformIcon /></span>
-                <span>Unlimited AI Report</span>
+                <span>Unlimited AI Reports</span>
               </li>
               <li className="flex items-center gap-3 text-sm text-stone-700">
                 <span className="text-stone-500"><TranslateIcon /></span>
@@ -409,10 +455,11 @@ const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ onOpenAuthModal }) 
               <p className="text-sm text-stone-500">Pay as you go, one-time payment</p>
             </div>
 
+
             <ul className="space-y-4 flex-1">
               <li className="flex items-center gap-3 text-sm text-stone-600">
                 <span className="text-stone-400"><VideoIcon /></span>
-                <span>{tier === 'pro' ? TOPUP_VIDEO_CREDITS : STARTER_PACK_VIDEO_CREDITS} videos per pack</span>
+                <span>{tier === 'pro' ? TOPUP_VIDEO_CREDITS : STARTER_PACK_VIDEO_CREDITS} video credits</span>
               </li>
               <li className="flex items-center gap-3 text-sm text-stone-600">
                 <span className="text-stone-400"><ChatIcon /></span>
@@ -421,14 +468,13 @@ const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ onOpenAuthModal }) 
               {tier === 'free' && (
                 <li className="flex items-center gap-3 text-sm text-stone-600">
                   <span className="text-stone-400"><WaveformIcon /></span>
-                  <span>{STARTER_PACK_PRACTICE_SESSIONS} AI Report</span>
+                  <span>{STARTER_PACK_PRACTICE_SESSIONS} AI Report credits</span>
                 </li>
               )}
               <li className="flex items-center gap-3 text-sm text-stone-600">
                 <span className="text-stone-400"><InfinityIcon /></span>
-                <span>Never expires</span>
+                <span>Credits never expire</span>
               </li>
-       
             </ul>
 
             <button
@@ -478,10 +524,7 @@ const UsageMeter: React.FC<{
   limit: number;
   unit?: string;
   showAsEnabled?: boolean;
-  credits?: number;
-}> = ({ label, used, limit, unit = '', showAsEnabled, credits = 0 }) => {
-  const hasCredits = credits > 0;
-
+}> = ({ label, used, limit, unit = '', showAsEnabled }) => {
   if (showAsEnabled) {
     const enabled = limit > 0 || limit === Infinity;
     return (
@@ -499,27 +542,34 @@ const UsageMeter: React.FC<{
   }
 
   const isUnlimited = limit === Infinity;
-  const percentage = isUnlimited ? 0 : limit > 0 ? Math.min((used / limit) * 100, 100) : 0;
+  // Cap monthly usage at the limit — any overflow was consumed from credits
+  const monthlyUsed = isUnlimited ? used : Math.min(used, limit);
+  const remaining = Math.max(limit - monthlyUsed, 0);
+  const percentage = isUnlimited ? 0 : limit > 0 ? Math.min((monthlyUsed / limit) * 100, 100) : 0;
   const isNearLimit = !isUnlimited && limit > 0 && percentage >= 80;
 
   return (
     <div>
       <div className="text-xs text-stone-500 mb-1">{label}</div>
-      {limit === 0 && !hasCredits ? (
+      {limit === 0 ? (
         <span className="inline-block text-xs font-medium text-stone-500 bg-stone-100 px-2 py-0.5 rounded-full">
           Pro only
         </span>
-      ) : limit === 0 && hasCredits ? (
+      ) : isUnlimited ? (
         <div className="text-sm font-medium text-stone-700">
-          {credits}{unit} <span className="text-green-600 text-xs">credits</span>
+          {used}{unit} used
         </div>
       ) : (
-        <div className={`text-sm font-medium ${isNearLimit && !hasCredits ? 'text-amber-600' : 'text-stone-700'}`}>
-          {isUnlimited ? `${used}${unit} used` : `${used}${unit} / ${limit}${unit}`}
-          {hasCredits && (
-            <span className="text-green-600 text-xs ml-1">+{credits}</span>
-          )}
-        </div>
+        <>
+          <div className={`text-sm font-medium ${isNearLimit ? 'text-amber-600' : 'text-stone-700'}`}>
+            {remaining === 0
+              ? 'Limit reached'
+              : `${remaining}${unit} remaining`}
+          </div>
+          <div className="text-xs text-stone-400 mt-0.5">
+            {monthlyUsed}{unit} / {limit}{unit} used
+          </div>
+        </>
       )}
       {!isUnlimited && limit > 0 && (
         <div className="mt-1.5 h-1.5 bg-stone-100 rounded-full overflow-hidden">
@@ -532,6 +582,20 @@ const UsageMeter: React.FC<{
     </div>
   );
 };
+
+const CreditMeter: React.FC<{
+  label: string;
+  remaining: number;
+  unit?: string;
+}> = ({ label, remaining, unit = '' }) => (
+  <div>
+    <div className="text-xs text-stone-500 mb-1">{label}</div>
+    <div className="text-sm font-medium text-green-600">
+      {remaining}{unit && ` ${unit}`} remaining
+    </div>
+    <div className="text-xs text-stone-400 mt-0.5">Never expires</div>
+  </div>
+);
 
 const FaqItem: React.FC<{ q: string; a: string }> = ({ q, a }) => (
   <div>
