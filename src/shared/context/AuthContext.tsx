@@ -4,6 +4,8 @@ import { supabase } from '../services/supabaseClient';
 
 interface UserProfile {
   name: string | null;
+  firstName: string | null;
+  lastName: string | null;
   email: string | null;
   avatarUrl: string | null;
   initials: string;
@@ -16,6 +18,7 @@ interface AuthContextType {
   loading: boolean;
   signOut: () => Promise<void>;
   updatePassword: (newPassword: string) => Promise<{ error: string | null }>;
+  updateName: (firstName: string, lastName: string) => Promise<{ error: string | null }>;
   isOAuthOnly: boolean;
 }
 
@@ -26,22 +29,38 @@ const getUserProfile = (user: User | null): UserProfile | null => {
   if (!user) return null;
 
   const metadata = user.user_metadata || {};
-  const name = metadata.full_name || metadata.name || null;
   const email = user.email || null;
   const avatarUrl = metadata.avatar_url || metadata.picture || null;
 
+  // Parse first/last name from metadata
+  // Prefer explicit first_name/last_name, fall back to splitting full_name
+  let firstName: string | null = metadata.first_name || null;
+  let lastName: string | null = metadata.last_name || null;
+
+  if (!firstName && !lastName) {
+    const fullName = metadata.full_name || metadata.name || '';
+    const parts = fullName.split(' ').filter(Boolean);
+    if (parts.length >= 2) {
+      firstName = parts[0];
+      lastName = parts.slice(1).join(' ');
+    } else if (parts.length === 1) {
+      firstName = parts[0];
+    }
+  }
+
+  const name = [firstName, lastName].filter(Boolean).join(' ') || null;
+
   // Generate initials from name or email
   let initials = '?';
-  if (name) {
-    const parts = name.split(' ').filter(Boolean);
-    initials = parts.length >= 2
-      ? `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
-      : name.substring(0, 2).toUpperCase();
+  if (firstName && lastName) {
+    initials = `${firstName[0]}${lastName[0]}`.toUpperCase();
+  } else if (firstName) {
+    initials = firstName.substring(0, 2).toUpperCase();
   } else if (email) {
     initials = email.substring(0, 2).toUpperCase();
   }
 
-  return { name, email, avatarUrl, initials };
+  return { name, firstName, lastName, email, avatarUrl, initials };
 };
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -65,10 +84,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     });
 
     // Check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setUserProfile(getUserProfile(session?.user ?? null));
+    supabase.auth.getSession().then(({ data: { session } , error }) => {
+      if (error) {
+        // Session is invalid/expired — clear local state so user can sign in again
+        supabase.auth.signOut({ scope: 'local' });
+        setSession(null);
+        setUser(null);
+        setUserProfile(null);
+      } else {
+        setSession(session);
+        setUser(session?.user ?? null);
+        setUserProfile(getUserProfile(session?.user ?? null));
+      }
       setLoading(false);
     });
 
@@ -76,7 +103,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, []);
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      // Session already gone server-side — clear local state instead
+      await supabase.auth.signOut({ scope: 'local' });
+    }
   };
 
   const updatePassword = async (newPassword: string): Promise<{ error: string | null }> => {
@@ -87,13 +118,28 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return { error: null };
   };
 
+  const updateName = async (firstName: string, lastName: string): Promise<{ error: string | null }> => {
+    const fullName = [firstName, lastName].filter(Boolean).join(' ');
+    const { data, error } = await supabase.auth.updateUser({
+      data: { first_name: firstName, last_name: lastName, full_name: fullName },
+    });
+    if (error) {
+      return { error: error.message };
+    }
+    if (data.user) {
+      setUser(data.user);
+      setUserProfile(getUserProfile(data.user));
+    }
+    return { error: null };
+  };
+
   // Check if user signed up with OAuth only (no password set)
   // Users with 'email' provider have a password, OAuth providers don't
   const isOAuthOnly = user?.app_metadata?.provider !== 'email' &&
     !user?.identities?.some(id => id.provider === 'email');
 
   return (
-    <AuthContext.Provider value={{ session, user, userProfile, loading, signOut, updatePassword, isOAuthOnly }}>
+    <AuthContext.Provider value={{ session, user, userProfile, loading, signOut, updatePassword, updateName, isOAuthOnly }}>
       {children}
     </AuthContext.Provider>
   );

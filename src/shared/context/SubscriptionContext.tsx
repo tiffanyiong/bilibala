@@ -22,6 +22,7 @@ interface SubscriptionContextType {
   // Subscription info
   tier: SubscriptionTier;
   status: string;
+  billingInterval: 'month' | 'year';
   subscription: DbUserSubscription | null;
 
   // Usage data
@@ -98,17 +99,19 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
         setSubscription(sub);
         setUsage(monthlyUsage);
 
-        // Smart sync: Only sync with Stripe if there's a potential mismatch
-        // (user has active subscription_id but tier is free - indicates missed webhook)
-        // Note: We check stripe_subscription_id (not customer_id) because:
-        // - One-time purchases (Starter Pack) only create customer_id, not subscription_id
-        // - Canceled subscriptions have subscription_id but status is 'canceled'
-        const shouldSync = sub?.stripe_subscription_id &&
+        // Smart sync: Sync with Stripe if there's a potential mismatch:
+        // 1. User has active subscription but tier is free (missed webhook)
+        // 2. User is pro but missing period dates or billing_interval (incomplete webhook data)
+        const hasMissingData = sub?.stripe_subscription_id &&
+                              sub?.subscription_status === 'active' &&
+                              sub?.tier === 'pro' &&
+                              (!sub.current_period_start || !sub.current_period_end || !sub.billing_interval);
+        const hasTierMismatch = sub?.stripe_subscription_id &&
                           sub?.subscription_status === 'active' &&
-                          sub?.tier === 'free' &&
-                          session?.access_token;
+                          sub?.tier === 'free';
+        const shouldSync = (hasTierMismatch || hasMissingData) && session?.access_token;
         if (shouldSync) {
-          console.log('[SubscriptionContext] Potential mismatch detected (active subscription but free tier), syncing with Stripe...');
+          console.log('[SubscriptionContext] Sync needed:', hasTierMismatch ? 'tier mismatch' : 'missing period/billing data');
           try {
             const res = await fetch(`${getBackendOrigin()}/api/subscriptions/sync`, {
               method: 'POST',
@@ -118,11 +121,11 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
               },
             });
             const data = await res.json();
-            if (data.synced && data.tier === 'pro') {
+            if (data.synced) {
               // Reload subscription data after sync
               const updatedSub = await getOrCreateSubscription(user.id);
               setSubscription(updatedSub);
-              console.log('[SubscriptionContext] Synced - user upgraded to pro');
+              console.log('[SubscriptionContext] Synced successfully:', { tier: data.tier, status: data.status });
             }
           } catch (syncErr) {
             console.error('Error during smart sync:', syncErr);
@@ -346,6 +349,7 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
     <SubscriptionContext.Provider value={{
       tier,
       status: subscription?.subscription_status || 'active',
+      billingInterval: subscription?.billing_interval || 'month',
       subscription,
       usage,
       aiTutorCreditMinutes,

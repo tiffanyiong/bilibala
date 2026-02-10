@@ -22,7 +22,8 @@ interface PracticeSessionProps {
   nativeLang: string;
   targetLang: string;
   analysisId?: string | null;
-  onExit: () => void;
+  videoTitle?: string;
+  videoId?: string;
   onRequireAuth?: () => void;
 }
 
@@ -52,6 +53,7 @@ const defaultLabels = {
     actionableTips: 'Actionable Tips',
     transcription: 'Transcription',
     yourRecording: 'Your Recording',
+    aiVoice: 'AI Voice',
     recordAnswer: 'Record Answer',
     reviewAnswer: 'Review Answer',
     takeYourTime: 'Take your time',
@@ -83,7 +85,9 @@ const defaultLabels = {
     intonationOverlyExpressive: 'overly-expressive',
     pronunciationGood: 'Good',
     pronunciationNeedsWorkLabel: 'Needs Work',
-    pronunciationUnclear: 'Unclear'
+    pronunciationUnclear: 'Unclear',
+    tapToStart: 'Tap to start recording',
+    retryPrompt: 'Try again with the feedback in mind!'
 };
 
 const PracticeSession: React.FC<PracticeSessionProps> = ({
@@ -98,7 +102,8 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
   nativeLang,
   targetLang,
   analysisId,
-  onExit,
+  videoTitle,
+  videoId,
   onRequireAuth
 }) => {
   const { user } = useAuth();
@@ -197,7 +202,9 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
 
   const handleStartRecording = () => setState(SessionState.RECORDING);
 
-  const handleRecordingComplete = async (audioData: string) => {
+  // referenceTranscript: If provided, this is a "retake" where user is practicing the improved version
+  // The backend will focus on delivery scoring rather than content restructuring
+  const handleRecordingComplete = async (audioData: string, mimeType: string = 'audio/webm', referenceTranscript?: string) => {
     setState(SessionState.ANALYZING);
     setError('');
 
@@ -207,7 +214,7 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
         const byteNumbers = new Array(byteCharacters.length);
         for (let i = 0; i < byteCharacters.length; i++) byteNumbers[i] = byteCharacters.charCodeAt(i);
         const byteArray = new Uint8Array(byteNumbers);
-        const blob = new Blob([byteArray], { type: 'audio/mp3' });
+        const blob = new Blob([byteArray], { type: mimeType });
         newAudioUrl = URL.createObjectURL(blob);
         if (currentAudioUrl) URL.revokeObjectURL(currentAudioUrl);
         setCurrentAudioUrl(newAudioUrl);
@@ -218,10 +225,19 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
       const languageToUse = isEasy ? nativeLang : targetLang;
       const isEnglish = languageToUse && languageToUse.toLowerCase().includes('english');
 
+      // Include referenceTranscript for retake mode (practicing improved version)
       const analysisPromise = fetch(`${getBackendOrigin()}/api/analyze-speech`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ audioData, topic: topic.topic, question: topic.question, level, targetLang, nativeLang }),
+        body: JSON.stringify({
+          audioData,
+          topic: topic.topic,
+          question: topic.question,
+          level,
+          targetLang,
+          nativeLang,
+          ...(referenceTranscript && { referenceTranscript }) // Only include if it's a retake
+        }),
       }).then(res => res.json());
 
       let translationPromise = Promise.resolve({ labels: null });
@@ -235,6 +251,24 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
 
       const [analysisData, translationData] = await Promise.all([analysisPromise, translationPromise]);
       if (analysisData.error) throw new Error(analysisData.error);
+
+      // Translate band_descriptor / level_descriptor into nativeLang when level is Easy
+      if (isEasy && !isEnglish && analysisData.scoring_breakdown) {
+        const descriptorKey = analysisData.scoring_breakdown.band_descriptor ? 'band_descriptor' : 'level_descriptor';
+        const descriptorText = analysisData.scoring_breakdown[descriptorKey];
+        if (descriptorText) {
+          try {
+            const descTranslation = await fetch(`${getBackendOrigin()}/api/translate-ui-labels`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ language: languageToUse, isEasyLevel: true, sourceLabels: { descriptor: descriptorText } })
+            }).then(res => res.json());
+            if (descTranslation?.labels?.descriptor) {
+              analysisData.scoring_breakdown[descriptorKey] = descTranslation.labels.descriptor;
+            }
+          } catch (err) { console.error('Descriptor translation failed:', err); }
+        }
+      }
 
       setAnalysisResult(analysisData);
       const finalLabels = translationData?.labels ? { ...defaultLabels, ...translationData.labels } : defaultLabels;
@@ -254,7 +288,7 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
         const isLibraryFull = !isAlreadyInLibrary && currentLibrary.length >= libraryLimit;
         (async () => {
           try {
-            const audioUrl = await uploadPracticeAudio(user.id, audioData);
+            const audioUrl = await uploadPracticeAudio(user.id, audioData, mimeType);
             const savedSession = await savePracticeSession({
               user_id: user.id,
               analysis_id: analysisId || null,
@@ -296,9 +330,10 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
     }
 
       setState(SessionState.RESULTS);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err: any) {
       setError(err.message || "Failed to analyze speech.");
-      setState(SessionState.PREP); 
+      setState(SessionState.PREP);
     }
   };
 
@@ -368,13 +403,7 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
   const canGenerate = aiGeneratedCount < AI_GENERATED_LIMIT && !!onGenerateQuestion && !isAnalyzing;
 
   return (
-    <div className="min-h-screen bg-[#F6F4EF] p-6 lg:p-12 flex flex-col">
-      <div className="flex items-center justify-between mb-8 max-w-5xl mx-auto w-full">
-        <button onClick={onExit} className="flex items-center gap-2 text-stone-500 hover:text-stone-800 transition-colors">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-        </button>
-      </div>
-
+    <div className="min-h-screen bg-[#F6F4EF] p-1 lg:p-6 flex flex-col">
       <div className="flex-1 max-w-5xl mx-auto w-full flex flex-col justify-start pt-4 space-y-10">
         <div className="text-center space-y-4 animate-in fade-in slide-in-from-top-4 duration-500">
             {/* Topic Navigation */}
@@ -395,28 +424,88 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
             </div>
 
             {/* Question Navigation */}
-            <div className="flex items-center justify-center gap-4">
-              {allQuestions.length > 1 && (
-                <button onClick={() => handleQuestionSwitch(allQuestions[currentQuestionIndex > 0 ? currentQuestionIndex - 1 : allQuestions.length - 1])} disabled={isAnalyzing} className="text-stone-300 hover:text-stone-500 p-1 disabled:opacity-30">
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><polyline points="15 18 9 12 15 6" /></svg>
-                </button>
-              )}
-              <div className="flex flex-col items-center gap-2 flex-1 max-w-3xl">
-                <h1 className="text-3xl md:text-4xl font-serif text-stone-900 leading-tight">
+            <div className="flex flex-col items-center w-full">
+              <div className="flex flex-col items-center gap-2 max-w-3xl px-4 md:px-12">
+                <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-serif text-stone-900 leading-relaxed sm:leading-snug md:leading-tight">
                   {topic.question}
-                  
+
                   {/* AI Generate Button */}
                   {onGenerateQuestion && (
-                    <button onClick={handleGenerateQuestion} disabled={!canGenerate || isGenerating} className="ml-2 align-middle text-stone-400 hover:text-stone-700 disabled:opacity-30">
-                      {isGenerating ? <div className="w-5 h-5 border-2 border-stone-400 border-t-transparent animate-spin rounded-full"/> : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6l2.1 2.1M5.6 18.4l2.1-2.1m8.6-8.6l2.1-2.1" /></svg>}
+                    <button
+                      onClick={handleGenerateQuestion}
+                      disabled={!canGenerate || isGenerating}
+                      className={`group inline-flex items-center gap-1 ml-2 align-middle rounded-full transition-all duration-300 ease-out ${
+                        !canGenerate
+                          ? 'text-stone-300 cursor-not-allowed'
+                          : isGenerating
+                            ? 'text-stone-500'
+                            : 'text-stone-400 hover:text-stone-700'
+                      }`}
+                    >
+                      <span className="flex-shrink-0">
+                        {isGenerating ? (
+                          <div className="w-5 h-5 border-2 border-stone-400 border-t-transparent animate-spin rounded-full"/>
+                        ) : (
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                            <path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6l2.1 2.1M5.6 18.4l2.1-2.1m8.6-8.6l2.1-2.1" />
+                          </svg>
+                        )}
+                      </span>
+                      <span
+                        className={`grid transition-all duration-300 ease-out ${
+                          isGenerating
+                            ? 'grid-cols-[1fr] opacity-100'
+                            : 'grid-cols-[0fr] opacity-0 group-hover:grid-cols-[1fr] group-hover:opacity-100'
+                        }`}
+                      >
+                        <span className="overflow-hidden whitespace-nowrap text-xs font-medium">
+                          {isGenerating ? 'Generating...' : 'Generate'}
+                        </span>
+                      </span>
                     </button>
                   )}
                 </h1>
+                {/* Video Source Reference */}
+                {(() => {
+                  // Get the current question's source info from allQuestions
+                  const currentQuestion = allQuestions.find(q => q.questionId === topic.questionId);
+                  const sourceTitle = currentQuestion?.videoTitle || videoTitle;
+                  // Use the question's source video ID, or fall back to current video
+                  const linkVideoId = currentQuestion?.youtubeId || videoId;
+
+                  if (sourceTitle) {
+                    return (
+                      <p className="text-xs text-stone-400 mt-1">
+                        <span className="italic">Source: </span>
+                        {linkVideoId ? (
+                          <a
+                            href={`/${linkVideoId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="hover:text-stone-600 hover:underline transition-colors"
+                          >
+                            {sourceTitle}
+                          </a>
+                        ) : (
+                          <span>{sourceTitle}</span>
+                        )}
+                      </p>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
+              {/* Question Arrow Navigation - below source */}
               {allQuestions.length > 1 && (
-                <button onClick={() => handleQuestionSwitch(allQuestions[currentQuestionIndex < allQuestions.length - 1 ? currentQuestionIndex + 1 : 0])} disabled={isAnalyzing} className="text-stone-300 hover:text-stone-500 p-1 disabled:opacity-30">
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><polyline points="9 18 15 12 9 6" /></svg>
-                </button>
+                <div className="flex items-center justify-center gap-4 mt-4">
+                  <button onClick={() => handleQuestionSwitch(allQuestions[currentQuestionIndex > 0 ? currentQuestionIndex - 1 : allQuestions.length - 1])} disabled={isAnalyzing} className="text-stone-300 hover:text-stone-500 p-1 disabled:opacity-30">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><polyline points="15 18 9 12 15 6" /></svg>
+                  </button>
+                  <span className="text-xs text-stone-400">{currentQuestionIndex + 1} / {allQuestions.length}</span>
+                  <button onClick={() => handleQuestionSwitch(allQuestions[currentQuestionIndex < allQuestions.length - 1 ? currentQuestionIndex + 1 : 0])} disabled={isAnalyzing} className="text-stone-300 hover:text-stone-500 p-1 disabled:opacity-30">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><polyline points="9 18 15 12 9 6" /></svg>
+                  </button>
+                </div>
               )}
             </div>
         </div>
@@ -430,9 +519,12 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
                     </div>
                     <div className="flex justify-center min-h-[120px] items-center">
                         {state === SessionState.PREP ? (
-                            <button onClick={handleStartRecording} className="w-20 h-20 bg-stone-900 rounded-full flex items-center justify-center text-white shadow-xl hover:scale-105 transition-all">
-                                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" /></svg>
-                            </button>
+                            <div className="flex flex-col items-center gap-3">
+                                <button onClick={handleStartRecording} className="w-20 h-20 bg-stone-900 rounded-full flex items-center justify-center text-white shadow-xl hover:scale-105 transition-all">
+                                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" /></svg>
+                                </button>
+                                <p className="text-stone-400 text-sm font-medium">{translatedLabels.tapToStart}</p>
+                            </div>
                         ) : (
                             <AudioRecorder
                                 onRecordingComplete={handleRecordingComplete}

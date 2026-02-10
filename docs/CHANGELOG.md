@@ -1,5 +1,39 @@
 # Changelog
 
+## Stripe Subscription Period Dates Fix (February 2026)
+
+### Root Cause
+Subscription `current_period_start` and `current_period_end` were always NULL in the database for Pro users, so the renewal date never displayed on the Subscription Page or Profile Page.
+
+Two issues caused this:
+
+1. **Stripe API breaking change:** Stripe SDK v20+ (API version `2025-03-31`) removed `current_period_start` and `current_period_end` from the subscription object. These fields moved to **subscription items** (`items.data[0].current_period_start`). All code that read `subscription.current_period_start` got `undefined`, which either produced "Invalid time value" errors or wrote NULL to the database.
+
+2. **Webhook race condition:** `customer.subscription.created` fires before `checkout.session.completed`. The subscription handler looks up the user by `stripe_customer_id`, but that ID hasn't been saved yet (it's saved by the checkout handler). So the lookup returned NULL and the update was silently skipped.
+
+3. **Webhook signature verification failures:** The `STRIPE_WEBHOOK_SECRET` env var didn't match the Stripe endpoint's signing secret, causing all webhook events to be rejected at signature verification. No webhook logic ever ran.
+
+### Changes
+
+#### `server/routes/subscriptionRoutes.js`
+- **Stripe API fix:** All three locations that read period dates (sync endpoint, checkout handler, subscription created/updated handler) now read from `items.data[0]` with a fallback: `subItem?.current_period_start ?? subscription.current_period_start`
+- **Race condition fix:** `customer.subscription.created/updated` handler falls back to looking up the user via Stripe customer metadata (`supabase_user_id`) when `stripe_customer_id` lookup fails
+- **Sync endpoint fix:** Removed conditional guards (`if (periodStart)`) — period dates are now always included in the update, so smart sync can backfill NULL values
+- **Logging:** Added detailed logging to all webhook handlers and sync endpoint for debugging (raw Stripe values, rows affected, result values)
+
+#### `src/shared/context/SubscriptionContext.tsx`
+- Smart sync now also triggers when a Pro user has NULL `current_period_start`, `current_period_end`, or `billing_interval` (previously only triggered on tier mismatch)
+
+#### `docs/PAYMENT_SYSTEM.md`
+- Documented Stripe API version change and the `items.data[0]` period date pattern
+- Documented the webhook race condition and metadata fallback
+- Updated smart sync documentation to reflect the expanded trigger conditions
+
+### Environment Variable Fix
+- `STRIPE_WEBHOOK_SECRET` on Railway must match the signing secret from the Stripe webhook endpoint (starts with `whsec_`)
+
+---
+
 ## Text Translator Feature (January 2026)
 
 ### Overview
