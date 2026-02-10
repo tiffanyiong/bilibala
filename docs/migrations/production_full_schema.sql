@@ -790,6 +790,21 @@ CREATE POLICY "Anyone can read practice recordings" ON storage.objects
 
 -- Storage policies for tts-cache (server-side only via service role, no user policies needed)
 
+
+-- Allow authenticated users to delete their own practice sessions
+CREATE POLICY "Users delete own sessions" ON public.practice_sessions
+  FOR DELETE TO authenticated USING (auth.uid() = user_id);
+
+-- practice session favorites:
+-- Add is_favorited column to practice_sessions
+ALTER TABLE public.practice_sessions
+  ADD COLUMN is_favorited BOOLEAN NOT NULL DEFAULT false;
+
+-- Allow authenticated users to update their own practice sessions (for toggling favorite)
+CREATE POLICY "Users update own sessions" ON public.practice_sessions
+  FOR UPDATE TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+
 -- ==============================================================================
 -- DONE! Your production database is ready.
 -- ==============================================================================
