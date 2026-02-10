@@ -81,7 +81,8 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
           <div className="bg-stone-50 rounded-lg p-3 mb-5 space-y-1.5">
             <div className="text-xs font-medium text-stone-600 mb-2">Pro includes:</div>
             {[
-              'Unlimited videos & practice sessions',
+              'Unlimited practice sessions',
+              '100 analyzed videos/month',
               '60 min/month AI Tutor conversations',
               'PDF report export',
               'Full video library access',
