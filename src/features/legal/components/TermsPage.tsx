@@ -82,7 +82,7 @@ const TermsPage: React.FC = () => {
             We want you to be satisfied with Bilibala. If you subscribe to the <strong>Annual Plan</strong> for the first time, you are eligible for a full refund if you contact us within <strong>forty-eight (48) hours</strong> of your initial purchase.
           </p>
           <ul className="list-disc pl-6 text-stone-600 space-y-2">
-            <li>To request a refund, please email <strong>support@bilibala.app</strong>.</li>
+            <li>To request a refund, please email <strong>support@mybilibala.com</strong>.</li>
             <li>This guarantee applies only to the first year of an Annual subscription and does not apply to Monthly subscriptions or renewal charges.</li>
           </ul>
 
@@ -151,7 +151,7 @@ const TermsPage: React.FC = () => {
             If you have any questions about these Terms, please contact us at:
           </p>
           <p className="text-stone-600 leading-relaxed mt-2">
-            <strong>support@bilibala.app</strong>
+            <strong>support@mybilibala.com</strong>
           </p>
         </section>
       </div>
