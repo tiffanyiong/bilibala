@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { LRUCache } from 'lru-cache';
+import { config } from '../config/env.js';
 import { createAi } from '../services/geminiService.js';
 import { safeJsonParse } from '../utils/helpers.js';
-import { config } from '../config/env.js';
 
 const router = Router();
 
@@ -85,7 +85,7 @@ ${JSON.stringify(labelsToTranslate, null, 2)}
 Return the same JSON structure with values translated to ${language}.`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash-preview',
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       config: {
         responseMimeType: 'application/json',
