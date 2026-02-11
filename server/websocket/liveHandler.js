@@ -6,17 +6,56 @@ import { supabaseAdmin } from '../services/supabaseAdmin.js';
 import { getConfigNumber } from '../services/configService.js';
 
 /**
- * Record AI tutor usage in usage_history table.
+ * Record AI tutor usage: audit log + split between monthly allowance and credits.
+ * Monthly column only tracks usage covered by the monthly allowance.
+ * Anything beyond is deducted from purchased credits.
  */
 async function recordTutorUsage(userId, minutesUsed) {
   if (!supabaseAdmin || !userId) return;
   try {
+    // 1. Audit log
     await supabaseAdmin.from('usage_history').insert({
       user_id: userId,
       action_type: 'ai_tutor',
       metadata: { minutes_used: minutesUsed },
     });
-    console.log(`[server] Recorded ${minutesUsed} min AI tutor usage for user ${userId}`);
+
+    // 2. Get user's tier, credits, and current monthly usage
+    const { data: sub } = await supabaseAdmin
+      .from('user_subscriptions')
+      .select('tier, ai_tutor_credit_minutes, ai_tutor_monthly_minutes_used')
+      .eq('user_id', userId)
+      .single();
+
+    if (!sub) return;
+
+    const monthlyLimit = sub.tier === 'pro' ? getConfigNumber('ai_tutor_monthly_max_minutes', 60) : 0;
+    const currentUsed = sub.ai_tutor_monthly_minutes_used || 0;
+    const monthlyRemaining = Math.max(0, monthlyLimit - currentUsed);
+
+    // 3. Split between monthly allowance and credits
+    const monthlyPortion = Math.min(minutesUsed, monthlyRemaining);
+    const creditPortion = minutesUsed - monthlyPortion;
+
+    console.log(`[server] AI tutor usage split for user ${userId}: ${minutesUsed} min total, ${monthlyPortion} monthly, ${creditPortion} credits`);
+
+    // 4. Increment monthly column only for the monthly-covered portion
+    if (monthlyPortion > 0) {
+      await supabaseAdmin.rpc('increment_monthly_usage', {
+        p_user_id: userId,
+        p_action_type: 'ai_tutor',
+        p_amount: monthlyPortion,
+      });
+    }
+
+    // 5. Deduct the rest from credits
+    if (creditPortion > 0 && sub.ai_tutor_credit_minutes > 0) {
+      const { data: deducted } = await supabaseAdmin.rpc('deduct_ai_tutor_credits', {
+        p_user_id: userId,
+        p_minutes: creditPortion,
+      });
+      console.log(`[server] Deducted ${deducted} AI tutor credit minutes for user ${userId}`);
+    }
   } catch (err) {
     console.error('[server] Failed to record tutor usage:', err.message);
   }
@@ -28,11 +67,11 @@ async function recordTutorUsage(userId, minutesUsed) {
 async function getMonthlyMinutesUsed(userId) {
   if (!supabaseAdmin || !userId) return 0;
   try {
-    const { data, error } = await supabaseAdmin.rpc('get_all_monthly_usage', {
+    const { data, error } = await supabaseAdmin.rpc('get_current_monthly_usage', {
       p_user_id: userId,
     });
     if (error) throw error;
-    return data?.ai_tutor_minutes_used ?? 0;
+    return data?.[0]?.ai_tutor_minutes_used ?? 0;
   } catch (err) {
     console.error('[server] Failed to get monthly usage:', err.message);
     return 0;
