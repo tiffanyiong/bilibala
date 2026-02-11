@@ -292,10 +292,10 @@ router.post('/subscriptions/sync', async (req, res) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    // Get user's Stripe customer ID from database
+    // Get user's Stripe customer ID and current tier from database
     const { data: userSub } = await supabaseAdmin
       .from('user_subscriptions')
-      .select('stripe_customer_id')
+      .select('stripe_customer_id, tier')
       .eq('user_id', user.id)
       .single();
 
@@ -353,14 +353,27 @@ router.post('/subscriptions/sync', async (req, res) => {
 
     // Update database with current Stripe status — always include period dates
     const billingInterval = subscription.items?.data?.[0]?.plan?.interval || 'month';
+    const newTier = isActive ? 'pro' : 'free';
+    const tierChanged = userSub.tier !== newTier;
+    if (tierChanged) {
+      console.log('[Sync] Tier change:', userSub.tier, '→', newTier, '— resetting monthly usage');
+    }
     const updateData = {
-      tier: isActive ? 'pro' : 'free',
+      tier: newTier,
       stripe_subscription_id: subscription.id,
       subscription_status: subscription.status,
       billing_interval: billingInterval,
       current_period_start: periodStart,
       current_period_end: periodEnd,
       updated_at: new Date().toISOString(),
+      // Reset monthly usage on any tier change — does NOT affect purchased credits
+      ...(tierChanged ? {
+        usage_reset_at: new Date().toISOString(),
+        video_monthly_usage: 0,
+        practice_session_monthly_usage: 0,
+        ai_tutor_monthly_minutes_used: 0,
+        usage_month: new Date().toISOString().slice(0, 7),
+      } : {}),
     };
 
     const { data: updateResult, error: updateError } = await supabaseAdmin
@@ -511,19 +524,43 @@ router.post('/subscriptions/webhook', async (req, res) => {
               rawEnd,
             });
 
+            // Check current tier to determine if this is an upgrade (free → pro)
+            // If upgrading, reset monthly usage so pro limits start fresh
+            const { data: currentSub } = await supabaseAdmin
+              .from('user_subscriptions')
+              .select('tier')
+              .eq('user_id', userId)
+              .single();
+            const isUpgrade = !currentSub || currentSub.tier !== 'pro';
+
+            const updateFields = {
+              tier: 'pro',
+              stripe_customer_id: customerId,
+              stripe_subscription_id: subscriptionId,
+              subscription_status: 'active',
+              billing_interval: billingInterval,
+              current_period_start: periodStart,
+              current_period_end: periodEnd,
+              updated_at: new Date().toISOString(),
+              // Reset monthly usage on upgrade so pro limits start fresh
+              // This does NOT affect purchased credits (video_credits, ai_tutor_credit_minutes, etc.)
+              ...(isUpgrade ? {
+                usage_reset_at: new Date().toISOString(),
+                video_monthly_usage: 0,
+                practice_session_monthly_usage: 0,
+                ai_tutor_monthly_minutes_used: 0,
+                usage_month: new Date().toISOString().slice(0, 7),
+              } : {}),
+            };
+
+            if (isUpgrade) {
+              console.log('[Webhook] Upgrading user from', currentSub?.tier || 'unknown', 'to pro — resetting monthly usage');
+            }
+
             // Use update first (row should already exist from signup trigger)
             const { data: updateData, error: updateError } = await supabaseAdmin
               .from('user_subscriptions')
-              .update({
-                tier: 'pro',
-                stripe_customer_id: customerId,
-                stripe_subscription_id: subscriptionId,
-                subscription_status: 'active',
-                billing_interval: billingInterval,
-                current_period_start: periodStart,
-                current_period_end: periodEnd,
-                updated_at: new Date().toISOString(),
-              })
+              .update(updateFields)
               .eq('user_id', userId)
               .select();
 
@@ -533,14 +570,7 @@ router.post('/subscriptions/webhook', async (req, res) => {
                 .from('user_subscriptions')
                 .upsert({
                   user_id: userId,
-                  tier: 'pro',
-                  stripe_customer_id: customerId,
-                  stripe_subscription_id: subscriptionId,
-                  subscription_status: 'active',
-                  billing_interval: billingInterval,
-                  current_period_start: periodStart,
-                  current_period_end: periodEnd,
-                  updated_at: new Date().toISOString(),
+                  ...updateFields,
                 }, { onConflict: 'user_id' });
 
               if (upsertError) {
@@ -566,7 +596,7 @@ router.post('/subscriptions/webhook', async (req, res) => {
         // Find user by Stripe customer ID
         let { data: userSub } = await supabaseAdmin
           .from('user_subscriptions')
-          .select('user_id')
+          .select('user_id, tier')
           .eq('stripe_customer_id', customerId)
           .single();
 
@@ -583,7 +613,13 @@ router.post('/subscriptions/webhook', async (req, res) => {
                 .from('user_subscriptions')
                 .update({ stripe_customer_id: customerId })
                 .eq('user_id', metaUserId);
-              userSub = { user_id: metaUserId };
+              // Also fetch current tier for upgrade detection
+              const { data: fallbackSub } = await supabaseAdmin
+                .from('user_subscriptions')
+                .select('tier')
+                .eq('user_id', metaUserId)
+                .single();
+              userSub = { user_id: metaUserId, tier: fallbackSub?.tier || 'free' };
               console.log('[Webhook] Resolved user via Stripe customer metadata:', metaUserId);
             }
           } catch (err) {
@@ -593,6 +629,7 @@ router.post('/subscriptions/webhook', async (req, res) => {
 
         if (userSub) {
           const isActive = subscription.status === 'active' || subscription.status === 'trialing';
+          const newTier = isActive ? 'pro' : 'free';
           // Stripe API 2025-03-31+: period dates moved to subscription items
           const subItem = subscription.items?.data?.[0];
           const billingInterval = subItem?.plan?.interval || 'month';
@@ -600,6 +637,12 @@ router.post('/subscriptions/webhook', async (req, res) => {
           const rawEnd = subItem?.current_period_end ?? subscription.current_period_end;
           const periodStart = rawStart ? new Date(rawStart * 1000).toISOString() : null;
           const periodEnd = rawEnd ? new Date(rawEnd * 1000).toISOString() : null;
+
+          // Detect any tier change to reset monthly usage
+          const tierChanged = userSub.tier !== newTier;
+          if (tierChanged) {
+            console.log(`[Webhook] ${event.type} - tier change: ${userSub.tier} → ${newTier} — resetting monthly usage`);
+          }
 
           console.log(`[Webhook] ${event.type} - updating user:`, userSub.user_id, {
             isActive, billingInterval, periodStart, periodEnd,
@@ -609,12 +652,20 @@ router.post('/subscriptions/webhook', async (req, res) => {
           const { data: updateData, error: updateError } = await supabaseAdmin
             .from('user_subscriptions')
             .update({
-              tier: isActive ? 'pro' : 'free',
+              tier: newTier,
               subscription_status: subscription.status,
               billing_interval: billingInterval,
               current_period_start: periodStart,
               current_period_end: periodEnd,
               updated_at: new Date().toISOString(),
+              // Reset monthly usage on any tier change — does NOT affect purchased credits
+              ...(tierChanged ? {
+                usage_reset_at: new Date().toISOString(),
+                video_monthly_usage: 0,
+                practice_session_monthly_usage: 0,
+                ai_tutor_monthly_minutes_used: 0,
+                usage_month: new Date().toISOString().slice(0, 7),
+              } : {}),
             })
             .eq('user_id', userSub.user_id)
             .select();
@@ -641,6 +692,7 @@ router.post('/subscriptions/webhook', async (req, res) => {
           .single();
 
         if (userSub) {
+          console.log('[Webhook] subscription.deleted — downgrading to free, resetting monthly usage');
           await supabaseAdmin
             .from('user_subscriptions')
             .update({
@@ -649,6 +701,12 @@ router.post('/subscriptions/webhook', async (req, res) => {
               current_period_end: null,
               billing_interval: null,
               updated_at: new Date().toISOString(),
+              // Reset monthly usage on downgrade — does NOT affect purchased credits
+              video_monthly_usage: 0,
+              practice_session_monthly_usage: 0,
+              ai_tutor_monthly_minutes_used: 0,
+              usage_month: new Date().toISOString().slice(0, 7),
+              usage_reset_at: new Date().toISOString(),
             })
             .eq('user_id', userSub.user_id);
         }

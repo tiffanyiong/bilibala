@@ -82,18 +82,19 @@ const FloatingTutorWindow: React.FC<FloatingTutorWindowProps> = ({
   const positionRef = useRef({ x: 0, y: 0 });
 
   const { user } = useAuth();
-  const { recordAction, refreshUsage, usage, aiTutorMinutesLimit, aiTutorCreditMinutes } = useSubscription();
+  const { refreshUsage, refreshSubscription, usage, aiTutorMinutesLimit, aiTutorCreditMinutes } = useSubscription();
 
   const remainingMonthlySeconds = Math.max(0, (aiTutorMinutesLimit - usage.aiTutorMinutesUsed) * 60);
   // Total remaining includes both monthly allowance and purchased credits
   const totalRemainingSeconds = remainingMonthlySeconds + (aiTutorCreditMinutes * 60);
 
-  const handleLimitReached = useCallback((durationSecs: number, reason: 'session' | 'monthly') => {
-    const minutesUsed = Math.max(1, Math.ceil(durationSecs / 60));
-    recordAction('ai_tutor', { minutes_used: minutesUsed });
-    // End note is already set by stopSession in the hook
+  const handleLimitReached = useCallback(async (_durationSecs: number, reason: 'session' | 'monthly') => {
+    // Usage is recorded server-side in liveHandler.js when the WebSocket closes.
+    // Just refresh local state so UI reflects the updated usage/credits.
+    await refreshUsage();
+    await refreshSubscription();
     void reason; // reason is used by the hook for the end note
-  }, [recordAction]);
+  }, [refreshUsage, refreshSubscription]);
 
   const liveVoice = useLiveVoice({
     videoTitle,
@@ -119,15 +120,16 @@ const FloatingTutorWindow: React.FC<FloatingTutorWindowProps> = ({
     await liveVoice.startSession();
   }, [totalRemainingSeconds, liveVoice.startSession, onClose]);
 
-  // Refresh usage from DB after a session ends so the remaining minutes are accurate
+  // Refresh usage and credits from DB after a session ends so remaining minutes are accurate
   const prevConnectedRef = useRef(false);
   useEffect(() => {
     if (prevConnectedRef.current && !liveVoice.isConnected) {
-      // Session just ended — refresh usage from DB (server already recorded it)
+      // Session just ended — refresh from DB (server already recorded usage + deducted credits)
       refreshUsage();
+      refreshSubscription();
     }
     prevConnectedRef.current = liveVoice.isConnected;
-  }, [liveVoice.isConnected, refreshUsage]);
+  }, [liveVoice.isConnected, refreshUsage, refreshSubscription]);
 
   // Calculate responsive window size
   const calculateWindowSize = useCallback(() => {
@@ -257,13 +259,12 @@ const FloatingTutorWindow: React.FC<FloatingTutorWindowProps> = ({
     };
   }, [isDragging, handleDragMove, handleDragEnd]);
 
-  const handleClose = () => {
-    const durationSecs = liveVoice.durationSeconds;
+  const handleClose = async () => {
     liveVoice.stopSession();
-    if (durationSecs > 0) {
-      const minutesUsed = Math.max(1, Math.ceil(durationSecs / 60));
-      recordAction('ai_tutor', { minutes_used: minutesUsed });
-    }
+    // Usage is recorded server-side in liveHandler.js when the WebSocket closes.
+    // Refresh local state so UI reflects the updated usage/credits.
+    await refreshUsage();
+    await refreshSubscription();
     onClose();
   };
 

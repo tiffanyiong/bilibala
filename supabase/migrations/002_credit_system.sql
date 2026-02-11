@@ -25,6 +25,7 @@ CREATE OR REPLACE FUNCTION public.deduct_ai_tutor_credits(
 RETURNS INTEGER
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
   current_credits INTEGER;
@@ -64,6 +65,7 @@ CREATE OR REPLACE FUNCTION public.deduct_practice_credits(
 RETURNS INTEGER
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
   current_credits INTEGER;
@@ -99,6 +101,7 @@ CREATE OR REPLACE FUNCTION public.add_credits(
 RETURNS VOID
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 BEGIN
   UPDATE public.user_subscriptions
