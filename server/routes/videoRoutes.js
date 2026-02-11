@@ -30,9 +30,18 @@ let contextData = { duration: 0, transcriptText: '', transcriptSegments: [] };
     const formattedTranscript = (contextData.transcriptSegments || [])
       .map(s => {
         const totalSeconds = Math.floor(s.offset / 1000);
-        const mm = Math.floor(totalSeconds / 60);
+
+        // 計算 小時, 分鐘, 秒
+        const hh = Math.floor(totalSeconds / 3600);
+        const mm = Math.floor((totalSeconds % 3600) / 60);
         const ss = totalSeconds % 60;
-        const timestamp = `[${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}]`;
+
+        // 如果有小時，格式化為 [HH:MM:SS]，否則 [MM:SS]
+        // 這樣 AI 在處理長影片時不會困惑
+        const timestamp = hh > 0 
+          ? `[${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}]`
+          : `[${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}]`;
+          
         return `${timestamp} ${s.text}`;
       })
       .join('\n');
@@ -40,7 +49,15 @@ let contextData = { duration: 0, transcriptText: '', transcriptSegments: [] };
       
 
     const durationMin = contextData.duration ? contextData.duration / 60 : 10;
-    const totalDurationStr = `${Math.floor(durationMin)}:${String(Math.floor(contextData.duration % 60)).padStart(2, '0')}`;
+    
+    // --- 修改：總時長字串也同步支援小時格式 ---
+    const totalDurationH = Math.floor(contextData.duration / 3600);
+    const totalDurationM = Math.floor((contextData.duration % 3600) / 60);
+    const totalDurationS = Math.floor(contextData.duration % 60);
+
+   const totalDurationStr = totalDurationH > 0
+      ? `${totalDurationH}:${String(totalDurationM).padStart(2, '0')}:${String(totalDurationS).padStart(2, '0')}`
+      : `${totalDurationM}:${String(totalDurationS).padStart(2, '0')}`;
     const targetTopicCount = Math.max(3, Math.min(15, Math.ceil(durationMin / 3)));
 
     // 這裡我們給出一個建議範圍，而不是死板的數字
