@@ -20,15 +20,33 @@ router.post('/analyze-video-content', async (req, res) => {
     const videoId = videoUrl ? extractVideoId(videoUrl) : null;
     console.log(`[server] Analyzing video content for: ${videoTitle} (${videoId}) using Gemini 3`);
 
-    // Fetch context (Duration + Transcript if possible) to fix timestamps
-    let contextData = { duration: 0, transcriptText: '' };
+let contextData = { duration: 0, transcriptText: '', transcriptSegments: [] };
     if (videoId) {
       contextData = await fetchVideoContext(videoId, targetLang);
     }
 
-    // Dynamic topic count based on duration (approx 1 topic per 3 mins, min 3, max 15)
+    // --- 新增：將 Segments 轉換為帶時間戳的文本 ---
+    // 這樣 Gemini 才能知道哪一段話是在哪一秒說的
+    const formattedTranscript = (contextData.transcriptSegments || [])
+      .map(s => {
+        const totalSeconds = Math.floor(s.offset / 1000);
+        const mm = Math.floor(totalSeconds / 60);
+        const ss = totalSeconds % 60;
+        const timestamp = `[${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}]`;
+        return `${timestamp} ${s.text}`;
+      })
+      .join('\n');
+
+      
+
     const durationMin = contextData.duration ? contextData.duration / 60 : 10;
-    const targetTopicCount = Math.max(3, Math.min(15, Math.ceil(durationMin / 3)));
+    const totalDurationStr = `${Math.floor(durationMin)}:${String(Math.floor(contextData.duration % 60)).padStart(2, '0')}`;
+
+    // 這裡我們給出一個建議範圍，而不是死板的數字
+    // 例如：短影片 3-5 個章節，長影片 8-20 個章節
+    const minTopics = Math.max(3, Math.ceil(durationMin / 10)); 
+    const maxTopics = Math.max(5, Math.ceil(durationMin / 3));
+
 
     const prompt = `
     You are an expert Linguistic Content Generator for a language learning app.
@@ -42,6 +60,15 @@ router.post('/analyze-video-content', async (req, res) => {
     - **Target Language:** ${targetLang}
     - **Video Duration:** ${contextData.duration ? `${Math.floor(contextData.duration / 60)} minutes ${contextData.duration % 60} seconds` : 'Unknown'}
 
+    # CRITICAL: SEMANTIC TOPIC SEGMENTATION (IMPORTANT)
+    - **Do NOT simply split the video by fixed time intervals** (e.g., do not just chop it every 5 minutes).
+    - **Goal:** Identify natural topic shifts. 
+      - Example: If the speaker talks about "Wedding Prep" for 10 minutes, that is ONE outline point. If they then talk about "Hawaii Trip" for 4 minutes, that is the NEXT point.
+    - **Constraints:**
+      1. **Coverage:** You must still cover the **entire video** from 00:00 to ${totalDurationStr}. The final outline point must reflect the video's conclusion.
+      2. **Quantity:** Generate between ${minTopics} and ${maxTopics} outline points, depending on how many distinct topics are actually discussed.
+      3. **Timestamps:** Use the [MM:SS] markers in the text to identify exactly when the topic *starts*. The timestamp for each outline point should correspond to the first mention of that topic.
+
     # CRITICAL CONSTRAINT: SOURCE OF TRUTH
     - You must ONLY select vocabulary words that **explicitly appear** in the provided transcript.
     - **DO NOT** generate related words that are not spoken in the video.
@@ -50,41 +77,60 @@ router.post('/analyze-video-content', async (req, res) => {
     # Level-Specific Instructions (CRITICAL)
 
     ### IF LEVEL IS "EASY" (Beginner):
-    - **Vocabulary:** Extract **High-Frequency / Basic words** (CEFR A1/A2) from the video. Focus on concrete nouns and verbs.
+    - **Vocabulary:** Focus on **"Keywords" & "Common Phrases"**.
+      1. **High-Frequency Keywords:** Extract words that represent the **core topic** and are **repeated frequently** in the video (e.g., in a cooking video, "ingredients" or "stir" are essential, even if they are B1 level).
+      2. **Simple Chunks:** Include very common **phrasal verbs** or **simple idioms** that are easy to visualize (e.g., "figure out", "give up", "piece of cake", "keep in mind").
+      3. **Avoid:** Do NOT pick ultra-basic words (like "is", "the", "good") unless they are used in a unique phrase.
     - **Summary:** Write simple, short sentences focusing on the main plot/idea.
     - **Practice Topics:** Generate questions about **personal preferences** or **simple descriptions** (e.g., "Do you like...?", "What is...?").
-    - **Outline:** Keep it very brief (5-8 key moments).
+    - **Outline:** Focus only on major plot points. Ignore minor details.
 
     ### IF LEVEL IS "MEDIUM" (Intermediate):
-    - **Vocabulary:** Extract **Collocations, Phrasal Verbs, and Idioms** (CEFR B1/B2) from the video. (e.g., instead of "rain", extract "heavy rain").
+    - **Vocabulary: ** Focus on **"Natural Flow" & "Collocations"**.
+      1. **Collocations:** Extract word pairs that naturally go together (e.g., instead of just "decision", extract "**make a** decision"; instead of "risk", extract "take a risk").
+      2. **Functional Phrasal Verbs:** Focus on B1/B2 phrasal verbs that change the meaning of the verb (e.g., "look forward to", "run out of", "bring up").
+      3. **Descriptive Adjectives:** Words that describe feelings or atmosphere (e.g., "awkward", "impressive").
     - **Summary:** Write in a narrative style, focusing on the flow of the story.
     - **Practice Topics:** Generate questions about **storytelling** or **experiences** (e.g., "Describe a time when...", "Why did the speaker...?").
     - **Outline:** Moderate detail (5-8 sections).
 
     ### IF LEVEL IS "HARD" (Advanced):
-    - **Vocabulary:** Extract **Nuanced, Abstract, or Professional words** (CEFR C1/C2) from the video. Focus on specific terminology or emotional nuance.
+    - **Vocabulary:** Focus on **"Nuance" & "Sophistication"**.
+      1. **Precision Words:** Extract C1/C2 words that convey a very specific meaning or tone (e.g., instead of "change", use "fluctuate" or "transform"; instead of "bad", use "detrimental").
+      2. **Abstract Concepts:** Words relating to ideas, theories, or complex emotions.
+      3. **Cultural/Rhetorical Idioms:** Idioms or metaphors that require cultural context or are less common.
     - **Summary:** Write an analytical summary focusing on arguments and underlying themes.
     - **Practice Topics:** Generate **Debate / Critical Thinking** questions (e.g., "What is your stance on...?", "Critique the speaker's argument.").
     - **Outline:** Detailed logic flow (8-10 sections).
 
     # Task Requirements
 
-    1.  **Summary:** Write a summary in ${targetLang} based on the level rules above. Provide a full translation in ${nativeLang}.
+    1.  **Summary:** Write a summary in ${targetLang} based on the level rules above. 
+        - **Translation:** Provide a full translation in ${nativeLang}.
+          - **CRITICAL:** Use **natural, conversational, and spoken-style language** (e.g., if ${nativeLang} is Chinese, use "口語化、通順的中文", avoid "翻譯腔" or overly academic terms).
+          - **For EASY Level:** The translation MUST be simple and direct, as if explaining to a friend.
     2.  **Vocabulary:** Identify 8-10 key items based on the level rules. For each, provide:
         - Definition (in ${targetLang})
         - Context Sentence (Direct quote or adapted from video)
-        - Translation of the word itself (in ${nativeLang})
-        - Translation of the definition (in ${nativeLang})
-        - Translation of the context sentence (in ${nativeLang})
+        **Translations (in ${nativeLang}):**
+          - **Word:** The most common, natural equivalent.
+          - **Definition:** Translate the meaning clearly. **Avoid complex dictionary language.** Use simple words to explain.
+          - **Context:** Translate the sentence so it sounds like something a real person would say in daily life.
+
+
     3.  **Practice Topics (Mission Data):** Generate ${targetTopicCount} specific discussion cards. ALL topic names, questions, and target words MUST be written in ${targetLang}. For EACH card, you must provide:
         - **Topic Name:** A short tag in ${targetLang} (e.g., if target is Chinese: "工作与生活平衡", if English: "Work-Life Balance")
           - Must be unique across all topic names. If two topics are very similar, modify one to be more specific.
         - **Category:** A broad category for the topic in ${targetLang} (e.g., "Career", "Travel", "Daily Life", "Technology", "Culture", "Health", "Education", "Relationships", "Entertainment", "Society")
         - **Question:** A specific question in ${targetLang} for the user to answer.
         - **Target Words:** Select 3 words in ${targetLang} (from the video or relevant to the topic) that the user MUST try to use in their answer.
-    5.  **Video Category:** Pick the single most fitting category for this video overall (e.g., "Career", "Travel", "Daily Life", "Technology", "Culture", "Health", "Education", "Relationships", "Entertainment", "Society").
-    4.  **Outline:** A chronological breakdown with timestamps. TIMESTAMPS MUST BE ACCURATE and within the video duration (${contextData.duration}s).
+   
+    4.  **Outline:** A chronological breakdown based on **topic shifts**. 
+        - Use the [MM:SS] markers from the transcript.
+        - Ensure the outline covers the full duration.
 
+    5.  **Video Category:** Pick the single most fitting category for this video overall (e.g., "Career", "Travel", "Daily Life", "Technology", "Culture", "Health", "Education", "Relationships", "Entertainment", "Society").
+    
     # Output Format
     Return ONLY valid JSON with this structure:
     {
@@ -121,11 +167,11 @@ router.post('/analyze-video-content', async (req, res) => {
     }
 
     # Input Transcript
-    ${contextData.transcriptText ? contextData.transcriptText.slice(0, 50000) : ''}
+    ${formattedTranscript ? formattedTranscript.slice(0, 200000) : ''}
     `.trim();
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-3-pro-preview',
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       config: {
         responseMimeType: 'application/json',
@@ -300,7 +346,7 @@ router.post('/search-videos', async (req, res) => {
     `.trim();
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-2.5-flash',
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       config: {
         responseMimeType: 'application/json',
