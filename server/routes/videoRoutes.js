@@ -41,6 +41,7 @@ let contextData = { duration: 0, transcriptText: '', transcriptSegments: [] };
 
     const durationMin = contextData.duration ? contextData.duration / 60 : 10;
     const totalDurationStr = `${Math.floor(durationMin)}:${String(Math.floor(contextData.duration % 60)).padStart(2, '0')}`;
+    const targetTopicCount = Math.max(3, Math.min(15, Math.ceil(durationMin / 3)));
 
     // 這裡我們給出一個建議範圍，而不是死板的數字
     // 例如：短影片 3-5 個章節，長影片 8-20 個章節
