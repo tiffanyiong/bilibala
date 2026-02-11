@@ -1,5 +1,5 @@
-import { Innertube, UniversalCache } from 'youtubei.js';
 import { Supadata, SupadataError } from '@supadata/js';
+import { Innertube, UniversalCache } from 'youtubei.js';
 import { config } from '../config/env.js';
 
 // Map app display language names to Supadata-compatible language codes
@@ -22,6 +22,62 @@ const LANGUAGE_TO_SUPADATA = {
   'Turkish (Türkçe)': 'tr',
   'Vietnamese (Tiếng Việt)': 'vi'
 };
+
+/**
+ * 輔助函數：將過長的字幕段落切分成較小的句子，並插值計算時間戳
+ * 這是修復 "單一巨大字幕塊" 的關鍵
+ */
+function splitLongSegment(segment, maxLen = 150) {
+  const text = segment.text;
+  // 如果本身就不長，直接回傳
+  if (!text || text.length <= maxLen) return [segment];
+
+  const results = [];
+  // 正則表達式：依據標點符號 (. ! ?) 切分，同時保留標點符號
+  // 如果沒有標點，就直接回傳原句（或你可以選擇強制按字數切，但按標點較自然）
+  const sentences = text.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [text];
+  
+  let currentChunk = '';
+  // 起始時間
+  let currentStartTime = segment.offset; 
+  // 估算每個字元佔用的時間 (平均值)，用來推算切分後的 offset
+  const charDuration = segment.duration / (text.length || 1); 
+
+  for (const sentence of sentences) {
+    const trimmed = sentence.trim();
+    if (!trimmed) continue;
+
+    // 如果當前累積的 chunk 加上這一句會太長，就先切一刀
+    if (currentChunk.length + trimmed.length > maxLen && currentChunk.length > 0) {
+      const chunkDuration = currentChunk.length * charDuration;
+      
+      results.push({
+        text: currentChunk.trim(),
+        offset: Math.floor(currentStartTime),
+        duration: Math.floor(chunkDuration)
+      });
+
+      // 更新下一段的起始時間
+      currentStartTime += chunkDuration;
+      currentChunk = '';
+    }
+    
+    // 累積句子
+    currentChunk += (currentChunk ? ' ' : '') + trimmed;
+  }
+
+  // 把剩下的部分推入
+  if (currentChunk.length > 0) {
+    results.push({
+      text: currentChunk.trim(),
+      offset: Math.floor(currentStartTime),
+      duration: Math.floor((segment.offset + segment.duration) - currentStartTime)
+    });
+  }
+
+  return results;
+}
+
 
 /**
  * Fetch video metadata and transcript using Innertube (duration) and Supadata (transcript)
@@ -130,5 +186,8 @@ export async function fetchVideoContext(videoId, targetLang = 'English') {
     throw new Error('This video does not have subtitles/captions available. Please choose a video with captions enabled.');
   }
 
+  // Final Safety Check for Duration
+  if (duration === 0) duration = 600; // 預設 10 分鐘，避免除以零錯誤
+  
   return { duration, transcriptText, transcriptSegments, transcriptLang, transcriptLangMismatch: !!langMismatch };
 }
