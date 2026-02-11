@@ -30,6 +30,41 @@ router.post('/analyze-speech', async (req, res) => {
     const isHSK = baseLang === 'Chinese';
 
     const ai = createAi();
+    // --- 定義「完美範本」的人設與風格 ---
+    let targetPersona = "";
+    let targetStyle = "";
+
+    if (isIELTS) {
+      // === 雅思專用模式 (IELTS Mode) ===
+      if (level === 'Easy') {
+        // 對應 IELTS Part 1 (Personal Interview)
+        // 重點：雖然是閒聊，但要用完整句子，避免過於俚俗 (Slang)，展現字彙量。
+        targetPersona = "A Band 8.5 Candidate answering IELTS Part 1.";
+        targetStyle = "Use full sentences, natural idiomatic expressions (e.g., 'keen on', 'not my cup of tea'), and clear pronunciation features. Keep the tone personal but polite. Avoid slang.";
+      } else if (level === 'Medium') {
+        // 對應 IELTS Part 2 (Long Turn)
+        // 重點：敘事結構、連接詞、時態變化。
+        targetPersona = "A Band 8.5 Candidate delivering a structured Part 2 speech.";
+        targetStyle = "Use narrative tenses (past simple/continuous/perfect), descriptive adjectives, and strong coherence markers (e.g., 'Moving on to...', 'As I mentioned'). Focus on flow and detail.";
+      } else { // Hard
+        // 對應 IELTS Part 3 (Discussion)
+        // 重點：抽象概念、推測語氣、社會議題。
+        targetPersona = "A Band 9.0 Candidate analyzing abstract IELTS Part 3 topics.";
+        targetStyle = "Use sophisticated vocabulary, passive voice, conditionals ('If governments were to...'), and speculative language ('It is highly likely that...'). Focus on logic, evaluation, and objectivity.";
+      }
+    } else {
+      // === 一般口語練習模式 (General Mode) ===
+      if (level === 'Easy') {
+        targetPersona = "A Friendly Native Speaker having a casual chat.";
+        targetStyle = "Use natural phrasing (e.g., 'I'm into...', 'It's a bummer'), phrasal verbs, and simple but correct grammar. Focus on sounding 'authentic' and relaxed.";
+      } else if (level === 'Medium') {
+        targetPersona = "A Skilled Storyteller sharing an experience.";
+        targetStyle = "Use vivid adjectives, clear narrative flow, and strong collocations. Focus on engagement.";
+      } else { // Hard
+        targetPersona = "An Intellectual Debater analyzing a complex topic.";
+        targetStyle = "Use sophisticated vocabulary, complex sentence structures, and rhetorical devices. Focus on persuasion and logic.";
+      }
+    }
 
     // NOTE: Using single quotes for 'sub_points' inside the prompt to avoid JS template literal errors.
 
@@ -114,7 +149,7 @@ router.post('/analyze-speech', async (req, res) => {
     `.trim();
 
     const prompt = isRetakeMode ? retakePrompt : `
-      You are an expert Communication Coach.
+      You are an expert ${isIELTS ? 'IELTS Speaking Examiner & ' : ''}Communication Coach.
       Your goal is to compare the User's ACTUAL speech (The Mirror) vs. an OPTIMAL version (The Architect).
 
       # Context
@@ -193,8 +228,30 @@ router.post('/analyze-speech', async (req, res) => {
       5. **NARRATIVE DEPTH:** Nest sequential events (A->B->C) using 'sub_points'.
 
       # TASK 2: THE ARCHITECT (Generate "AI Improved")
-      **GOAL:** Reorganize the thoughts into the BEST SUITED framework.
+      **TARGET PERSONA:** ${targetPersona}
+      **TARGET STYLE:** ${targetStyle}
+      **GOAL:** Reorganize thoughts into the BEST SUITED framework based on learner's level and detected logic. Then, IMPROVE the language while keeping the same meaning.
+      
+      - **If Level is Easy:**
+        - *Bad Improvement:* "I derive pleasure from cinematic experiences." (Too formal!)
+        - *Good Improvement:* "I'm a huge fan of movies because they help me switch off after work." (Natural!)
 
+      - **If Level is Medium:**
+        - *Bad Improvement:* "I watched a movie. It was action. The story was good." (Too choppy/basic!)
+        - *Good Improvement:* "I recently saw an **action-packed blockbuster** that kept me **on the edge of my seat**. The **plot twists** were completely unexpected." (Descriptive & Engaging!)
+
+      - **If Level is Hard (Analytical Debate):**
+        - *Bad:* "Movies are good for culture." (Too simple/vague)
+        - *Good:* "Cinema serves as a **vital mirror** to society, reflecting our **collective values** and anxieties." (Sophisticated & Nuanced)
+
+      ${isIELTS ? `
+      **IELTS ENHANCEMENT (CRITICAL):**
+      Since this is an IELTS practice, for every "Elaboration" (Improved Sentence), you MUST:
+      1. **Inject Idioms:** Use appropriate idioms (e.g., "part and parcel", "over the moon", "double-edged sword").
+      2. **Use Discourse Markers:** Start with high-level connectors (e.g., "Having said that...", "To put it simply...").
+      3. **Complex Grammar:** Ensure a mix of passive voice, inversion, or conditionals suitable for Band 8.0+.
+      ` : ''}
+      
       **CRITICAL INSTRUCTION FOR LEARNERS:**
       - The "AI Improved" graph is a **LEARNING TOOL** and must display in targetLang, but the "critique" field for each point should be in nativeLang to explain WHY it's a strength or weakness when the learner's level is easy. For medium and hard levels, all fields can be in targetLang.
       - **Headline:** A short summary of the step (e.g., "The Situation").
@@ -209,7 +266,8 @@ router.post('/analyze-speech', async (req, res) => {
       - **SCQA:** Situation (context) -> Complication (problem) -> Question (what to do?) -> Answer (solution).
 
       # TASK 3: IMPROVED TRANSCRIPTION (Fluent Speech Version)
-      **GOAL:** Write out the COMPLETE improved speech as a fluent, natural paragraph that the user can read aloud.
+      **GOAL:** Write out the COMPLETE improved speech as a fluent, natural paragraph that acts as the **Model Answer**.
+
 
       **CRITICAL REQUIREMENTS:**
       - Combine the improved_structure (conclusion + all arguments with their elaborations) into ONE flowing speech
@@ -219,11 +277,9 @@ router.post('/analyze-speech', async (req, res) => {
       - Native speakers often use simple words but in a well-organized way. Focus on clarity and natural flow, not just fancy vocabulary.
       - Similar to how a skilled coach would help a learner rephrase their thoughts into a more natural and effective way of speaking, while still keeping it at an appropriate level for the learner.
       - Keep the same content/meaning as improved_structure, just reorganized for natural delivery
-      - This should sound like a polished, rehearsed response the user can practice reading
-
-      **Example transformation:**
-      - BAD (structured): "Situation: Solo Wedding Shoot Challenge. As a solo photographer... Task: Managing Equipment Alone. My main task was..."
-      - GOOD (fluent): "As a solo photographer, I once found myself in a challenging situation - managing an entire wedding shoot by myself. My main task was to handle all aspects of the photography..."
+      - **Vocabulary:** Use vocabulary appropriate for the *context* of the question. 
+        - Do not force "academic words" into a casual "Easy" topic.
+        - Do not use "slang" for a formal "Hard" topic.
 
       # TASK 4: COACHING FEEDBACK
       - **Score:** Provide an integer from 0-100 based on the following encouraging rubric:
@@ -426,7 +482,7 @@ router.post('/analyze-speech', async (req, res) => {
     const callGemini = () => {
       return Promise.race([
         ai.models.generateContent({
-          model: 'gemini-2.5-flash',
+          model: 'gemini-3-flash-preview',
           contents: [
             {
               role: 'user',
