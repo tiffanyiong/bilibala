@@ -154,6 +154,18 @@ npm run dev
    ```
 9. Check your Supabase `user_subscriptions` table — the user's `tier` should now be `pro`
 
+
+
+---
+### updated on Feb 10:
+You need to check in Stripe Dashboard → Developers → Webhooks → [your endpoint] — there should be a list of events it's listening for. Make sure all of these are enabled:
+
+`checkout.session.completed`
+`customer.subscription.created`
+`customer.subscription.updated`
+`customer.subscription.deleted`
+`invoice.payment_failed`
+
 ---
 
 ## Environment Variables Summary
