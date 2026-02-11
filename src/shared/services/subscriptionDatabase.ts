@@ -86,7 +86,9 @@ export async function updateSubscription(
 // ============================================
 
 /**
- * Record a usage action (video analysis, practice session, etc.)
+ * Record a usage action in the audit log (usage_history table).
+ * Does NOT increment monthly columns — the caller handles that split
+ * based on tier limits (monthly allowance vs credits).
  */
 export async function recordUsage(
   userId: string,
@@ -110,7 +112,31 @@ export async function recordUsage(
 }
 
 /**
- * Get current month's usage counts via RPC function
+ * Increment the monthly usage column for a given action type.
+ * Called by SubscriptionContext after determining how much counts against monthly allowance.
+ */
+export async function incrementMonthlyUsage(
+  userId: string,
+  actionType: UsageActionType,
+  amount: number = 1
+): Promise<number> {
+  const { data, error } = await supabase.rpc('increment_monthly_usage', {
+    p_user_id: userId,
+    p_action_type: actionType,
+    p_amount: amount,
+  });
+
+  if (error) {
+    console.error('Error incrementing monthly usage:', error);
+    return 0;
+  }
+
+  return data || 0;
+}
+
+/**
+ * Get current month's usage counts from user_subscriptions columns.
+ * Auto-resets if the month has changed (handled by the SQL function).
  */
 export async function getMonthlyUsage(
   userId: string
@@ -122,7 +148,7 @@ export async function getMonthlyUsage(
     pdfExportsUsed: 0,
   };
 
-  const { data, error } = await supabase.rpc('get_all_monthly_usage', {
+  const { data, error } = await supabase.rpc('get_current_monthly_usage', {
     p_user_id: userId,
   });
 
@@ -137,7 +163,7 @@ export async function getMonthlyUsage(
       videosUsed: row.videos_used || 0,
       practiceSessionsUsed: row.practice_sessions_used || 0,
       aiTutorMinutesUsed: row.ai_tutor_minutes_used || 0,
-      pdfExportsUsed: row.pdf_exports_used || 0,
+      pdfExportsUsed: 0, // PDF exports are permission-based, not counted
     };
   }
 
