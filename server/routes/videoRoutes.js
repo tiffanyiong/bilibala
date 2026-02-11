@@ -5,7 +5,36 @@ import { createAi } from '../services/geminiService.js';
 import { fetchVideoContext } from '../services/videoService.js';
 import { extractVideoId, safeJsonParse } from '../utils/helpers.js';
 
+
+/**
+ * Helper function to retry Gemini API calls on network failure
+ */
+async function generateWithRetry(ai, modelName, params, retries = 3) {
+  console.log(`[Gemini] Starting API call to ${modelName} with params:`, params);
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await ai.models.generateContent({
+        model: modelName,
+        ...params
+      });
+    } catch (err) {
+      const isLastAttempt = i === retries - 1;
+      const isNetworkError = err.message.includes('fetch failed') || err.message.includes('timeout');
+      
+      if (isLastAttempt || !isNetworkError) {
+        throw err;
+      }
+      
+      console.warn(`[Gemini] API request failed (attempt ${i + 1}/${retries}). Retrying in ${(i + 1) * 1000}ms... Error: ${err.message}`);
+      await new Promise(resolve => setTimeout(resolve, (i + 1) * 1000)); // Exponential backoff
+    }
+  }
+}
+
+
 const router = Router();
+const FAST_MODEL = 'gemini-2.5-flash';
+const PRO_MODEL = 'gemini-3-flash-preview';
 
 /**
  * POST /api/analyze-video-content
@@ -20,7 +49,7 @@ router.post('/analyze-video-content', async (req, res) => {
     const videoId = videoUrl ? extractVideoId(videoUrl) : null;
     console.log(`[server] Analyzing video content for: ${videoTitle} (${videoId}) using Gemini 3`);
 
-let contextData = { duration: 0, transcriptText: '', transcriptSegments: [] };
+    let contextData = { duration: 0, transcriptText: '', transcriptSegments: [] };
     if (videoId) {
       contextData = await fetchVideoContext(videoId, targetLang);
     }
@@ -62,8 +91,8 @@ let contextData = { duration: 0, transcriptText: '', transcriptSegments: [] };
 
     // 這裡我們給出一個建議範圍，而不是死板的數字
     // 例如：短影片 3-5 個章節，長影片 8-20 個章節
-    const minTopics = Math.max(3, Math.ceil(durationMin / 10)); 
-    const maxTopics = Math.max(5, Math.ceil(durationMin / 3));
+    const minTopics = Math.max(5, Math.ceil(durationMin / 10)); 
+    const maxTopics = Math.max(9, Math.ceil(durationMin / 3));
 
 
     const prompt = `
@@ -187,9 +216,10 @@ let contextData = { duration: 0, transcriptText: '', transcriptSegments: [] };
     # Input Transcript
     ${formattedTranscript ? formattedTranscript.slice(0, 200000) : ''}
     `.trim();
+    console.log(`[analyze-video-content] Prompt constructed, sending to Gemini...`);
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
+    const response = await generateWithRetry(ai, PRO_MODEL, {
+      model: PRO_MODEL,
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       config: {
         responseMimeType: 'application/json',
@@ -250,7 +280,7 @@ let contextData = { duration: 0, transcriptText: '', transcriptSegments: [] };
         },
       },
     });
-
+    console
     // Robust response handling
     let candidates = response.candidates;
     if (!candidates && response.data) candidates = response.data.candidates;
@@ -294,6 +324,7 @@ let contextData = { duration: 0, transcriptText: '', transcriptSegments: [] };
     };
 
     res.json(mappedResponse);
+    console.log(`[analyze-video-content] Analysis completed successfully for video: ${videoTitle}`);
   } catch (err) {
     console.error('analyze-video-content failed', err);
     // Pass through specific error messages (e.g., transcript errors)
@@ -363,8 +394,8 @@ router.post('/search-videos', async (req, res) => {
     }
     `.trim();
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+    const response = await generateWithRetry(ai, FAST_MODEL, {
+      model: FAST_MODEL,
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       config: {
         responseMimeType: 'application/json',
@@ -450,8 +481,8 @@ router.post('/match-topics', async (req, res) => {
     Only match if confidence >= 0.8.
     `.trim();
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+    const response = await generateWithRetry(ai, FAST_MODEL, {
+      model: FAST_MODEL,
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       config: {
         responseMimeType: 'application/json',
@@ -550,8 +581,8 @@ router.post('/generate-question', async (req, res) => {
     Return a JSON object with the question and target words.
     `.trim();
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+    const response = await generateWithRetry(ai, FAST_MODEL, {
+      model: FAST_MODEL,
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       config: {
         responseMimeType: 'application/json',

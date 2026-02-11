@@ -129,8 +129,8 @@ router.post('/analyze-speech', async (req, res) => {
       - detected_framework: Detect their actual framework (STAR, PREP, MINTO, etc.)
       - Score from 0-100 (NOT 0-10!) based on CONTENT quality (structure, logic, language use)
         - Most attempts should score 50-80. Be encouraging!
-      - improved_transcription: Generate a NEW fluent improved version
-      - improved_structure: Generate proper restructured version
+      - improved_transcription: Generate a NEW fluent improved version in ${targetLang}
+      - improved_structure: Generate proper restructured version in ${targetLang}
       - Feedback focuses on: content structure, argument quality, areas to improve
       - improvements array: Include language polish suggestions
 
@@ -251,7 +251,7 @@ router.post('/analyze-speech', async (req, res) => {
       2. **Use Discourse Markers:** Start with high-level connectors (e.g., "Having said that...", "To put it simply...").
       3. **Complex Grammar:** Ensure a mix of passive voice, inversion, or conditionals suitable for Band 8.0+.
       ` : ''}
-      
+
       **CRITICAL INSTRUCTION FOR LEARNERS:**
       - The "AI Improved" graph is a **LEARNING TOOL** and must display in targetLang, but the "critique" field for each point should be in nativeLang to explain WHY it's a strength or weakness when the learner's level is easy. For medium and hard levels, all fields can be in targetLang.
       - **Headline:** A short summary of the step (e.g., "The Situation").
