@@ -11,6 +11,7 @@ import {
   getOrCreateSubscription,
   getMonthlyUsage,
   recordUsage,
+  incrementMonthlyUsage,
   deductAiTutorCredits,
   deductPracticeCredits,
   deductVideoCredits,
@@ -122,9 +123,13 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
             });
             const data = await res.json();
             if (data.synced) {
-              // Reload subscription data after sync
-              const updatedSub = await getOrCreateSubscription(user.id);
+              // Reload subscription AND usage data after sync (monthly usage may have been reset)
+              const [updatedSub, updatedUsage] = await Promise.all([
+                getOrCreateSubscription(user.id),
+                getMonthlyUsage(user.id),
+              ]);
               setSubscription(updatedSub);
+              setUsage(updatedUsage);
               console.log('[SubscriptionContext] Synced successfully:', { tier: data.tier, status: data.status });
             }
           } catch (syncErr) {
@@ -174,10 +179,14 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
       });
       const data = await res.json();
       if (data.synced) {
-        // Refresh local subscription data from database
+        // Refresh local subscription AND usage data from database
         if (user) {
-          const sub = await getOrCreateSubscription(user.id);
+          const [sub, updatedUsage] = await Promise.all([
+            getOrCreateSubscription(user.id),
+            getMonthlyUsage(user.id),
+          ]);
           setSubscription(sub);
+          setUsage(updatedUsage);
         }
         return true;
       }
@@ -193,84 +202,83 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
     metadata: Record<string, unknown> = {}
   ): Promise<boolean> => {
     if (!user) return false;
+
+    // 1. Audit log — always insert into usage_history
     const success = await recordUsage(user.id, actionType, metadata);
-    if (success) {
-      // Handle credit deduction for video analysis
-      if (actionType === 'video_analysis') {
-        const currentMonthlyRemaining = limits.videosPerMonth - usage.videosUsed;
+    if (!success) return false;
 
-        // If usage exceeds monthly allowance, deduct from credits
-        if (currentMonthlyRemaining <= 0) {
-          const deducted = await deductVideoCredits(user.id);
-          if (deducted > 0) {
-            // Update local subscription state to reflect credit deduction
-            setSubscription(prev => prev ? {
-              ...prev,
-              video_credits: Math.max(0, (prev.video_credits || 0) - 1),
-            } : null);
-          }
+    // 2. Split between monthly allowance and credits
+    //    Monthly column only tracks usage covered by the monthly allowance.
+    //    Anything beyond the monthly limit is deducted from purchased credits.
+
+    if (actionType === 'video_analysis') {
+      const monthlyRemaining = limits.videosPerMonth - usage.videosUsed;
+      if (monthlyRemaining > 0) {
+        // Covered by monthly allowance — increment monthly column
+        await incrementMonthlyUsage(user.id, actionType, 1);
+        setUsage(prev => ({ ...prev, videosUsed: prev.videosUsed + 1 }));
+      } else {
+        // Monthly exhausted — deduct from credits
+        const deducted = await deductVideoCredits(user.id);
+        if (deducted > 0) {
+          setSubscription(prev => prev ? {
+            ...prev,
+            video_credits: Math.max(0, (prev.video_credits || 0) - 1),
+          } : null);
         }
       }
-
-      // Handle credit deduction for AI tutor
-      if (actionType === 'ai_tutor') {
-        const minutesUsed = (metadata.minutes_used as number) || 0;
-        const currentMonthlyRemaining = limits.aiTutorMinutesPerMonth - usage.aiTutorMinutesUsed;
-
-        // If usage exceeds monthly allowance, deduct the overflow from credits
-        if (minutesUsed > currentMonthlyRemaining && currentMonthlyRemaining >= 0) {
-          const minutesFromCredits = minutesUsed - Math.max(0, currentMonthlyRemaining);
-          if (minutesFromCredits > 0) {
-            const deducted = await deductAiTutorCredits(user.id, minutesFromCredits);
-            if (deducted > 0) {
-              // Update local subscription state to reflect credit deduction
-              setSubscription(prev => prev ? {
-                ...prev,
-                ai_tutor_credit_minutes: Math.max(0, (prev.ai_tutor_credit_minutes || 0) - deducted),
-              } : null);
-            }
-          }
-        }
-      }
-
-      // Handle credit deduction for practice sessions (free tier only)
-      if (actionType === 'practice_session' && tier === 'free') {
-        const currentMonthlyRemaining = limits.practiceSessionsPerMonth - usage.practiceSessionsUsed;
-
-        // If usage exceeds monthly allowance, deduct from credits
-        if (currentMonthlyRemaining <= 0) {
-          const deducted = await deductPracticeCredits(user.id);
-          if (deducted > 0) {
-            // Update local subscription state to reflect credit deduction
-            setSubscription(prev => prev ? {
-              ...prev,
-              practice_session_credits: Math.max(0, (prev.practice_session_credits || 0) - 1),
-            } : null);
-          }
-        }
-      }
-
-      // Optimistically update local usage
-      setUsage(prev => {
-        const updated = { ...prev };
-        switch (actionType) {
-          case 'video_analysis':
-            updated.videosUsed += 1;
-            break;
-          case 'practice_session':
-            updated.practiceSessionsUsed += 1;
-            break;
-          case 'ai_tutor':
-            updated.aiTutorMinutesUsed += (metadata.minutes_used as number) || 0;
-            break;
-          case 'pdf_export':
-            updated.pdfExportsUsed += 1;
-            break;
-        }
-        return updated;
-      });
     }
-    return success;
+
+    if (actionType === 'ai_tutor') {
+      const minutesUsed = (metadata.minutes_used as number) || 0;
+      const monthlyRemaining = Math.max(0, limits.aiTutorMinutesPerMonth - usage.aiTutorMinutesUsed);
+      const monthlyPortion = Math.min(minutesUsed, monthlyRemaining);
+      const creditPortion = minutesUsed - monthlyPortion;
+
+      console.log('[AI Tutor] minutesUsed:', minutesUsed, 'monthlyRemaining:', monthlyRemaining, 'monthlyPortion:', monthlyPortion, 'creditPortion:', creditPortion);
+
+      // Increment monthly column only for the portion covered by monthly allowance
+      if (monthlyPortion > 0) {
+        await incrementMonthlyUsage(user.id, actionType, monthlyPortion);
+        setUsage(prev => ({ ...prev, aiTutorMinutesUsed: prev.aiTutorMinutesUsed + monthlyPortion }));
+      }
+
+      // Deduct the rest from credits
+      if (creditPortion > 0) {
+        const deducted = await deductAiTutorCredits(user.id, creditPortion);
+        console.log('[AI Tutor] Deducted', deducted, 'credit minutes');
+        if (deducted > 0) {
+          setSubscription(prev => prev ? {
+            ...prev,
+            ai_tutor_credit_minutes: Math.max(0, (prev.ai_tutor_credit_minutes || 0) - deducted),
+          } : null);
+        }
+      }
+    }
+
+    if (actionType === 'practice_session') {
+      const monthlyRemaining = limits.practiceSessionsPerMonth - usage.practiceSessionsUsed;
+      if (monthlyRemaining > 0) {
+        // Covered by monthly allowance (Pro = Infinity, always true)
+        await incrementMonthlyUsage(user.id, actionType, 1);
+        setUsage(prev => ({ ...prev, practiceSessionsUsed: prev.practiceSessionsUsed + 1 }));
+      } else {
+        // Monthly exhausted (free tier) — deduct from credits
+        const deducted = await deductPracticeCredits(user.id);
+        if (deducted > 0) {
+          setSubscription(prev => prev ? {
+            ...prev,
+            practice_session_credits: Math.max(0, (prev.practice_session_credits || 0) - 1),
+          } : null);
+        }
+      }
+    }
+
+    if (actionType === 'pdf_export') {
+      // PDF is permission-based, no counting needed
+    }
+
+    return true;
   }, [user, tier, limits, usage]);
 
   const createCheckout = useCallback(async (priceType: 'monthly' | 'annual' = 'monthly'): Promise<string | null> => {

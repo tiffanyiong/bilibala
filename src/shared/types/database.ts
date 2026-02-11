@@ -243,19 +243,23 @@ export interface DbUserSubscription {
   id: string;
   user_id: string;
   tier: SubscriptionTier;
-  monthly_usage_count: number;
-  usage_reset_month: string | null;
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
   subscription_status: SubscriptionStatus;
   current_period_start: string | null;
   current_period_end: string | null;
   billing_interval: 'month' | 'year';
-  credits_balance: number;
+  // Monthly usage counters (reset each month and on plan upgrade)
+  video_monthly_usage: number;
+  practice_session_monthly_usage: number;
+  ai_tutor_monthly_minutes_used: number;
+  usage_month: string | null;
   // Credit pack purchases (never expire, don't reset monthly)
   ai_tutor_credit_minutes: number;
   practice_session_credits: number;
   video_credits: number;
+  // Set when user upgrades plan — usage_history only counts from this point
+  usage_reset_at: string | null;
   created_at: string;
   updated_at: string;
 }
