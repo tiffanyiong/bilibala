@@ -135,17 +135,16 @@ CREATE TABLE IF NOT EXISTS public.user_subscriptions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE UNIQUE NOT NULL,
   tier TEXT NOT NULL DEFAULT 'free',
-  monthly_usage_count INTEGER DEFAULT 0,
-  usage_reset_month TEXT,
   stripe_customer_id TEXT,
   stripe_subscription_id TEXT,
   subscription_status TEXT,
   current_period_start TIMESTAMPTZ,
   current_period_end TIMESTAMPTZ,
-  credits_balance INTEGER DEFAULT 0,
+  billing_interval TEXT DEFAULT 'month',
   ai_tutor_credit_minutes INTEGER DEFAULT 0,
   practice_session_credits INTEGER DEFAULT 0,
   video_credits INTEGER DEFAULT 0,
+  usage_reset_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT timezone('utc', now()),
   updated_at TIMESTAMPTZ DEFAULT timezone('utc', now())
 );
@@ -484,105 +483,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
--- ---- Check and increment user usage ----
-
-CREATE OR REPLACE FUNCTION public.check_and_increment_user_usage(
-  p_user_id UUID,
-  p_current_month TEXT
-)
-RETURNS TABLE(allowed BOOLEAN, usage_count INTEGER, tier TEXT, credits_remaining INTEGER) AS $$
-DECLARE
-  v_sub public.user_subscriptions%ROWTYPE;
-  v_limit INTEGER := 3;
-BEGIN
-  SELECT * INTO v_sub
-  FROM public.user_subscriptions
-  WHERE user_id = p_user_id;
-
-  IF v_sub.id IS NULL THEN
-    INSERT INTO public.user_subscriptions (user_id, tier, monthly_usage_count, usage_reset_month)
-    VALUES (p_user_id, 'free', 1, p_current_month)
-    RETURNING * INTO v_sub;
-    RETURN QUERY SELECT true, 1, 'free'::TEXT, 0;
-    RETURN;
-  END IF;
-
-  IF v_sub.tier IN ('admin', 'pro') THEN
-    IF v_sub.tier = 'pro' AND v_sub.subscription_status != 'active' THEN
-      NULL;
-    ELSE
-      RETURN QUERY SELECT true, -1, v_sub.tier, -1;
-      RETURN;
-    END IF;
-  END IF;
-
-  IF v_sub.tier = 'flex' THEN
-    IF v_sub.credits_balance > 0 THEN
-      UPDATE public.user_subscriptions
-      SET credits_balance = credits_balance - 1, updated_at = now()
-      WHERE id = v_sub.id;
-      RETURN QUERY SELECT true, -1, 'flex'::TEXT, v_sub.credits_balance - 1;
-      RETURN;
-    ELSE
-      RETURN QUERY SELECT false, 0, 'flex'::TEXT, 0;
-      RETURN;
-    END IF;
-  END IF;
-
-  IF v_sub.usage_reset_month IS NULL OR v_sub.usage_reset_month != p_current_month THEN
-    UPDATE public.user_subscriptions
-    SET monthly_usage_count = 1, usage_reset_month = p_current_month, updated_at = now()
-    WHERE id = v_sub.id;
-    RETURN QUERY SELECT true, 1, v_sub.tier, 0;
-    RETURN;
-  END IF;
-
-  IF v_sub.monthly_usage_count >= v_limit THEN
-    RETURN QUERY SELECT false, v_sub.monthly_usage_count, v_sub.tier, 0;
-    RETURN;
-  END IF;
-
-  UPDATE public.user_subscriptions
-  SET monthly_usage_count = monthly_usage_count + 1, updated_at = now()
-  WHERE id = v_sub.id;
-  RETURN QUERY SELECT true, v_sub.monthly_usage_count + 1, v_sub.tier, 0;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
-
--- ---- Get user usage (read-only) ----
-
-CREATE OR REPLACE FUNCTION public.get_user_usage(p_user_id UUID, p_current_month TEXT)
-RETURNS TABLE(tier TEXT, usage_count INTEGER, usage_limit INTEGER, credits_balance INTEGER, subscription_status TEXT) AS $$
-DECLARE
-  v_sub public.user_subscriptions%ROWTYPE;
-  v_limit INTEGER := 3;
-  v_count INTEGER;
-BEGIN
-  SELECT * INTO v_sub
-  FROM public.user_subscriptions
-  WHERE user_id = p_user_id;
-
-  IF v_sub.id IS NULL THEN
-    RETURN QUERY SELECT 'free'::TEXT, 0, v_limit, 0, NULL::TEXT;
-    RETURN;
-  END IF;
-
-  IF v_sub.usage_reset_month IS NULL OR v_sub.usage_reset_month != p_current_month THEN
-    v_count := 0;
-  ELSE
-    v_count := COALESCE(v_sub.monthly_usage_count, 0);
-  END IF;
-
-  IF v_sub.tier IN ('admin', 'pro') THEN
-    RETURN QUERY SELECT v_sub.tier, -1, -1, -1, v_sub.subscription_status;
-  ELSIF v_sub.tier = 'flex' THEN
-    RETURN QUERY SELECT v_sub.tier, -1, -1, COALESCE(v_sub.credits_balance, 0), NULL::TEXT;
-  ELSE
-    RETURN QUERY SELECT v_sub.tier, v_count, v_limit, 0, NULL::TEXT;
-  END IF;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
-
 -- ---- Monthly usage count (usage_history) ----
 
 CREATE OR REPLACE FUNCTION public.get_monthly_usage_count(
@@ -613,7 +513,21 @@ RETURNS TABLE(
   pdf_exports_used INTEGER
 )
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  cutoff TIMESTAMPTZ;
+  reset_at TIMESTAMPTZ;
 BEGIN
+  -- Get the user's usage_reset_at timestamp (set on plan upgrade)
+  SELECT us.usage_reset_at INTO reset_at
+  FROM public.user_subscriptions us
+  WHERE us.user_id = p_user_id;
+
+  -- Use the later of: start of current month OR usage_reset_at
+  cutoff := date_trunc('month', now());
+  IF reset_at IS NOT NULL AND reset_at > cutoff THEN
+    cutoff := reset_at;
+  END IF;
+
   RETURN QUERY
   SELECT
     COALESCE(SUM(CASE WHEN action_type = 'video_analysis' THEN 1 ELSE 0 END), 0)::INTEGER,
@@ -622,7 +536,7 @@ BEGIN
     COALESCE(SUM(CASE WHEN action_type = 'pdf_export' THEN 1 ELSE 0 END), 0)::INTEGER
   FROM public.usage_history
   WHERE user_id = p_user_id
-    AND created_at >= date_trunc('month', now());
+    AND created_at >= cutoff;
 END;
 $$;
 
