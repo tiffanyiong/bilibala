@@ -156,7 +156,7 @@ router.post('/analyze-video-content', async (req, res) => {
         - **Translation:** Provide a full translation in ${nativeLang}.
           - **CRITICAL:** Use **natural, conversational, and spoken-style language** (e.g., if ${nativeLang} is Chinese, use "口語化、通順的中文", avoid "翻譯腔" or overly academic terms).
           - **For EASY Level:** The translation MUST be simple and direct, as if explaining to a friend.
-    2.  **Vocabulary:** Identify 8-10 key items based on the level rules. For each, provide:
+    2.  **Vocabulary:** Identify key items based on the level rules and the length of the video or transcript. For each, provide:
         - Definition (in ${targetLang})
         - Context Sentence (Direct quote or adapted from video)
         **Translations (in ${nativeLang}):**

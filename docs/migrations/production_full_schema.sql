@@ -2,6 +2,11 @@
 -- BILIBALA PRODUCTION DATABASE - COMPLETE SCHEMA
 -- Run this in Supabase SQL Editor for a fresh production database.
 -- Order matters: tables are created in dependency order.
+--
+-- Includes all migrations: 001-016
+-- Latest updates:
+--   - Migration 015: Free tier unlimited sessions, Pro tier 3 devices
+--   - Migration 016: Ghost session cleanup fix
 -- ==============================================================================
 
 -- ==============================================================================
@@ -189,6 +194,21 @@ CREATE TABLE IF NOT EXISTS public.usage_history (
   created_at TIMESTAMPTZ DEFAULT timezone('utc', now())
 );
 
+-- 1n. active_sessions (depends on auth.users) - Migration 013
+CREATE TABLE IF NOT EXISTS public.active_sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  session_id TEXT NOT NULL,
+  device_fingerprint TEXT NOT NULL,
+  user_agent TEXT,
+  ip_address INET,
+  device_info JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  last_active_at TIMESTAMPTZ DEFAULT NOW(),
+  expires_at TIMESTAMPTZ,
+  UNIQUE(session_id)
+);
+
 -- ==============================================================================
 -- 2. INDEXES
 -- ==============================================================================
@@ -235,6 +255,11 @@ CREATE INDEX IF NOT EXISTS idx_usage_records_action ON public.usage_records(acti
 CREATE INDEX IF NOT EXISTS idx_usage_history_user_id ON public.usage_history(user_id);
 CREATE INDEX IF NOT EXISTS idx_usage_history_user_action ON public.usage_history(user_id, action_type);
 CREATE INDEX IF NOT EXISTS idx_usage_history_created_at ON public.usage_history(created_at);
+
+-- active_sessions
+CREATE INDEX IF NOT EXISTS idx_active_sessions_user_id ON public.active_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_active_sessions_last_active ON public.active_sessions(last_active_at);
+CREATE INDEX IF NOT EXISTS idx_active_sessions_device_fingerprint ON public.active_sessions(device_fingerprint);
 
 -- ==============================================================================
 -- 3. ROW LEVEL SECURITY (RLS)
@@ -336,6 +361,16 @@ CREATE POLICY "Users view own usage history" ON public.usage_history
   FOR SELECT TO authenticated USING (auth.uid() = user_id);
 CREATE POLICY "Users insert own usage history" ON public.usage_history
   FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+
+-- active_sessions
+CREATE POLICY "Users can view own sessions" ON public.active_sessions
+  FOR SELECT TO authenticated USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own sessions" ON public.active_sessions
+  FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own sessions" ON public.active_sessions
+  FOR UPDATE TO authenticated USING (auth.uid() = user_id);
+CREATE POLICY "Users can delete own sessions" ON public.active_sessions
+  FOR DELETE TO authenticated USING (auth.uid() = user_id);
 
 -- browser_fingerprints: no direct access policies (managed by security definer functions)
 
@@ -629,6 +664,137 @@ BEGIN
       p_user_id, 'free', p_ai_tutor_minutes, p_practice_sessions, p_video_credits
     );
   END IF;
+END;
+$$;
+
+-- ---- Session Management Functions (Migrations 013, 015, 016) ----
+
+-- Get concurrent session limit based on subscription tier (Migration 015)
+CREATE OR REPLACE FUNCTION public.get_session_limit(p_user_id UUID)
+RETURNS INTEGER
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_tier TEXT;
+  v_limit INTEGER;
+BEGIN
+  SELECT tier INTO v_tier FROM public.user_subscriptions WHERE user_id = p_user_id;
+  IF v_tier IS NULL THEN v_tier := 'free'; END IF;
+
+  CASE v_tier
+    WHEN 'free' THEN v_limit := 999999; -- Unlimited for free tier
+    WHEN 'pro' THEN v_limit := 3; -- 3 devices for pro tier
+    ELSE v_limit := 999999;
+  END CASE;
+
+  RETURN v_limit;
+END;
+$$;
+
+-- Get active session count for a user
+CREATE OR REPLACE FUNCTION public.get_active_session_count(p_user_id UUID)
+RETURNS INTEGER
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_count INTEGER;
+BEGIN
+  SELECT COUNT(*) INTO v_count
+  FROM public.active_sessions
+  WHERE user_id = p_user_id
+    AND (expires_at IS NULL OR expires_at > NOW())
+    AND last_active_at > NOW() - INTERVAL '24 hours';
+  RETURN v_count;
+END;
+$$;
+
+-- Register a new session (auto-logout oldest if over limit) (Migration 016 - with ghost session cleanup)
+CREATE OR REPLACE FUNCTION public.register_session(
+  p_user_id UUID,
+  p_session_id TEXT,
+  p_device_fingerprint TEXT,
+  p_user_agent TEXT DEFAULT NULL,
+  p_ip_address TEXT DEFAULT NULL,
+  p_device_info JSONB DEFAULT '{}'::jsonb,
+  p_expires_at TIMESTAMPTZ DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_limit INTEGER;
+  v_current_count INTEGER;
+  v_oldest_session_id TEXT;
+  v_logged_out_sessions TEXT[];
+BEGIN
+  v_limit := public.get_session_limit(p_user_id);
+
+  -- Clean up stale sessions (>24 hours old) to prevent ghost sessions
+  DELETE FROM public.active_sessions
+  WHERE user_id = p_user_id AND last_active_at < NOW() - INTERVAL '24 hours';
+
+  v_current_count := public.get_active_session_count(p_user_id);
+  v_logged_out_sessions := ARRAY[]::TEXT[];
+
+  WHILE v_current_count >= v_limit LOOP
+    SELECT session_id INTO v_oldest_session_id
+    FROM public.active_sessions
+    WHERE user_id = p_user_id AND (expires_at IS NULL OR expires_at > NOW())
+    ORDER BY last_active_at ASC LIMIT 1;
+
+    IF v_oldest_session_id IS NOT NULL THEN
+      DELETE FROM public.active_sessions WHERE session_id = v_oldest_session_id;
+      v_logged_out_sessions := array_append(v_logged_out_sessions, v_oldest_session_id);
+      v_current_count := v_current_count - 1;
+    ELSE
+      EXIT;
+    END IF;
+  END LOOP;
+
+  INSERT INTO public.active_sessions (
+    user_id, session_id, device_fingerprint, user_agent, ip_address, device_info, expires_at
+  ) VALUES (
+    p_user_id, p_session_id, p_device_fingerprint, p_user_agent, p_ip_address::INET, p_device_info, p_expires_at
+  )
+  ON CONFLICT (session_id) DO UPDATE SET last_active_at = NOW();
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'session_limit', v_limit,
+    'logged_out_sessions', v_logged_out_sessions,
+    'logged_out_count', array_length(v_logged_out_sessions, 1)
+  );
+END;
+$$;
+
+-- Update session last_active timestamp
+CREATE OR REPLACE FUNCTION public.update_session_activity(p_session_id TEXT)
+RETURNS BOOLEAN
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  UPDATE public.active_sessions SET last_active_at = NOW() WHERE session_id = p_session_id;
+  RETURN FOUND;
+END;
+$$;
+
+-- Remove session (on logout or expiry)
+CREATE OR REPLACE FUNCTION public.remove_session(p_session_id TEXT)
+RETURNS BOOLEAN
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  DELETE FROM public.active_sessions WHERE session_id = p_session_id;
+  RETURN FOUND;
+END;
+$$;
+
+-- Cleanup expired sessions (run periodically)
+CREATE OR REPLACE FUNCTION public.cleanup_expired_sessions()
+RETURNS INTEGER
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_deleted_count INTEGER;
+BEGIN
+  DELETE FROM public.active_sessions
+  WHERE expires_at < NOW() OR last_active_at < NOW() - INTERVAL '7 days';
+  GET DIAGNOSTICS v_deleted_count = ROW_COUNT;
+  RETURN v_deleted_count;
 END;
 $$;
 
