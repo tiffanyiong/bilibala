@@ -216,7 +216,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenSubscription }) => {
                     <div className="h-px bg-stone-100 ml-4" />
                     <div className="flex items-center justify-between px-4 py-3">
                       <span className="text-sm text-stone-500">
-                        {status === 'canceled' ? 'Access until' : 'Renews'}
+                        {status === 'canceled' || subscription?.cancel_at_period_end ? 'Access until' : 'Renews'}
                       </span>
                       <span className="text-sm text-stone-900">
                         {formatDate(subscription.current_period_end)}
