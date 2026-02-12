@@ -10,9 +10,9 @@ import { extractVideoId, safeJsonParse } from '../utils/helpers.js';
  * Helper function to retry Gemini API calls on network failure
  */
 async function generateWithRetry(ai, modelName, params, retries = 3) {
-  console.log(`[Gemini] Starting API call to ${modelName} with params:`, params);
   for (let i = 0; i < retries; i++) {
     try {
+      console.log(`[Gemini] API call to ${modelName} (attempt ${i + 1}/${retries})`);
       return await ai.models.generateContent({
         model: modelName,
         ...params
@@ -20,12 +20,12 @@ async function generateWithRetry(ai, modelName, params, retries = 3) {
     } catch (err) {
       const isLastAttempt = i === retries - 1;
       const isNetworkError = err.message.includes('fetch failed') || err.message.includes('timeout');
-      
+
       if (isLastAttempt || !isNetworkError) {
         throw err;
       }
-      
-      console.warn(`[Gemini] API request failed (attempt ${i + 1}/${retries}). Retrying in ${(i + 1) * 1000}ms... Error: ${err.message}`);
+
+      console.warn(`[Gemini] Request failed (attempt ${i + 1}/${retries}). Retrying in ${(i + 1) * 1000}ms... Error: ${err.message}`);
       await new Promise(resolve => setTimeout(resolve, (i + 1) * 1000)); // Exponential backoff
     }
   }
@@ -139,7 +139,7 @@ router.post('/analyze-video-content', async (req, res) => {
       3. **Descriptive Adjectives:** Words that describe feelings or atmosphere (e.g., "awkward", "impressive").
     - **Summary:** Write in a narrative style, focusing on the flow of the story.
     - **Practice Topics:** Generate questions about **storytelling** or **experiences** (e.g., "Describe a time when...", "Why did the speaker...?").
-    - **Outline:** Moderate detail (5-8 sections).
+    - **Outline:** Moderate detail.
 
     ### IF LEVEL IS "HARD" (Advanced):
     - **Vocabulary:** Focus on **"Nuance" & "Sophistication"**.
@@ -148,7 +148,7 @@ router.post('/analyze-video-content', async (req, res) => {
       3. **Cultural/Rhetorical Idioms:** Idioms or metaphors that require cultural context or are less common.
     - **Summary:** Write an analytical summary focusing on arguments and underlying themes.
     - **Practice Topics:** Generate **Debate / Critical Thinking** questions (e.g., "What is your stance on...?", "Critique the speaker's argument.").
-    - **Outline:** Detailed logic flow (8-10 sections).
+    - **Outline:** Detailed logic flow.
 
     # Task Requirements
 
@@ -216,7 +216,7 @@ router.post('/analyze-video-content', async (req, res) => {
     # Input Transcript
     ${formattedTranscript ? formattedTranscript.slice(0, 200000) : ''}
     `.trim();
-    console.log(`[analyze-video-content] Prompt constructed, sending to Gemini...`);
+    console.log(`[analyze-video-content] Sending prompt to Gemini | video: ${videoId || videoTitle}`);
 
     const response = await generateWithRetry(ai, PRO_MODEL, {
       model: PRO_MODEL,
@@ -324,9 +324,9 @@ router.post('/analyze-video-content', async (req, res) => {
     };
 
     res.json(mappedResponse);
-    console.log(`[analyze-video-content] Analysis completed successfully for video: ${videoTitle}`);
+    console.log(`[analyze-video-content] Analysis completed | video: ${videoId} (${videoTitle})`);
   } catch (err) {
-    console.error('analyze-video-content failed', err);
+    console.error(`[analyze-video-content] Failed for video: ${videoId || videoTitle}`, err);
     // Pass through specific error messages (e.g., transcript errors)
     const errorMessage = err.message || 'Failed to analyze video content';
     res.status(500).json({ error: errorMessage });

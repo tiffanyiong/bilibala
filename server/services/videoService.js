@@ -80,6 +80,21 @@ function splitLongSegment(segment, maxLen = 150) {
 
 
 /**
+ * Decode HTML entities in text (e.g., &amp;#39; -> ', &quot; -> ", &amp; -> &)
+ */
+function decodeHTMLEntities(text) {
+  if (!text) return text;
+  return text
+    .replace(/&amp;#39;/g, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ');
+}
+
+/**
  * Fetch video metadata and transcript using Innertube (duration) and Supadata (transcript)
  * @param {string} videoId - YouTube video ID
  * @param {string} targetLang - Target language for transcript (e.g., 'English', 'Spanish')
@@ -142,9 +157,9 @@ export async function fetchVideoContext(videoId, targetLang = 'English') {
   let content = (result && result.content !== undefined) ? result.content : result;
 
   if (Array.isArray(content) && content.length > 0) {
-    // 1. Normalize Supadata segments (offset is ms, duration is ms)
+    // 1. Normalize Supadata segments (offset is ms, duration is ms) and decode HTML entities
     const rawSegments = content.map(s => ({
-      text: s.text,
+      text: decodeHTMLEntities(s.text),
       offset: (typeof s.offset === 'number') ? s.offset : ((s.start || 0) * 1000),
       duration: (typeof s.duration === 'number') ? s.duration : ((s.end - s.start) * 1000)
     }));
@@ -161,12 +176,28 @@ export async function fetchVideoContext(videoId, targetLang = 'English') {
 
       const gap = seg.offset - (buffer.offset + buffer.duration);
       const text = buffer.text.trim();
-      const hasPunctuation = /[.!?]$/.test(text);
-      const isLong = text.length > 60;
-      const isTooLong = text.length > 200;
+
+      // Count sentences in buffer (approximate)
+      const sentenceCount = (text.match(/[.!?]+/g) || []).length;
+
+      // Check for punctuation at end
+      const hasSentenceEnd = /[.!?]$/.test(text);
+      const hasCommaOrColon = /[,;:]$/.test(text);
+      const isTooLong = text.length > 150;
       const isBigGap = gap > 1500;
 
-      if ((hasPunctuation && isLong) || isTooLong || isBigGap) {
+      // Break if:
+      // 1. Has 1+ complete sentence (.!?) - break after each sentence, OR
+      // 2. Has comma/semicolon/colon AND buffer is getting long (100+), OR
+      // 3. Text exceeds 150 chars - safety limit, OR
+      // 4. Big pause (1.5+ seconds) - natural speaker break
+      const shouldBreak =
+        (hasSentenceEnd && sentenceCount >= 1) ||
+        (hasCommaOrColon && text.length > 100) ||
+        isTooLong ||
+        isBigGap;
+
+      if (shouldBreak) {
         merged.push(buffer);
         buffer = { ...seg };
       } else {
