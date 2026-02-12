@@ -11,13 +11,16 @@ const ResetPasswordPage: React.FC = () => {
   // Check if user has a valid reset token
   useEffect(() => {
     const checkToken = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session }, error } = await supabase.auth.getSession();
+
+      console.log('[ResetPassword] Session check:', { session: !!session, error });
+
       if (session) {
         setIsValidToken(true);
       } else {
         setMessage({
           type: 'error',
-          text: 'Invalid or expired password reset link. Please request a new one.'
+          text: 'Invalid or expired password reset link. Password reset links expire after 1 hour. Please request a new one from the sign-in page.'
         });
       }
     };
@@ -45,11 +48,22 @@ const ResetPasswordPage: React.FC = () => {
     });
 
     if (error) {
-      setMessage({ type: 'error', text: error.message });
+      console.error('[ResetPassword] Update password error:', error);
+
+      // Check if it's a session expired error
+      if (error.message.includes('session') || error.message.includes('expired')) {
+        setMessage({
+          type: 'error',
+          text: 'Your password reset link has expired. Links are valid for 1 hour. Please request a new password reset.'
+        });
+      } else {
+        setMessage({ type: 'error', text: error.message });
+      }
     } else {
+      console.log('[ResetPassword] Password updated successfully');
       setMessage({
         type: 'success',
-        text: 'Password updated successfully! Redirecting to home page...'
+        text: 'Password updated successfully! You can now sign in with your new password. Redirecting...'
       });
 
       // Redirect to home page after 2 seconds

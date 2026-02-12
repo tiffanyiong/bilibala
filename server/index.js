@@ -19,6 +19,7 @@ import translationRoutes from './routes/translationRoutes.js';
 import subscriptionRoutes from './routes/subscriptionRoutes.js';
 import deeplRoutes from './routes/deeplRoutes.js';
 import exploreRoutes from './routes/exploreRoutes.js';
+import sessionRoutes from './routes/sessionRoutes.js';
 
 // Import WebSocket handler
 import { setupLiveWebSocket } from './websocket/liveHandler.js';
@@ -47,6 +48,7 @@ app.use('/api', translationRoutes);
 app.use('/api', subscriptionRoutes);
 app.use('/api', deeplRoutes);
 app.use('/api', exploreRoutes);
+app.use('/api', sessionRoutes);
 
 // Serve static files in production (Vite build output)
 if (isProduction) {
