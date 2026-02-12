@@ -108,7 +108,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
       console.log('[AuthModal] Password reset email sent successfully');
       setMessage({
         type: 'success',
-        text: 'Password reset email sent! Check your spam folder for an email from Supabase. If you don\'t receive it within 5 minutes, check: 1) The email exists in your account, 2) You haven\'t exceeded the rate limit (3-4 emails/hour), 3) The redirect URL is allowed in Supabase settings.'
+        text: 'Password reset email sent! Check your spam folder for an email from noreply@mybilibala.com.'
       });
     }
     setLoading(false);
