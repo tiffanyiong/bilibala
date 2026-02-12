@@ -64,6 +64,38 @@ const getUserProfile = (user: User | null): UserProfile | null => {
   return { name, firstName, lastName, email, avatarUrl, initials };
 };
 
+/**
+ * Extract session_id from Supabase JWT token
+ * Instead of storing the full JWT (1,398+ chars), we extract the session_id UUID (36 chars)
+ * This provides 97% storage savings while maintaining the same behavior
+ */
+const extractSessionId = (accessToken: string): string => {
+  try {
+    // JWT structure: header.payload.signature
+    const payloadBase64 = accessToken.split('.')[1];
+    if (!payloadBase64) {
+      console.warn('[Session] Invalid JWT format, using access_token as fallback');
+      return accessToken;
+    }
+
+    // Decode base64 payload
+    const payloadJson = atob(payloadBase64);
+    const payload = JSON.parse(payloadJson);
+
+    // Return Supabase's session_id from the JWT payload
+    if (payload.session_id) {
+      return payload.session_id;
+    }
+
+    console.warn('[Session] No session_id found in JWT, using access_token as fallback');
+    return accessToken;
+  } catch (error) {
+    console.error('[Session] Failed to extract session_id from JWT:', error);
+    // Fallback to full access_token if decoding fails
+    return accessToken;
+  }
+};
+
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
@@ -77,6 +109,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       const deviceFingerprint = await getFingerprint();
       const userAgent = navigator.userAgent;
+      const sessionId = extractSessionId(session.access_token);
 
       const response = await fetch('/api/sessions/register', {
         method: 'POST',
@@ -85,7 +118,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
-          sessionId: session.access_token,
+          sessionId,
           deviceFingerprint,
           userAgent,
           deviceInfo: {
@@ -98,6 +131,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       const data = await response.json();
 
+      console.log('[Session] Registered:', { sessionId, deviceFingerprint, sessionLimit: data.sessionLimit });
+
       if (data.loggedOutCount && data.loggedOutCount > 0) {
         console.log(`[Session] ${data.loggedOutCount} older session(s) were automatically logged out due to device limit (${data.sessionLimit})`);
       }
@@ -109,6 +144,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // Check if current session is still valid
   const checkSessionValidity = async (session: Session) => {
     try {
+      const sessionId = extractSessionId(session.access_token);
+
       const response = await fetch('/api/sessions/check', {
         method: 'POST',
         headers: {
@@ -116,19 +153,25 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
-          sessionId: session.access_token,
+          sessionId,
         }),
       });
 
       const data = await response.json();
 
       if (!data.valid) {
-        console.log('[Session] Session was invalidated (logged out from another device). Forcing logout...');
+        console.log('[Session] Invalidated:', { sessionId, reason: data.reason });
         // Auto-logout this device
         await supabase.auth.signOut({ scope: 'local' });
 
-        // Show notification to user
-        alert('You have been logged out because this account is now active on another device.');
+        // Show appropriate message based on reason
+        if (data.reason === 'user_deleted') {
+          alert('Your account has been deleted. You will now be logged out.');
+        } else {
+          alert('You have been logged out because this account is now active on another device.');
+        }
+      } else {
+        console.log('[Session] Valid:', { sessionId });
       }
     } catch (error) {
       console.error('[Session] Failed to check session validity:', error);
@@ -138,6 +181,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // Send heartbeat to keep session active
   const sendHeartbeat = async (session: Session) => {
     try {
+      const sessionId = extractSessionId(session.access_token);
+
       await fetch('/api/sessions/heartbeat', {
         method: 'POST',
         headers: {
@@ -145,9 +190,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
-          sessionId: session.access_token,
+          sessionId,
         }),
       });
+
+      console.log('[Session] Heartbeat sent:', { sessionId });
     } catch (error) {
       console.error('[Session] Failed to send heartbeat:', error);
     }
@@ -156,6 +203,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // Remove session on logout
   const removeSession = async (session: Session) => {
     try {
+      const sessionId = extractSessionId(session.access_token);
+
       await fetch('/api/sessions/remove', {
         method: 'POST',
         headers: {
@@ -163,9 +212,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
-          sessionId: session.access_token,
+          sessionId,
         }),
       });
+
+      console.log('[Session] Removed:', { sessionId });
     } catch (error) {
       console.error('[Session] Failed to remove session:', error);
     }

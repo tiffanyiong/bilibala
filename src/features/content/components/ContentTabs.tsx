@@ -18,6 +18,10 @@ interface ContentTabsProps {
   layoutMode?: 'fixed' | 'auto';
   currentTime?: number;
   transcriptLangMismatch?: boolean;
+  // Progressive loading: allow checking if individual tab content is ready
+  hasOutlineContent?: boolean;
+  hasVocabContent?: boolean;
+  hasTranscriptContent?: boolean;
 }
 
 const BilingualText: React.FC<{ 
@@ -72,7 +76,24 @@ const parseTimestamp = (ts: string): number => {
   return 0;
 };
 
-const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, topics, vocabulary, transcript, onTimestampClick, isLoading, targetLang, nativeLang, level = 'Medium', layoutMode = 'fixed', currentTime = 0, transcriptLangMismatch = false }) => {
+const ContentTabs: React.FC<ContentTabsProps> = ({
+  summary,
+  translatedSummary,
+  topics,
+  vocabulary,
+  transcript,
+  onTimestampClick,
+  isLoading,
+  targetLang,
+  nativeLang,
+  level = 'Medium',
+  layoutMode = 'fixed',
+  currentTime = 0,
+  transcriptLangMismatch = false,
+  hasOutlineContent,
+  hasVocabContent,
+  hasTranscriptContent
+}) => {
   const [activeTab, setActiveTab] = useState<'outline' | 'vocab' | 'transcript'>('outline');
   const { speak, currentText } = useTTS(targetLang);
 
@@ -209,6 +230,20 @@ const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, t
     ? "flex-1 overflow-y-auto p-2 scrollbar-hide relative"
     : "p-2 relative";
 
+  // Determine loading state per tab
+  // If explicit prop provided, use it; otherwise infer from data presence
+  const isOutlineLoading = hasOutlineContent !== undefined
+    ? !hasOutlineContent
+    : isLoading || (!summary && topics.length === 0);
+
+  const isVocabLoading = hasVocabContent !== undefined
+    ? !hasVocabContent
+    : isLoading || vocabulary.length === 0;
+
+  const isTranscriptLoading = hasTranscriptContent !== undefined
+    ? !hasTranscriptContent
+    : isLoading || !transcript || transcript.length === 0;
+
   return (
     <div className={containerClasses}>
       {/* Tab Header - Notion Style */}
@@ -274,48 +309,45 @@ const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, t
       </div>
 
       {/* Content Area */}
-      <div 
+      <div
         className={contentAreaClasses}
         ref={scrollContainerRef}
         onScroll={activeTab === 'transcript' ? handleScroll : undefined}
       >
-        
-        {isLoading ? (
-           showDinoGame ? (
-             // DINO GAME after 15s wait
-             <div className="flex flex-col items-center px-2 py-4 h-full">
-               <div className="flex-1 w-full">
-                 <DinoGame />
-               </div>
-               <div className="flex items-center gap-2 mt-3 mb-1">
-                 <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
-                 <p className="text-gray-400 text-xs">{uiText.generatingContent}</p>
-               </div>
-             </div>
-           ) : (
-             // SKELETON LOADING (first 15s)
-             <div className="flex flex-col space-y-4 px-2 py-4">
-                 {activeTab === 'outline' && (
-                     <div className="p-3 bg-white rounded-lg border border-gray-100 shadow-sm space-y-2">
-                         <div className="h-3 w-20 bg-gray-100 rounded animate-pulse"></div>
-                         <div className="h-4 w-full bg-gray-100 rounded animate-pulse"></div>
-                         <div className="h-4 w-3/4 bg-gray-100 rounded animate-pulse"></div>
-                     </div>
-                 )}
-                 {[1, 2, 3, 4].map(i => (
-                     <div key={i} className="flex gap-3 p-2">
-                         <div className="h-4 w-10 bg-gray-100 rounded animate-pulse shrink-0"></div>
-                         <div className="flex-1 space-y-2">
-                             <div className="h-4 w-3/4 bg-gray-100 rounded animate-pulse"></div>
-                             <div className="h-3 w-1/2 bg-gray-100 rounded animate-pulse"></div>
-                         </div>
-                     </div>
-                 ))}
-             </div>
-           )
-        ) : (
-            <>
-                {activeTab === 'outline' ? (
+        {/* Outline Tab */}
+        {activeTab === 'outline' && (
+          isOutlineLoading ? (
+            showDinoGame ? (
+              // DINO GAME after 15s wait
+              <div className="flex flex-col items-center px-2 py-4 h-full">
+                <div className="flex-1 w-full">
+                  <DinoGame />
+                </div>
+                <div className="flex items-center gap-2 mt-3 mb-1">
+                  <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                  <p className="text-gray-400 text-xs">{uiText.generatingContent}</p>
+                </div>
+              </div>
+            ) : (
+              // SKELETON LOADING for outline
+              <div className="flex flex-col space-y-4 px-2 py-4">
+                <div className="p-3 bg-white rounded-lg border border-gray-100 shadow-sm space-y-2">
+                  <div className="h-3 w-20 bg-gray-100 rounded animate-pulse"></div>
+                  <div className="h-4 w-full bg-gray-100 rounded animate-pulse"></div>
+                  <div className="h-4 w-3/4 bg-gray-100 rounded animate-pulse"></div>
+                </div>
+                {[1, 2, 3, 4].map(i => (
+                  <div key={i} className="flex gap-3 p-2">
+                    <div className="h-4 w-10 bg-gray-100 rounded animate-pulse shrink-0"></div>
+                    <div className="flex-1 space-y-2">
+                      <div className="h-4 w-3/4 bg-gray-100 rounded animate-pulse"></div>
+                      <div className="h-3 w-1/2 bg-gray-100 rounded animate-pulse"></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
+          ) : (
                   <div className="flex flex-col space-y-0.5 px-2 py-2">
                     {/* Summary Section */}
                     {summary && (
@@ -358,7 +390,7 @@ const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, t
                         );
                     })}
                     
-                    {topics.length === 0 && (
+                    {topics.length === 0 && !summary && (
                         <div className="text-center py-16 px-4">
                             <div className="text-gray-300 mb-2">
                                 <svg className="w-8 h-8 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -369,7 +401,38 @@ const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, t
                         </div>
                     )}
                   </div>
-                ) : activeTab === 'vocab' ? (
+          )
+        )}
+
+        {/* Vocabulary Tab */}
+        {activeTab === 'vocab' && (
+          isVocabLoading ? (
+            showDinoGame ? (
+              // DINO GAME after 15s wait
+              <div className="flex flex-col items-center px-2 py-4 h-full">
+                <div className="flex-1 w-full">
+                  <DinoGame />
+                </div>
+                <div className="flex items-center gap-2 mt-3 mb-1">
+                  <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                  <p className="text-gray-400 text-xs">{uiText.generatingContent}</p>
+                </div>
+              </div>
+            ) : (
+              // SKELETON LOADING for vocabulary
+              <div className="flex flex-col space-y-4 px-2 py-4">
+                {[1, 2, 3, 4].map(i => (
+                  <div key={i} className="flex gap-3 p-2">
+                    <div className="h-4 w-10 bg-gray-100 rounded animate-pulse shrink-0"></div>
+                    <div className="flex-1 space-y-2">
+                      <div className="h-4 w-3/4 bg-gray-100 rounded animate-pulse"></div>
+                      <div className="h-3 w-1/2 bg-gray-100 rounded animate-pulse"></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
+          ) : (
                   <div className="grid grid-cols-1 gap-2 px-2 py-2">
                     {vocabulary.map((item, index) => (
                       <div key={index} className="group p-3 rounded-xl border border-transparent hover:border-white/60 hover:bg-white/40 hover:backdrop-blur-xl hover:shadow-[0_2px_12px_rgba(0,0,0,0.04)] hover:ring-1 hover:ring-black/[0.03] transition-all">
@@ -407,8 +470,39 @@ const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, t
                         </div>
                     )}
                   </div>
-                ) : (
-                    // TRANSCRIPT TAB
+          )
+        )}
+
+        {/* Transcript Tab */}
+        {activeTab === 'transcript' && (
+          isTranscriptLoading ? (
+            showDinoGame ? (
+              // DINO GAME after 15s wait
+              <div className="flex flex-col items-center px-2 py-4 h-full">
+                <div className="flex-1 w-full">
+                  <DinoGame />
+                </div>
+                <div className="flex items-center gap-2 mt-3 mb-1">
+                  <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                  <p className="text-gray-400 text-xs">{uiText.generatingContent}</p>
+                </div>
+              </div>
+            ) : (
+              // SKELETON LOADING for transcript
+              <div className="flex flex-col space-y-4 px-2 py-4">
+                {[1, 2, 3, 4].map(i => (
+                  <div key={i} className="flex gap-3 p-2">
+                    <div className="h-4 w-10 bg-gray-100 rounded animate-pulse shrink-0"></div>
+                    <div className="flex-1 space-y-2">
+                      <div className="h-4 w-3/4 bg-gray-100 rounded animate-pulse"></div>
+                      <div className="h-3 w-1/2 bg-gray-100 rounded animate-pulse"></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
+          ) : (
+                    // TRANSCRIPT CONTENT
                     <div className="relative flex flex-col space-y-1 px-2 py-2">
                         {/* Locate Button - Floating */}
                         {showLocateBtn && (
@@ -424,8 +518,8 @@ const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, t
                         {transcript && transcript.length > 0 ? transcript.map((seg, i) => {
                             const isActive = i === activeTranscriptIndex;
                             return (
-                                <div 
-                                    key={i} 
+                                <div
+                                    key={i}
                                     ref={isActive ? activeTranscriptRef : null}
                                     className={`
                                         group flex gap-3 p-3 rounded-xl transition-all cursor-pointer items-start
@@ -450,8 +544,7 @@ const ContentTabs: React.FC<ContentTabsProps> = ({ summary, translatedSummary, t
                             </div>
                         )}
                     </div>
-                )}
-            </>
+          )
         )}
       </div>
     </div>

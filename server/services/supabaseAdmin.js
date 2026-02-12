@@ -2,8 +2,14 @@ import { createClient } from '@supabase/supabase-js';
 import { config } from '../config/env.js';
 
 // Shared Supabase admin client (service role — full access)
+// Note: Using native fetch with default Node.js SSL/TLS settings
 export const supabaseAdmin = config.supabase.url && config.supabase.serviceRoleKey
-  ? createClient(config.supabase.url, config.supabase.serviceRoleKey)
+  ? createClient(config.supabase.url, config.supabase.serviceRoleKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    })
   : null;
 
 /**
