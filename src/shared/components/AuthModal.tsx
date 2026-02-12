@@ -16,6 +16,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
 
   // Close modal when user successfully logs in
   useEffect(() => {
@@ -42,6 +43,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
       setPassword('');
       setMessage(null);
       setView('sign_in');
+      setAgreedToTerms(false);
     }
   }, [isOpen]);
 
@@ -60,6 +62,12 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!agreedToTerms) {
+      setMessage({ type: 'error', text: 'You must agree to the Terms of Service and Privacy Policy to sign up.' });
+      return;
+    }
+
     setLoading(true);
     setMessage(null);
 
@@ -84,19 +92,35 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     setLoading(true);
     setMessage(null);
 
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: window.location.origin
+    console.log('[AuthModal] Attempting password reset for:', email);
+    console.log('[AuthModal] Redirect URL:', `${window.location.origin}/reset-password`);
+
+    const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`
     });
 
+    console.log('[AuthModal] Password reset response:', { data, error });
+
     if (error) {
+      console.error('[AuthModal] Password reset error:', error);
       setMessage({ type: 'error', text: error.message });
     } else {
-      setMessage({ type: 'success', text: 'Check your email for password reset instructions!' });
+      console.log('[AuthModal] Password reset email sent successfully');
+      setMessage({
+        type: 'success',
+        text: 'Password reset email sent! Check your spam folder for an email from Supabase. If you don\'t receive it within 5 minutes, check: 1) The email exists in your account, 2) You haven\'t exceeded the rate limit (3-4 emails/hour), 3) The redirect URL is allowed in Supabase settings.'
+      });
     }
     setLoading(false);
   };
 
   const handleGoogleSignIn = async () => {
+    // For sign-up view, check if user has agreed to terms
+    if (view === 'sign_up' && !agreedToTerms) {
+      setMessage({ type: 'error', text: 'You must agree to the Terms of Service and Privacy Policy to sign up.' });
+      return;
+    }
+
     setLoading(true);
     setMessage(null);
 
@@ -215,10 +239,9 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
             </form>
 
             <div className="mt-4 flex flex-col items-center gap-2">
-                  {/* TODO: We will generate a page for this later */}
-              {/* <span className={linkClasses} onClick={() => setView('forgot_password')}>
+              <span className={linkClasses} onClick={() => setView('forgot_password')}>
                 Forgot your password?
-              </span> */}
+              </span>
               <span className="text-stone-500 text-sm">
                 Don't have an account?{' '}
                 <span className="text-stone-800 hover:underline cursor-pointer" onClick={() => setView('sign_up')}>
@@ -272,7 +295,41 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                   className={inputClasses}
                 />
               </div>
-              <button type="submit" disabled={loading || !email || password.length < 8} className={buttonClasses}>
+
+              {/* Terms and Privacy Checkbox */}
+              <div className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  id="terms-checkbox"
+                  checked={agreedToTerms}
+                  onChange={(e) => setAgreedToTerms(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-stone-300 text-stone-800 focus:ring-stone-400 cursor-pointer"
+                />
+                <label htmlFor="terms-checkbox" className="text-stone-600 text-sm cursor-pointer">
+                  By signing up, you agree to our{' '}
+                  <a
+                    href="https://mybilibala.com/terms"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-stone-800 hover:underline"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    Terms of Service
+                  </a>
+                  {' '}and{' '}
+                  <a
+                    href="https://mybilibala.com/privacy"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-stone-800 hover:underline"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    Privacy Policy
+                  </a>
+                </label>
+              </div>
+
+              <button type="submit" disabled={loading || !email || password.length < 8 || !agreedToTerms} className={buttonClasses}>
                 {loading ? 'Creating account...' : 'Sign up'}
               </button>
             </form>

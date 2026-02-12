@@ -41,8 +41,11 @@ export const LEVELS = [
   { id: 'Hard', label: 'Hard' }
 ];
 
-// --- MVP: Enabled target languages (toggle to enable all) ---
+// --- DEPRECATED: Use useAppConfig() hook instead ---
+// Enabled target languages are now managed via app_config table in database
+// @deprecated Use useAppConfig() or fetchAppConfig() instead
 export const ENABLED_TARGET_LANGUAGES = ['English', 'Chinese'];
+// @deprecated Use useAppConfig() or fetchAppConfig() instead
 export const ENABLED_LANGUAGES = LANGUAGES.filter(
   (l) => ENABLED_TARGET_LANGUAGES.some(code => l.code.startsWith(code))
 );

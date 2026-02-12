@@ -53,7 +53,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ onOpenAuthModal, onOpenVideoLibrary
     { label: 'Practice Reports', icon: ReportsIcon, onClick: () => onOpenReports?.() },
     // { label: 'Vocabulary', icon: VocabularyIcon, onClick: () => console.log('Vocabulary clicked') }, // Hidden for now
     { label: 'Subscription Plan', icon: SubscriptionIcon, onClick: () => onOpenSubscription?.() },
-    { label: 'Settings', icon: SettingsIcon, onClick: () => onOpenSettings?.() },
+    // { label: 'Settings', icon: SettingsIcon, onClick: () => onOpenSettings?.() },
   ];
 
   if (loading) {
