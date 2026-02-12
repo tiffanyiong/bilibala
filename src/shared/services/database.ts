@@ -1441,3 +1441,47 @@ export async function getAllPracticeSessionsWithVideoMetadata(
     });
 }
 
+// ============================================
+// APP CONFIG
+// ============================================
+
+/**
+ * Get app configuration value by key
+ * Returns null if not found
+ */
+export async function getAppConfig<T = any>(key: string): Promise<T | null> {
+  const { data, error } = await supabase
+    .from('app_config')
+    .select('value')
+    .eq('key', key)
+    .single();
+
+  if (error) {
+    if (error.code !== 'PGRST116') {
+      console.error(`Error fetching app config for key '${key}':`, error);
+    }
+    return null;
+  }
+
+  return data?.value as T;
+}
+
+/**
+ * Get all app config as a key-value map
+ */
+export async function getAllAppConfig(): Promise<Record<string, any>> {
+  const { data, error } = await supabase
+    .from('app_config')
+    .select('key, value');
+
+  if (error) {
+    console.error('Error fetching all app config:', error);
+    return {};
+  }
+
+  return (data || []).reduce((acc, { key, value }) => {
+    acc[key] = value;
+    return acc;
+  }, {} as Record<string, any>);
+}
+
