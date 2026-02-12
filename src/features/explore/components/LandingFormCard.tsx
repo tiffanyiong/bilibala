@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { LANGUAGES, LEVELS, ENABLED_LANGUAGES } from '../../../shared/constants';
+import { LEVELS } from '../../../shared/constants';
 import GlassDropdown from '../../../shared/components/GlassDropdown';
+import { useAppConfig } from '../../../shared/hooks/useAppConfig';
 
 interface LandingFormCardProps {
   videoUrl: string;
@@ -14,9 +15,6 @@ interface LandingFormCardProps {
   onStart: () => void;
   errorMsg: string;
 }
-
-const languageOptions = LANGUAGES.map((l) => ({ value: l.name, label: l.name }));
-const targetLangOptions = ENABLED_LANGUAGES.map((l) => ({ value: l.name, label: l.name }));
 
 const LandingFormCard: React.FC<LandingFormCardProps> = ({
   videoUrl,
@@ -32,6 +30,18 @@ const LandingFormCard: React.FC<LandingFormCardProps> = ({
 }) => {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
+  const { enabledNativeLanguages, enabledTargetLanguages } = useAppConfig();
+
+  // Map to dropdown options
+  // Filter out the selected target language from native language options
+  const nativeLanguageOptions = enabledNativeLanguages
+    .filter((l) => l.name !== targetLang)
+    .map((l) => ({ value: l.name, label: l.name }));
+
+  // Filter out the selected native language from target language options
+  const targetLangOptions = enabledTargetLanguages
+    .filter((l) => l.name !== nativeLang)
+    .map((l) => ({ value: l.name, label: l.name }));
 
   // Close settings panel when clicking outside
   useEffect(() => {
@@ -157,7 +167,7 @@ const LandingFormCard: React.FC<LandingFormCardProps> = ({
               <GlassDropdown
                 value={nativeLang}
                 onChange={setNativeLang}
-                options={languageOptions}
+                options={nativeLanguageOptions}
               />
             </div>
 

@@ -1,5 +1,55 @@
 # Changelog
 
+## [Unreleased] - 2026-02-11
+
+### Added
+
+#### Session Management & Anti-Account-Sharing
+- **Concurrent device limits**: Enforced device limits to prevent account sharing
+  - Free tier: 1 device at a time
+  - Pro tier: 3 devices at a time
+  - Uses browser fingerprinting to identify devices
+  - Oldest active session is automatically logged out when limit exceeded
+  - User sees alert: "You have been logged out because this account is now active on another device"
+  - Files added:
+    - `supabase/migrations/013_active_sessions.sql` - Session tracking table and functions
+    - `server/routes/sessionRoutes.js` - Session API endpoints (register, heartbeat, check, remove)
+    - Updated `server/index.js` to mount session routes
+    - Updated `src/shared/context/AuthContext.tsx` with session monitoring (checks validity every 30s, heartbeat every 5min)
+  - New database table: `active_sessions` (tracks device fingerprint, IP, user agent, last_active_at)
+  - Database functions: `get_session_limit()`, `register_session()`, `update_session_activity()`, `remove_session()`, `cleanup_expired_sessions()`
+
+#### Automatic Stripe Subscription Cancellation
+- **Stripe cleanup on user deletion**: User deletions from Supabase Dashboard now automatically cancel Stripe subscriptions
+  - Queue-based system to handle async Stripe API calls
+  - Cron job runs every 5 minutes to process pending cancellations
+  - Prevents billing users after account deletion
+  - Files added:
+    - `supabase/migrations/016_cancel_stripe_on_user_delete.sql` - Cleanup queue and trigger
+    - `server/services/stripeCleanup.js` - Cron job to process queue
+    - Updated `server/index.js` to start cleanup cron on server boot
+  - New database table: `stripe_cleanup_queue` (tracks pending Stripe cancellations)
+  - Trigger: `cancel_stripe_on_user_delete()` fires before user deletion
+
+### Fixed
+
+#### User Deletion Constraints
+- **Database foreign key fixes**: User deletion from Supabase Dashboard now works properly
+  - Fixed `cached_analyses.created_by` constraint to use `ON DELETE SET NULL` (preserves expensive AI-generated analyses)
+  - Migration 014 ensures all foreign keys have proper CASCADE or SET NULL behavior
+  - Files added:
+    - `supabase/migrations/014_fix_user_deletion_constraints.sql`
+  - Previously blocked with error: "violates foreign key constraint cached_analyses_created_by_fkey"
+  - Now: User deleted → analyses preserved with `created_by = NULL`
+
+### Documentation
+
+- Added `docs/SESSION_LIMITS.md` - Complete guide for session management feature
+- Added `docs/USER_DELETION_STRATEGY.md` - Hard delete vs soft delete comparison
+- Added `docs/STRIPE_SUBSCRIPTION_CLEANUP.md` - Stripe cancellation system explanation
+
+---
+
 ## [Unreleased] - 2026-02-07
 
 ### Fixed
