@@ -362,6 +362,7 @@ router.post('/subscriptions/sync', async (req, res) => {
       tier: newTier,
       stripe_subscription_id: subscription.id,
       subscription_status: subscription.status,
+      cancel_at_period_end: !!subscription.cancel_at_period_end,
       billing_interval: billingInterval,
       current_period_start: periodStart,
       current_period_end: periodEnd,
@@ -654,6 +655,7 @@ router.post('/subscriptions/webhook', async (req, res) => {
             .update({
               tier: newTier,
               subscription_status: subscription.status,
+              cancel_at_period_end: !!subscription.cancel_at_period_end,
               billing_interval: billingInterval,
               current_period_start: periodStart,
               current_period_end: periodEnd,
@@ -698,6 +700,7 @@ router.post('/subscriptions/webhook', async (req, res) => {
             .update({
               tier: 'free',
               subscription_status: 'canceled',
+              cancel_at_period_end: false,
               current_period_end: null,
               billing_interval: null,
               updated_at: new Date().toISOString(),

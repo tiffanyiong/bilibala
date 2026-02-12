@@ -419,7 +419,7 @@ const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ onOpenAuthModal }) 
           
                 {subscription?.current_period_end && (
                   <p className="text-xs text-stone-500 mt-2 text-center">
-                    {status === 'canceled' ? 'Access until: ' : 'Renews: '}
+                    {status === 'canceled' || subscription?.cancel_at_period_end ? 'Access until: ' : 'Renews: '}
                     {formatDate(subscription.current_period_end)}
                   </p>
                 )}
