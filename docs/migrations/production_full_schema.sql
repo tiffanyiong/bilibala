@@ -3,10 +3,11 @@
 -- Run this in Supabase SQL Editor for a fresh production database.
 -- Order matters: tables are created in dependency order.
 --
--- Includes all migrations: 001-016
+-- Includes all migrations: 001-017
 -- Latest updates:
 --   - Migration 015: Free tier unlimited sessions, Pro tier 3 devices
 --   - Migration 016: Ghost session cleanup fix
+--   - Migration 017: Allow anonymous users to insert videos & analyses
 -- ==============================================================================
 
 -- ==============================================================================
@@ -285,14 +286,14 @@ ALTER TABLE public.usage_history ENABLE ROW LEVEL SECURITY;
 -- global_videos
 CREATE POLICY "Anyone can read videos" ON public.global_videos
   FOR SELECT USING (true);
-CREATE POLICY "Authenticated users can insert videos" ON public.global_videos
-  FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "Anyone can insert videos" ON public.global_videos
+  FOR INSERT WITH CHECK (true);
 
 -- cached_analyses
 CREATE POLICY "Anyone can read analyses" ON public.cached_analyses
   FOR SELECT USING (true);
-CREATE POLICY "Authenticated users can insert analyses" ON public.cached_analyses
-  FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "Anyone can insert analyses" ON public.cached_analyses
+  FOR INSERT WITH CHECK (true);
 
 -- practice_topics
 CREATE POLICY "Anyone can read active topics" ON public.practice_topics

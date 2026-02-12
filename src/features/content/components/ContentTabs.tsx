@@ -102,6 +102,14 @@ const ContentTabs: React.FC<ContentTabsProps> = ({
   const uiLang = isEasy ? (nativeLang || 'English') : targetLang;
   const uiText = UI_TRANSLATIONS[uiLang] || UI_TRANSLATIONS['English'];
 
+  // Progressive loading: Auto-switch to transcript tab when it becomes available
+  useEffect(() => {
+    if (hasTranscriptContent && transcript && transcript.length > 0 && isLoading) {
+      // Transcript loaded during analysis - switch to transcript tab
+      setActiveTab('transcript');
+    }
+  }, [hasTranscriptContent, transcript, isLoading]);
+
   const [showDinoGame, setShowDinoGame] = useState(false);
   const [showLangMismatchInfo, setShowLangMismatchInfo] = useState(false);
   const langInfoBtnRef = useRef<HTMLButtonElement>(null);
