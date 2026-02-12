@@ -1838,7 +1838,7 @@ const App: React.FC = () => {
         />
       )}
 
-      10. SETTINGS PAGE
+      {/* 10. SETTINGS PAGE */}
       {appState === AppState.SETTINGS && (
         <SettingsPage />
       )}
