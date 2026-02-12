@@ -92,7 +92,7 @@ Return the same JSON structure with values translated to ${language}.`;
       }
     });
 
-    console.log(`[translate-ui-labels] Gemini call completed in ${Date.now() - startTime}ms`);
+    console.log(`[translate-ui-labels] Translation completed in ${Date.now() - startTime}ms | cache key: ${cacheKey}`);
 
     let candidates = response.candidates;
     if (!candidates && response.data) candidates = response.data.candidates;

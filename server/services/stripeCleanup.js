@@ -7,6 +7,57 @@ const stripe = config.stripe.secretKey
   : null;
 
 /**
+ * Retry a Supabase query with exponential backoff
+ * Handles transient SSL/network errors that may occur on Railway
+ */
+async function retrySupabaseQuery(queryFn, maxRetries = 3, baseDelay = 1000) {
+  let lastError;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const result = await queryFn();
+
+      // Supabase returns errors in the response, not as exceptions
+      if (result.error) {
+        const errorMessage = result.error.message || JSON.stringify(result.error);
+
+        // Check if it's a retryable error (SSL, network, timeout)
+        const isRetryable =
+          errorMessage.includes('certificate') ||
+          errorMessage.includes('CERT_') ||
+          errorMessage.includes('fetch failed') ||
+          errorMessage.includes('ECONNRESET') ||
+          errorMessage.includes('ETIMEDOUT') ||
+          errorMessage.includes('network');
+
+        if (isRetryable && attempt < maxRetries) {
+          lastError = result.error;
+          const delay = baseDelay * Math.pow(2, attempt - 1);
+          console.log(`[Stripe Cleanup] Retry ${attempt}/${maxRetries} after ${delay}ms due to: ${errorMessage}`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+      }
+
+      return result;
+    } catch (error) {
+      // Handle actual exceptions (rare with Supabase client)
+      lastError = error;
+      if (attempt === maxRetries) {
+        throw error;
+      }
+
+      const delay = baseDelay * Math.pow(2, attempt - 1);
+      console.log(`[Stripe Cleanup] Retry ${attempt}/${maxRetries} after ${delay}ms due to exception: ${error.message}`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+
+  // If all retries failed, return the last error response
+  return { data: null, error: lastError };
+}
+
+/**
  * Process Stripe cleanup queue - cancels subscriptions for deleted users
  * Should be run periodically via cron job
  */
@@ -17,16 +68,35 @@ export async function processStripeCleanupQueue() {
   }
 
   try {
-    // Get pending cleanup tasks
-    const { data: pendingTasks, error: fetchError } = await supabaseAdmin
-      .from('stripe_cleanup_queue')
-      .select('*')
-      .eq('processed', false)
-      .order('created_at', { ascending: true })
-      .limit(50); // Process 50 at a time
+    // Get pending cleanup tasks with retry logic for transient SSL errors
+    const { data: pendingTasks, error: fetchError } = await retrySupabaseQuery(
+      () => supabaseAdmin
+        .from('stripe_cleanup_queue')
+        .select('*')
+        .eq('processed', false)
+        .order('created_at', { ascending: true })
+        .limit(50), // Process 50 at a time
+      3, // max retries
+      1000 // base delay 1s
+    );
 
     if (fetchError) {
-      console.error('[Stripe Cleanup] Error fetching queue:', fetchError);
+      console.error('[Stripe Cleanup] Error fetching queue:', {
+        message: fetchError.message || 'Unknown error',
+        details: fetchError.details || '',
+        hint: fetchError.hint || '',
+        code: fetchError.code || '',
+      });
+
+      // If it's a certificate error, log additional details
+      if (fetchError.message?.includes('certificate') || fetchError.message?.includes('CERT_')) {
+        console.error('[Stripe Cleanup] SSL/TLS certificate error detected. This may be due to:');
+        console.error('  - Expired SSL certificates on the server');
+        console.error('  - Network/firewall blocking HTTPS connections');
+        console.error('  - Railway deployment SSL certificate issues');
+        console.error('  - Check SUPABASE_URL is correct and accessible');
+      }
+
       return { processed: 0, errors: 1 };
     }
 
@@ -44,7 +114,7 @@ export async function processStripeCleanupQueue() {
       try {
         if (task.action === 'cancel_subscription' && task.stripe_subscription_id) {
           // Cancel the subscription
-          const subscription = await stripe.subscriptions.cancel(
+          await stripe.subscriptions.cancel(
             task.stripe_subscription_id,
             {
               // Cancel immediately, no proration

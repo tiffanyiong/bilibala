@@ -2,6 +2,67 @@
 
 ## [Unreleased] - 2026-02-11
 
+### Changed
+
+#### Logging Improvements
+- **Session ID Storage Optimization**: Reduced session ID storage by 97%
+  - Now extracting short UUID from JWT instead of storing full token
+  - Before: Storing full JWT access_token (~1,398 characters) as `session_id`
+  - After: Extracting Supabase's `session_id` claim from JWT payload (36 characters)
+  - Storage impact: 700 bytes → 36 bytes per session (19x smaller)
+  - Log readability: Session logs now show readable UUIDs instead of multi-line JWT tokens
+  - Behavior unchanged: Same session tracking logic, just more efficient storage
+  - Added `extractSessionId()` helper function with fallback for JWT decoding errors
+  - Files changed: `src/shared/context/AuthContext.tsx`
+
+- **Enhanced Contextual Logging**: All major operations now include context identifiers for easy tracking
+  - **Session logs** (frontend):
+    - `[Session] Registered: { sessionId, deviceFingerprint, sessionLimit }`
+    - `[Session] Valid: { sessionId }`
+    - `[Session] Heartbeat sent: { sessionId }`
+    - `[Session] Removed: { sessionId }`
+  - **Video analysis logs** (backend):
+    - `[analyze-video-content] Sending prompt to Gemini | video: ${videoId}`
+    - `[analyze-video-content] Analysis completed | video: ${videoId} (${videoTitle})`
+  - **Speech analysis logs** (backend):
+    - `[analyze-speech] Starting analysis | topic: "${topic}" | level: ${level}`
+    - `[analyze-speech] Analysis completed in ${duration}ms | topic: "${topic}"`
+  - **Gemini retry logs** (backend):
+    - `[Gemini] API call to ${model} (attempt ${n}/${total})`
+    - `[Gemini] Request failed (attempt ${n}/${total}). Retrying in ${delay}ms...`
+  - **Translation logs** (backend):
+    - `[translate-ui-labels] Translation completed in ${duration}ms | cache key: ${key}`
+  - Files changed: `server/routes/videoRoutes.js`, `server/routes/speechRoutes.js`, `server/routes/translationRoutes.js`
+  - Documentation: `docs/SESSION_LOGGING.md`, `docs/LOGGING_STRATEGY.md`
+
+### Fixed
+
+#### Transcript Segmentation & Display Quality
+- **HTML entity decoding**: Transcript text now properly displays apostrophes, quotes, and special characters
+  - Added `decodeHTMLEntities()` function to convert `&amp;#39;` → `'`, `&quot;` → `"`, `&amp;` → `&`, etc.
+  - Applied to all transcript segments from Supadata API before merging
+  - Files changed: `server/services/videoService.js`
+- **Improved sentence segmentation**: Transcript entries now break at natural linguistic boundaries (1-2 sentences per entry)
+  - Before: Long multi-sentence paragraphs that were hard to follow
+  - After: Shorter, digestible segments that end at complete thoughts
+  - Breaking logic:
+    - Breaks after sentence-ending punctuation (`.!?`)
+    - Breaks at commas/semicolons/colons when buffer exceeds 100 chars
+    - Safety limit reduced from 250 → 150 chars
+    - Pause threshold reduced from 2000ms → 1500ms
+  - Files changed: `server/services/videoService.js`
+- **Note**: Changes only apply to newly processed videos (cached analyses unaffected)
+
+#### Stripe Cleanup Resilience
+- **SSL certificate error handling**: Added retry logic with exponential backoff to handle transient SSL/TLS errors
+  - Fixes intermittent `CERT_HAS_EXPIRED` errors on Railway deployment when connecting to Supabase
+  - 3 retries with 1s → 2s → 4s delays for network/SSL errors
+  - Enhanced error logging to identify certificate issues
+  - Files changed: `server/services/stripeCleanup.js`
+- **Supabase client optimization**: Disabled unnecessary auth features for admin client
+  - Set `autoRefreshToken: false` and `persistSession: false` for service role client
+  - Files changed: `server/services/supabaseAdmin.js`
+
 ### Added
 
 #### Database-Driven Language Configuration
