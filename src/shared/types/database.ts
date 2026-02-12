@@ -260,6 +260,8 @@ export interface DbUserSubscription {
   video_credits: number;
   // Set when user upgrades plan — usage_history only counts from this point
   usage_reset_at: string | null;
+  // Stripe cancel_at_period_end — user canceled but still active until period end
+  cancel_at_period_end: boolean;
   created_at: string;
   updated_at: string;
 }
