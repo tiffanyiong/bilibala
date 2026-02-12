@@ -43,17 +43,23 @@ const TopicSelector: React.FC<TopicSelectorProps> = ({
   };
 
   useEffect(() => {
-    checkScrollPosition();
+    // Wait until loading is done and topics are rendered before measuring
+    if (isLoading || topics.length === 0) return;
+
+    // Use setTimeout to ensure the browser has fully laid out the topic buttons
+    const timerId = setTimeout(checkScrollPosition, 50);
     const container = scrollContainerRef.current;
     if (container) {
       container.addEventListener('scroll', checkScrollPosition);
       window.addEventListener('resize', checkScrollPosition);
       return () => {
+        clearTimeout(timerId);
         container.removeEventListener('scroll', checkScrollPosition);
         window.removeEventListener('resize', checkScrollPosition);
       };
     }
-  }, [topics]);
+    return () => clearTimeout(timerId);
+  }, [topics, isLoading]);
 
   const scroll = (direction: 'left' | 'right') => {
     const container = scrollContainerRef.current;
