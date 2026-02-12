@@ -191,6 +191,24 @@ router.post('/sessions/check', async (req, res) => {
       return res.status(400).json({ error: 'Missing sessionId' });
     }
 
+    // First, check if user still exists in our database (not just auth.users)
+    const { data: userSubscription, error: subError } = await supabaseAdmin
+      .from('user_subscriptions')
+      .select('user_id')
+      .eq('user_id', user.id)
+      .single();
+
+    if (subError && subError.code !== 'PGRST116') {
+      console.error('[Session] Error checking user subscription:', subError);
+      return res.status(500).json({ error: 'Failed to check user' });
+    }
+
+    // User was deleted from database - invalidate session
+    if (!userSubscription) {
+      console.log('[Session] User no longer exists in database, invalidating session');
+      return res.json({ valid: false, reason: 'user_deleted' });
+    }
+
     // Check if session exists in active_sessions table
     const { data: session, error } = await supabaseAdmin
       .from('active_sessions')
@@ -207,7 +225,10 @@ router.post('/sessions/check', async (req, res) => {
 
     const isValid = !!session && (!session.expires_at || new Date(session.expires_at) > new Date());
 
-    res.json({ valid: isValid });
+    res.json({
+      valid: isValid,
+      reason: isValid ? null : 'session_logout'
+    });
   } catch (error) {
     console.error('[Session] Error in /sessions/check:', error);
     res.status(500).json({ error: 'Failed to check session' });

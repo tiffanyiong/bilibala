@@ -121,14 +121,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       });
 
       const data = await response.json();
+      console.log('[Session] Check result:', data);
 
       if (!data.valid) {
-        console.log('[Session] Session was invalidated (logged out from another device). Forcing logout...');
+        console.log('[Session] Session was invalidated. Reason:', data.reason);
         // Auto-logout this device
         await supabase.auth.signOut({ scope: 'local' });
 
-        // Show notification to user
-        alert('You have been logged out because this account is now active on another device.');
+        // Show appropriate message based on reason
+        if (data.reason === 'user_deleted') {
+          alert('Your account has been deleted. You will now be logged out.');
+        } else {
+          alert('You have been logged out because this account is now active on another device.');
+        }
+      } else {
+        console.log('[Session] Session is still valid');
       }
     } catch (error) {
       console.error('[Session] Failed to check session validity:', error);
