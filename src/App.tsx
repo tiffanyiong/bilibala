@@ -3,7 +3,7 @@ import ContentTabs from './features/content/components/ContentTabs';
 import TopicSelector from './features/content/components/TopicSelector';
 import ExploreVideoCard from './features/explore/components/ExploreVideoCard';
 import LandingFormCard from './features/explore/components/LandingFormCard';
-import { PrivacyPage, TermsPage } from './features/legal';
+import { PrivacyPage, ResetPasswordPage, TermsPage } from './features/legal';
 import PracticeReportDetailPage from './features/library/components/PracticeReportDetailPage';
 import VideoLibraryPage from './features/library/components/VideoLibraryPage';
 import FloatingTutorWindow from './features/live-voice/components/FloatingTutorWindow';
@@ -332,6 +332,9 @@ const App: React.FC = () => {
     if (parts[0] === 'terms') {
       return { type: 'terms' as const };
     }
+    if (parts[0] === 'reset-password') {
+      return { type: 'reset-password' as const };
+    }
     // Assume first part is video ID (which is actually analysisId for reports)
     const videoId = parts[0];
     if (parts[1] === 'practice') {
@@ -361,6 +364,8 @@ const App: React.FC = () => {
         setAppState(AppState.PRIVACY);
       } else if (route.type === 'terms') {
         setAppState(AppState.TERMS);
+      } else if (route.type === 'reset-password') {
+        setAppState(AppState.RESET_PASSWORD);
       } else if (route.type === 'reports-dashboard') {
         setAppState(AppState.REPORTS_DASHBOARD);
       } else if (route.type === 'library') {
@@ -433,6 +438,8 @@ const App: React.FC = () => {
       targetPath = '/privacy';
     } else if (appState === AppState.TERMS) {
       targetPath = '/terms';
+    } else if (appState === AppState.RESET_PASSWORD) {
+      targetPath = '/reset-password';
     } else if (appState === AppState.VIDEO_LIBRARY) {
       targetPath = '/library';
     } else if (appState === AppState.REPORTS_DASHBOARD) {
@@ -491,6 +498,13 @@ const App: React.FC = () => {
     // Handle terms route directly
     if (route.type === 'terms') {
       setAppState(AppState.TERMS);
+      isInitializedRef.current = true;
+      return;
+    }
+
+    // Handle reset password route directly
+    if (route.type === 'reset-password') {
+      setAppState(AppState.RESET_PASSWORD);
       isInitializedRef.current = true;
       return;
     }
@@ -1554,7 +1568,7 @@ const App: React.FC = () => {
   const translationPopupTargetLang = translatorTargetLang || nativeLang;
 
   const shouldShowHeader = appState === AppState.DASHBOARD || appState === AppState.PRACTICE_SESSION;
-  const isScrollable = appState === AppState.LANDING || appState === AppState.DASHBOARD || appState === AppState.PRACTICE_SESSION || appState === AppState.VIDEO_LIBRARY || appState === AppState.PRACTICE_REPORT_DETAIL || appState === AppState.REPORTS_DASHBOARD || appState === AppState.SUBSCRIPTION || appState === AppState.PROFILE || appState === AppState.SETTINGS || appState === AppState.PRIVACY || appState === AppState.TERMS;
+  const isScrollable = appState === AppState.LANDING || appState === AppState.DASHBOARD || appState === AppState.PRACTICE_SESSION || appState === AppState.VIDEO_LIBRARY || appState === AppState.PRACTICE_REPORT_DETAIL || appState === AppState.REPORTS_DASHBOARD || appState === AppState.SUBSCRIPTION || appState === AppState.PROFILE || appState === AppState.SETTINGS || appState === AppState.PRIVACY || appState === AppState.TERMS || appState === AppState.RESET_PASSWORD;
   const shouldShowFooter = appState === AppState.LANDING || appState === AppState.PRIVACY || appState === AppState.TERMS || appState === AppState.SUBSCRIPTION;
 
   return (
@@ -1837,6 +1851,11 @@ const App: React.FC = () => {
       {/* 12. TERMS PAGE */}
       {appState === AppState.TERMS && (
         <TermsPage />
+      )}
+
+      {/* 13. RESET PASSWORD PAGE */}
+      {appState === AppState.RESET_PASSWORD && (
+        <ResetPasswordPage />
       )}
 
       {/* Translation Popup - Pro only, active on all content pages */}
