@@ -37,20 +37,68 @@ const FAST_MODEL = 'gemini-2.5-flash';
 const PRO_MODEL = 'gemini-3-flash-preview';
 
 /**
+ * POST /api/fetch-transcript
+ * Fetches ONLY the transcript (fast, ~10-20s) - no AI analysis
+ * Used for progressive loading: show transcript immediately while AI analysis runs in background
+ */
+router.post('/fetch-transcript', async (req, res) => {
+  try {
+    const { videoUrl, targetLang } = req.body || {};
+    const videoId = videoUrl ? extractVideoId(videoUrl) : null;
+
+    if (!videoId) {
+      return res.status(400).json({ error: 'Invalid video URL' });
+    }
+
+    console.log(`[fetch-transcript] Fetching transcript for: ${videoId} (lang: ${targetLang})`);
+
+    // Fetch video context (duration + transcript segments)
+    const contextData = await fetchVideoContext(videoId, targetLang);
+
+    res.json({
+      transcript: contextData.transcriptSegments || [],
+      transcriptLang: contextData.transcriptLang || null,
+      transcriptLangMismatch: contextData.transcriptLangMismatch || false,
+      duration: contextData.duration || 0
+    });
+
+    console.log(`[fetch-transcript] Transcript fetched successfully | videoId: ${videoId}`);
+  } catch (err) {
+    console.error(`[fetch-transcript] Failed:`, err);
+    const errorMessage = err.message || 'Failed to fetch transcript';
+    res.status(500).json({ error: errorMessage });
+  }
+});
+
+/**
  * POST /api/analyze-video-content
  * Analyzes video content and generates learning materials
+ * Now accepts optional preloaded transcript to avoid re-fetching
  */
 router.post('/analyze-video-content', async (req, res) => {
   try {
     if (!config.gemini.apiKey) return res.status(500).json({ error: 'Server missing GEMINI_API_KEY' });
-    const { videoTitle, videoUrl, nativeLang, targetLang, level } = req.body || {};
+    const { videoTitle, videoUrl, nativeLang, targetLang, level, preloadedTranscript } = req.body || {};
     const ai = createAi();
 
     const videoId = videoUrl ? extractVideoId(videoUrl) : null;
     console.log(`[server] Analyzing video content for: ${videoTitle} (${videoId}) using Gemini 3`);
 
-    let contextData = { duration: 0, transcriptText: '', transcriptSegments: [] };
-    if (videoId) {
+    let contextData = { duration: 0, transcriptText: '', transcriptSegments: [], transcriptLang: null, transcriptLangMismatch: false };
+
+    // Use preloaded transcript if provided (from progressive loading)
+    if (preloadedTranscript && preloadedTranscript.transcript) {
+      console.log(`[server] Using preloaded transcript (${preloadedTranscript.transcript.length} segments)`);
+      contextData = {
+        duration: preloadedTranscript.duration || 0,
+        transcriptSegments: preloadedTranscript.transcript || [],
+        transcriptText: (preloadedTranscript.transcript || []).map(s => s.text).join(' '),
+        transcriptLang: preloadedTranscript.transcriptLang,
+        transcriptLangMismatch: preloadedTranscript.transcriptLangMismatch || false
+      };
+    } else if (videoId) {
+      // Fallback: fetch transcript (legacy behavior for cached analyses)
+      console.log(`[server] No preloaded transcript - fetching from Supadata...`);
       contextData = await fetchVideoContext(videoId, targetLang);
     }
 
@@ -78,7 +126,7 @@ router.post('/analyze-video-content', async (req, res) => {
       
 
     const durationMin = contextData.duration ? contextData.duration / 60 : 10;
-    
+
     // --- 修改：總時長字串也同步支援小時格式 ---
     const totalDurationH = Math.floor(contextData.duration / 3600);
     const totalDurationM = Math.floor((contextData.duration % 3600) / 60);
@@ -91,8 +139,15 @@ router.post('/analyze-video-content', async (req, res) => {
 
     // 這裡我們給出一個建議範圍，而不是死板的數字
     // 例如：短影片 3-5 個章節，長影片 8-20 個章節
-    const minTopics = Math.max(5, Math.ceil(durationMin / 10)); 
+    const minTopics = Math.max(5, Math.ceil(durationMin / 10));
     const maxTopics = Math.max(9, Math.ceil(durationMin / 3));
+
+    // Calculate vocabulary target based on duration and level
+    // Easy: ~0.8 words/min, Medium: ~1.0 words/min, Hard: ~1.2 words/min
+    const vocabMultiplier = level.toLowerCase() === 'easy' ? 0.8 : level.toLowerCase() === 'hard' ? 1.2 : 1.0;
+    const targetVocabCount = Math.max(10, Math.min(40, Math.round(durationMin * vocabMultiplier)));
+    const minVocab = Math.max(8, Math.floor(targetVocabCount * 0.7));
+    const maxVocab = Math.max(12, Math.ceil(targetVocabCount * 1.3));
 
 
     const prompt = `
@@ -156,7 +211,10 @@ router.post('/analyze-video-content', async (req, res) => {
         - **Translation:** Provide a full translation in ${nativeLang}.
           - **CRITICAL:** Use **natural, conversational, and spoken-style language** (e.g., if ${nativeLang} is Chinese, use "口語化、通順的中文", avoid "翻譯腔" or overly academic terms).
           - **For EASY Level:** The translation MUST be simple and direct, as if explaining to a friend.
-    2.  **Vocabulary:** Identify key items based on the level rules and the length of the video or transcript. For each, provide:
+    2.  **Vocabulary:** Generate between ${minVocab} and ${maxVocab} vocabulary items based on the level rules and video content.
+        - **Target:** Aim for approximately ${targetVocabCount} words that best represent the video's key concepts.
+        - **Quality over Quantity:** Prioritize the most useful and relevant words, but ensure comprehensive coverage of the video's main topics.
+        For each vocabulary item, provide:
         - Definition (in ${targetLang})
         - Context Sentence (Direct quote or adapted from video)
         **Translations (in ${nativeLang}):**
@@ -280,7 +338,7 @@ router.post('/analyze-video-content', async (req, res) => {
         },
       },
     });
-    console
+  
     // Robust response handling
     let candidates = response.candidates;
     if (!candidates && response.data) candidates = response.data.candidates;
@@ -481,8 +539,9 @@ router.post('/match-topics', async (req, res) => {
     Only match if confidence >= 0.8.
     `.trim();
 
-    const response = await generateWithRetry(ai, FAST_MODEL, {
-      model: FAST_MODEL,
+    console.log(`[match-topics] Matching new topics against existing topics using Gemini`);
+    const response = await generateWithRetry(ai, PRO_MODEL, {
+      model: PRO_MODEL,
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       config: {
         responseMimeType: 'application/json',
