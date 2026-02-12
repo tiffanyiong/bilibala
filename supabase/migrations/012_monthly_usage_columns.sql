@@ -9,6 +9,10 @@ ADD COLUMN IF NOT EXISTS practice_session_monthly_usage INTEGER DEFAULT 0,
 ADD COLUMN IF NOT EXISTS ai_tutor_monthly_minutes_used INTEGER DEFAULT 0,
 ADD COLUMN IF NOT EXISTS usage_month TEXT;
 
+-- 2. Track Stripe cancel_at_period_end (user canceled but still active until period end)
+ALTER TABLE public.user_subscriptions
+ADD COLUMN IF NOT EXISTS cancel_at_period_end BOOLEAN DEFAULT false;
+
 -- Initialize usage_month for existing rows to current month
 UPDATE public.user_subscriptions
 SET usage_month = to_char(now(), 'YYYY-MM')
