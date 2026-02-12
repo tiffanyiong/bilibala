@@ -185,5 +185,6 @@ export enum AppState {
   SETTINGS,               // Settings page: /settings
   PRIVACY,                // Privacy Policy page: /privacy
   TERMS,                  // Terms of Service page: /terms
+  RESET_PASSWORD,         // Password reset page: /reset-password
   ERROR
 }

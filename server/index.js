@@ -19,12 +19,15 @@ import translationRoutes from './routes/translationRoutes.js';
 import subscriptionRoutes from './routes/subscriptionRoutes.js';
 import deeplRoutes from './routes/deeplRoutes.js';
 import exploreRoutes from './routes/exploreRoutes.js';
+import sessionRoutes from './routes/sessionRoutes.js';
+import configRoutes from './routes/configRoutes.js';
 
 // Import WebSocket handler
 import { setupLiveWebSocket } from './websocket/liveHandler.js';
 
 // Import config service
 import { startConfigRefresh } from './services/configService.js';
+import { startStripeCleanup } from './services/stripeCleanup.js';
 
 // Create Express app
 const app = express();
@@ -47,6 +50,8 @@ app.use('/api', translationRoutes);
 app.use('/api', subscriptionRoutes);
 app.use('/api', deeplRoutes);
 app.use('/api', exploreRoutes);
+app.use('/api', sessionRoutes);
+app.use('/api', configRoutes);
 
 // Serve static files in production (Vite build output)
 if (isProduction) {
@@ -77,6 +82,9 @@ setupLiveWebSocket(wss);
 
 // Start config refresh (loads from DB, refreshes every 5 min)
 startConfigRefresh();
+
+// Start Stripe cleanup cron (cancels subscriptions for deleted users, runs every 5 min)
+startStripeCleanup();
 
 // Start server
 server.listen(config.server.port, config.server.host, () => {
