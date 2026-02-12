@@ -4,6 +4,23 @@
 
 ### Added
 
+#### Database-Driven Language Configuration
+- **App config system**: Language availability now controlled via database instead of hardcoded constants
+  - Separate configs for "I SPEAK" (native) and "I'M LEARNING" (target) language dropdowns
+  - Update language lists without code deployments - just run SQL in Supabase
+  - Auto-excludes selected language from the opposite dropdown (e.g., selecting "English" in "I'M LEARNING" removes it from "I SPEAK")
+  - Files added:
+    - `supabase/migrations/015_app_config.sql` - App config table, functions, and initial seed
+    - `server/routes/configRoutes.js` - Public API endpoints for app config
+    - `src/shared/hooks/useAppConfig.ts` - React hook to fetch enabled languages from backend
+    - `docs/APP_CONFIG.md` - Complete guide for managing app configuration
+    - Updated `server/index.js` to mount config routes
+    - Updated `src/features/explore/components/LandingFormCard.tsx` to use dynamic language lists
+  - New database table: `app_config` (stores key-value config with TEXT values, comma-separated for arrays)
+  - Database functions: `get_app_config()`, `update_app_config()`
+  - Config keys: `enabled_target_languages`, `enabled_native_languages`
+  - Format: Comma-separated language codes (e.g., `'English,Chinese,Japanese'`)
+
 #### Session Management & Anti-Account-Sharing
 - **Concurrent device limits**: Enforced device limits to prevent account sharing
   - Free tier: 1 device at a time
