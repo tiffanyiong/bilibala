@@ -473,8 +473,8 @@ router.post('/analyze-speech', async (req, res) => {
         }
     };
 
-    console.log('[analyze-speech] Starting Gemini API call...');
     const startTime = Date.now();
+    console.log(`[analyze-speech] Starting analysis | topic: "${topic}" | level: ${level} | ${isRetakeMode ? 'RETAKE mode' : 'INITIAL mode'}`);
 
     const TIMEOUT_MS = getConfigNumber('speech_analysis_timeout_seconds', 150) * 1000;
     const MAX_RETRIES = 1;     // 1 retry after initial attempt
@@ -635,7 +635,7 @@ router.post('/analyze-speech', async (req, res) => {
       }
     }
 
-    console.log(`[analyze-speech] Gemini API call completed in ${Date.now() - startTime}ms`);
+    console.log(`[analyze-speech] Analysis completed in ${Date.now() - startTime}ms | topic: "${topic}"`);
 
     let candidates = response.candidates;
     if (!candidates && response.data) candidates = response.data.candidates;

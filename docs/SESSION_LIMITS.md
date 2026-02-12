@@ -4,7 +4,7 @@
 Bilibala now enforces concurrent device limits to prevent account sharing abuse while allowing legitimate multi-device usage.
 
 ## Device Limits by Tier
-- **Free Tier**: 1 device at a time
+- **Free Tier**: Unlimited devices (no limit)
 - **Pro Tier**: 3 devices at a time
 
 ## How It Works
@@ -60,7 +60,7 @@ CREATE TABLE active_sessions (
 ```
 
 ### Key Functions
-- `get_session_limit(user_id)` - Returns 1 for free, 3 for pro
+- `get_session_limit(user_id)` - Returns unlimited (999999) for free, 3 for pro
 - `get_active_session_count(user_id)` - Counts active sessions
 - `register_session(...)` - Registers session, auto-logouts oldest if over limit
 - `update_session_activity(session_id)` - Updates heartbeat
@@ -145,21 +145,15 @@ Auto-logout flow:
 
 ## Testing Instructions
 
-### Test 1: Single Device (Free User)
-1. Sign in as free user on Device A
-2. Verify session is registered
-3. Stay logged in and active
-4. ✅ Should remain logged in
-
-### Test 2: Device Limit Exceeded (Free User)
+### Test 1: Multiple Devices (Free User)
 1. Sign in as free user on Device A (Chrome)
 2. Open incognito/private window (Device B)
 3. Sign in with same account on Device B
-4. ✅ Device A should be auto-logged out within 30 seconds
-5. ✅ Device A should show alert: "You have been logged out..."
-6. ✅ Device B should remain logged in
+4. Open another browser (Device C)
+5. Sign in with same account on Device C
+6. ✅ All devices should remain logged in (no limit for free tier)
 
-### Test 3: Multi-Device (Pro User)
+### Test 2: Multi-Device (Pro User)
 1. Upgrade to Pro tier
 2. Sign in on Device A (Chrome)
 3. Sign in on Device B (Firefox)
@@ -169,14 +163,14 @@ Auto-logout flow:
 7. ✅ Device A (oldest) should be auto-logged out
 8. ✅ Devices B, C, D should remain logged in
 
-### Test 4: Manual Logout
+### Test 3: Manual Logout
 1. Sign in on 2 devices
 2. Click "Sign Out" on Device A
 3. ✅ Session should be removed from `active_sessions`
 4. ✅ Device A should be logged out
 5. ✅ Device B should remain logged in
 
-### Test 5: Session Expiry
+### Test 4: Session Expiry
 1. Sign in on Device A
 2. Wait for session to expire (or manually delete from `active_sessions`)
 3. ✅ Within 30 seconds, Device A should auto-logout
