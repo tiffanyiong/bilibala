@@ -9,6 +9,7 @@ import StatusPill from '../../../shared/components/StatusPill';
 import Transcript from '../../chat/components/Transcript';
 import DuckAvatar from './DuckAvatar';
 import RescueRing from './RescueRing';
+import TutorCapabilitiesModal from './TutorCapabilitiesModal';
 
 type WindowState = 'closed' | 'minimized' | 'expanded';
 
@@ -23,6 +24,7 @@ interface FloatingTutorWindowProps {
   nativeLang: string;
   targetLang: string;
   level: string;
+  transcript?: { text: string; duration: number; offset: number }[];
 }
 
 // Icons
@@ -68,6 +70,7 @@ const FloatingTutorWindow: React.FC<FloatingTutorWindowProps> = ({
   nativeLang,
   targetLang,
   level,
+  transcript,
 }) => {
   // Derive windowState from parent-controlled isMinimized prop
   const windowState: WindowState = isMinimized ? 'minimized' : 'expanded';
@@ -76,6 +79,7 @@ const FloatingTutorWindow: React.FC<FloatingTutorWindowProps> = ({
   const [isMobile, setIsMobile] = useState(false);
   const [windowSize, setWindowSize] = useState({ width: 400, height: 560 });
   const [isPositionReady, setIsPositionReady] = useState(false);
+  const [showCapabilitiesModal, setShowCapabilitiesModal] = useState(false);
 
   const windowRef = useRef<HTMLDivElement>(null);
   const dragStartRef = useRef({ x: 0, y: 0 });
@@ -103,6 +107,7 @@ const FloatingTutorWindow: React.FC<FloatingTutorWindowProps> = ({
     nativeLang,
     targetLang,
     level,
+    transcript,
     userId: user?.id ?? null,
     maxSessionSeconds: SESSION_MAX_MINUTES * 60,
     remainingMonthlySeconds: totalRemainingSeconds, // Include credits in available time
@@ -119,6 +124,22 @@ const FloatingTutorWindow: React.FC<FloatingTutorWindowProps> = ({
     }
     await liveVoice.startSession();
   }, [totalRemainingSeconds, liveVoice.startSession, onClose]);
+
+  // Handlers for capabilities modal
+  const handleShowCapabilities = useCallback(() => {
+    setShowCapabilitiesModal(true);
+  }, []);
+
+  const handleCloseCapabilities = useCallback(() => {
+    setShowCapabilitiesModal(false);
+  }, []);
+
+  // Auto-close capabilities modal when session starts
+  useEffect(() => {
+    if (liveVoice.isConnected && showCapabilitiesModal) {
+      setShowCapabilitiesModal(false);
+    }
+  }, [liveVoice.isConnected, showCapabilitiesModal]);
 
   // Refresh usage and credits from DB after a session ends so remaining minutes are accurate
   const prevConnectedRef = useRef(false);
@@ -260,11 +281,14 @@ const FloatingTutorWindow: React.FC<FloatingTutorWindowProps> = ({
   }, [isDragging, handleDragMove, handleDragEnd]);
 
   const handleClose = async () => {
-    liveVoice.stopSession();
-    // Usage is recorded server-side in liveHandler.js when the WebSocket closes.
-    // Refresh local state so UI reflects the updated usage/credits.
-    await refreshUsage();
-    await refreshSubscription();
+    // Only stop session if there's an active or ended session
+    if (liveVoice.isConnected || liveVoice.callEnded) {
+      liveVoice.stopSession();
+      // Usage is recorded server-side in liveHandler.js when the WebSocket closes.
+      // Refresh local state so UI reflects the updated usage/credits.
+      await refreshUsage();
+      await refreshSubscription();
+    }
     onClose();
   };
 
@@ -445,9 +469,16 @@ const FloatingTutorWindow: React.FC<FloatingTutorWindowProps> = ({
             onStartSession={handleStartSession}
             onStopSession={liveVoice.stopSession}
             onManualHint={liveVoice.requestHint}
+            onShowCapabilities={handleShowCapabilities}
           />
         </div>
       </div>
+
+      {/* Capabilities Modal - shown when idle and Help is clicked */}
+      <TutorCapabilitiesModal
+        isOpen={showCapabilitiesModal && liveVoice.isIdle}
+        onClose={handleCloseCapabilities}
+      />
     </div>
   );
 };
