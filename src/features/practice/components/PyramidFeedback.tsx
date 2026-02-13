@@ -5,9 +5,14 @@ import 'reactflow/dist/style.css';
 import { useTTS } from '../../../shared/hooks/useTTS';
 import { getBreakdown } from '../../../shared/utils/scoringUtils';
 import { useAudioPlayer } from '../../../shared/hooks/useAudioPlayer';
+import { getDailyPracticeUsage } from '../../../shared/services/subscriptionDatabase';
 import { checkAnonymousPracticeLimit } from '../../../shared/services/usageTracking';
 import { SpeechAnalysisResult } from '../../../shared/types';
+import { TIER_LIMITS } from '../../../shared/types/database';
 import { generateFlowData } from '../utils/transformPyramid';
+import { useAuth } from '../../../shared/context/AuthContext';
+import { useSubscription } from '../../../shared/context/SubscriptionContext';
+import UpgradeModal from '../../subscription/components/UpgradeModal';
 import AudioRecorder from './AudioRecorder';
 
 const WORD_TTS_API = (import.meta.env.VITE_API_URL || '') + '/api/tts';
@@ -177,6 +182,7 @@ interface PyramidFeedbackProps {
     preFetchedLabels: any;
     showRetry?: boolean;
     onRequireAuth?: () => void;
+    onUpgrade?: () => void;
 }
 
 const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
@@ -190,6 +196,7 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
     preFetchedLabels,
     showRetry = true,
     onRequireAuth,
+    onUpgrade,
 }) => {
   const { structure, improved_structure, improved_transcription, feedback, transcription, detected_framework, improvements, pronunciation } = analysis;
   const [viewMode, setViewMode] = useState<'user' | 'ai'>('user');
@@ -199,7 +206,10 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
   const [showRetakeModal, setShowRetakeModal] = useState(false);
   const [isRecorderMinimized, setIsRecorderMinimized] = useState(false);
   const [isMapVisible, setIsMapVisible] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const { fitView } = useReactFlow();
+  const { user } = useAuth();
+  const { tier, subscription } = useSubscription();
   const { speak, stop: stopTTS, togglePlayPause: toggleTTS, seek: seekTTS, isSpeaking, isPaused: isTTSPaused, progress: ttsProgress, currentTime: ttsCurrentTime, duration: ttsDuration, formatTime: formatTTSTime } = useTTS(targetLang);
   const { stop: stopUserAudio, togglePlayPause: toggleUserAudio, seek: seekUserAudio, isPlaying: userAudioPlaying, progress: userProgress, currentTime: userCurrentTime, duration: userDuration, formatTime: formatUserTime } = useAudioPlayer(audioUrl);
 
@@ -342,9 +352,26 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
     setShowRetakeModal(false);
   };
   const handleOpenRetake = async () => {
-    if (onRequireAuth) {
-      const practiceStatus = await checkAnonymousPracticeLimit();
-      if (!practiceStatus.allowed) { onRequireAuth(); return; }
+    // Check if user is authenticated
+    if (user) {
+      // Fetch the latest daily practice usage count directly from the database
+      const currentDailyUsage = await getDailyPracticeUsage(user.id);
+      const dailyLimit = TIER_LIMITS[tier].practiceSessionsPerDay;
+      const practiceCredits = subscription?.practice_session_credits || 0;
+
+      // For free users, check if they've hit their daily limit AND have no credits
+      if (tier === 'free' && currentDailyUsage >= dailyLimit && practiceCredits <= 0) {
+        // Show upgrade modal for free users who hit daily limit with no credits
+        setShowUpgradeModal(true);
+        return;
+      }
+      // Pro users have unlimited practice, so no check needed
+    } else {
+      // For anonymous users, check practice limit
+      if (onRequireAuth) {
+        const practiceStatus = await checkAnonymousPracticeLimit();
+        if (!practiceStatus.allowed) { onRequireAuth(); return; }
+      }
     }
     setShowRetakeModal(true);
     setIsRecorderMinimized(false);
@@ -784,6 +811,22 @@ const PyramidFeedbackContent: React.FC<PyramidFeedbackProps> = ({
                 />
             </div>
         </div>
+      )}
+
+      {/* --- UPGRADE MODAL --- */}
+      {showUpgradeModal && (
+        <UpgradeModal
+          isOpen={showUpgradeModal}
+          onClose={() => setShowUpgradeModal(false)}
+          onUpgrade={() => {
+            setShowUpgradeModal(false);
+            onUpgrade?.();
+          }}
+          feature="Practice Session"
+          message="You've reached your daily limit. Upgrade to Pro for unlimited practice."
+          tier={tier}
+          hideCreditsOption={true}
+        />
       )}
     </div>
   );
