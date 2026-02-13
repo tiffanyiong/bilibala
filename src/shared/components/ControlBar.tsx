@@ -9,6 +9,7 @@ interface ControlBarProps {
   onStartSession: () => void;
   onStopSession: () => void;
   onManualHint: () => void;
+  onShowCapabilities: () => void;
 }
 
 const ControlBar: React.FC<ControlBarProps> = ({
@@ -19,6 +20,7 @@ const ControlBar: React.FC<ControlBarProps> = ({
   onStartSession,
   onStopSession,
   onManualHint,
+  onShowCapabilities,
 }) => {
   return (
     <footer className="w-full h-auto px-6 pb-6 pt-2 z-20 shrink-0 flex items-end justify-center">
@@ -67,10 +69,10 @@ const ControlBar: React.FC<ControlBarProps> = ({
                 </button>
             )}
 
-            {/* Right: Rescue Ring (Hint) */}
-            <button 
-            onClick={onManualHint}
-            disabled={!isConnected || isHintsLoading}
+            {/* Right: Help (Context-aware: Capabilities when idle, Rescue Ring when active) */}
+            <button
+            onClick={isConnected ? onManualHint : onShowCapabilities}
+            disabled={isHintsLoading}
             className="flex flex-col items-center gap-2 group"
             >
             <div className={`w-12 h-12 rounded-full shadow-md border-2 border-white flex items-center justify-center transition-all group-active:scale-95 ${

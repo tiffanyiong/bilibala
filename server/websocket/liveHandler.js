@@ -184,6 +184,7 @@ export function setupLiveWebSocket(wss) {
             hasTitle: !!lastStartPayload?.videoTitle,
             hasSummary: !!lastStartPayload?.summary,
             vocabCount: Array.isArray(lastStartPayload?.vocabulary) ? lastStartPayload.vocabulary.length : 0,
+            transcriptCount: Array.isArray(lastStartPayload?.transcript) ? lastStartPayload.transcript.length : 0,
             nativeLang: lastStartPayload?.nativeLang,
             targetLang: lastStartPayload?.targetLang,
             level: lastStartPayload?.level,
@@ -202,18 +203,35 @@ export function setupLiveWebSocket(wss) {
           let effectiveMaxSeconds = sessionMaxMinutes * 60;
 
           if (sessionUserId) {
-            const minutesUsed = await getMonthlyMinutesUsed(sessionUserId);
-            const remainingSeconds = Math.max(0, (monthlyMaxMinutes - minutesUsed) * 60);
+            // Get user's tier and credits
+            const { data: sub } = await supabaseAdmin
+              .from('user_subscriptions')
+              .select('tier, ai_tutor_credit_minutes')
+              .eq('user_id', sessionUserId)
+              .single();
 
-            console.log(`[server] User ${sessionUserId}: ${minutesUsed} min used, ${Math.floor(remainingSeconds / 60)} min remaining`);
+            // Free users: 0 monthly allowance, only credits
+            // Pro users: 60 min monthly allowance + credits
+            const userMonthlyLimit = sub?.tier === 'pro' ? monthlyMaxMinutes : 0;
 
-            if (remainingSeconds <= 0) {
-              send({ type: 'error', error: 'Monthly AI tutor limit reached' });
-              isStarting = false;
-              return closeWith(1000, 'monthly limit reached');
+            let monthlyRemainingSeconds = 0;
+            if (userMonthlyLimit > 0) {
+              const minutesUsed = await getMonthlyMinutesUsed(sessionUserId);
+              monthlyRemainingSeconds = Math.max(0, (userMonthlyLimit - minutesUsed) * 60);
             }
 
-            effectiveMaxSeconds = Math.min(effectiveMaxSeconds, remainingSeconds);
+            const creditSeconds = (sub?.ai_tutor_credit_minutes || 0) * 60;
+            const totalRemainingSeconds = monthlyRemainingSeconds + creditSeconds;
+
+            console.log(`[server] User ${sessionUserId} (${sub?.tier || 'unknown'}): monthly limit ${userMonthlyLimit} min, ${Math.floor(monthlyRemainingSeconds / 60)} min monthly remaining, ${Math.floor(creditSeconds / 60)} min credits, ${Math.floor(totalRemainingSeconds / 60)} min total`);
+
+            if (totalRemainingSeconds <= 0) {
+              send({ type: 'error', error: 'AI tutor limit reached. Please purchase credits or upgrade to Pro.' });
+              isStarting = false;
+              return closeWith(1000, 'no time remaining');
+            }
+
+            effectiveMaxSeconds = Math.min(effectiveMaxSeconds, totalRemainingSeconds);
           }
 
           console.log(`[server] Session cap: ${effectiveMaxSeconds} seconds`);
@@ -302,13 +320,13 @@ export function setupLiveWebSocket(wss) {
             }
           }
 
-          // Force an initial turn so the tutor starts immediately.
+          // Force an initial turn with minimal greeting only.
           try {
             session.sendClientContent({
               turns: [
                 {
                   role: 'user',
-                  parts: [{ text: 'Please introduce yourself and start the conversation immediately.' }],
+                  parts: [{ text: 'Just say hi briefly, then wait for me to speak.' }],
                 },
               ],
               turnComplete: true,

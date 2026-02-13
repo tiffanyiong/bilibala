@@ -1797,6 +1797,7 @@ const App: React.FC = () => {
 
            {/* Floating AI Tutor Window */}
            <FloatingTutorWindow
+             key={videoData.id}
              isOpen={showTutorWindow}
              onClose={() => setShowTutorWindow(false)}
              isMinimized={tutorWindowMinimized}
@@ -1804,6 +1805,7 @@ const App: React.FC = () => {
              videoTitle={videoData.title}
              summary={summary}
              vocabulary={vocabulary}
+             transcript={transcript}
              nativeLang={nativeLang}
              targetLang={targetLang}
              level={level}
