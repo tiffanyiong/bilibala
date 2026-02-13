@@ -1140,6 +1140,9 @@ const App: React.FC = () => {
           setDiscussionTopics(analysis.discussionTopics || []);
           setSelectedTopics([]);
 
+          // Stop showing loading state now that content is ready
+          setIsAnalysisLoading(false);
+
           // Analysis succeeded - now save video to database
           const dbVideo = await getOrCreateVideo(videoId, metadata.title);
 
