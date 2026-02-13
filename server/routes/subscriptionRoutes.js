@@ -83,9 +83,7 @@ router.post('/subscriptions/create-checkout', async (req, res) => {
         address: 'auto', // Collect billing address
         name: 'auto',    // Allow customer to update name
       },
-      invoice_creation: {
-        enabled: true, // Create invoice for this session
-      },
+      // Note: invoice_creation not needed for subscription mode - invoices are created automatically
       metadata: {
         supabase_user_id: user.id,
       },
