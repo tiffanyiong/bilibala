@@ -103,6 +103,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [loading, setLoading] = useState(true);
   const sessionCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  // Track the last known session for cleanup on logout
+  // This is needed because when SIGNED_OUT event fires, newSession is null
+  const previousSessionRef = useRef<Session | null>(null);
 
   // Register session and send heartbeats
   const registerSession = async (session: Session) => {
@@ -204,7 +207,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       const sessionId = extractSessionId(session.access_token);
 
-      await fetch('/api/sessions/remove', {
+      const response = await fetch('/api/sessions/remove', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -215,14 +218,24 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }),
       });
 
-      console.log('[Session] Removed:', { sessionId });
+      if (response.ok) {
+        console.log('[Session] Removed:', { sessionId });
+      } else {
+        // 401 is expected when token is already invalidated (e.g., kicked out by device limit)
+        // In this case, the session was already removed from database by register_session()
+        if (response.status === 401) {
+          console.log('[Session] Session already invalidated (expected on device limit logout):', { sessionId });
+        } else {
+          console.warn('[Session] Failed to remove session:', response.status, { sessionId });
+        }
+      }
     } catch (error) {
       console.error('[Session] Failed to remove session:', error);
     }
   };
 
   useEffect(() => {
-    // Set up auth state listener - this handles OAuth callbacks automatically
+    // Set up auth state listener - this handles OAuth callbacks AND automatic token refresh
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       setSession(newSession);
       setUser(newSession?.user ?? null);
@@ -234,19 +247,28 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         window.history.replaceState(null, '', window.location.pathname);
       }
 
+      // Handle TOKEN_REFRESHED event - update registered session with new token
+      if (event === 'TOKEN_REFRESHED' && newSession) {
+        await registerSession(newSession);
+        previousSessionRef.current = newSession; // Update session reference
+      }
+
       // Handle session registration and monitoring
       if (event === 'SIGNED_IN' && newSession) {
         // Register this session (may auto-logout older sessions)
         await registerSession(newSession);
+        previousSessionRef.current = newSession; // Store session reference
 
         // Start checking session validity every 30 seconds
         if (sessionCheckIntervalRef.current) {
           clearInterval(sessionCheckIntervalRef.current);
         }
         sessionCheckIntervalRef.current = setInterval(() => {
-          if (newSession) {
-            checkSessionValidity(newSession);
-          }
+          supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
+            if (currentSession) {
+              checkSessionValidity(currentSession);
+            }
+          });
         }, 30000); // Check every 30 seconds
 
         // Send heartbeat every 5 minutes to keep session active
@@ -254,14 +276,23 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           clearInterval(heartbeatIntervalRef.current);
         }
         heartbeatIntervalRef.current = setInterval(() => {
-          if (newSession) {
-            sendHeartbeat(newSession);
-          }
+          supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
+            if (currentSession) {
+              sendHeartbeat(currentSession);
+            }
+          });
         }, 5 * 60 * 1000); // Every 5 minutes
       }
 
-      // Clear intervals on logout
+      // Clear intervals on logout AND remove session from database
       if (event === 'SIGNED_OUT') {
+        // Use previousSessionRef if newSession is null (which it will be on logout)
+        const sessionToRemove = newSession || previousSessionRef.current;
+        if (sessionToRemove) {
+          await removeSession(sessionToRemove);
+          previousSessionRef.current = null; // Clear reference
+        }
+
         if (sessionCheckIntervalRef.current) {
           clearInterval(sessionCheckIntervalRef.current);
           sessionCheckIntervalRef.current = null;
@@ -273,7 +304,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     });
 
-    // Check for existing session
+    // Check for existing session and set up automatic refresh
     supabase.auth.getSession().then(async ({ data: { session: existingSession } , error }) => {
       if (error) {
         // Session is invalid/expired — clear local state so user can sign in again
@@ -289,24 +320,29 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         // Register existing session
         if (existingSession) {
           await registerSession(existingSession);
+          previousSessionRef.current = existingSession; // Store session reference for cleanup
 
-          // Start monitoring
+          // Start monitoring - use getSession() to always get fresh token
           if (sessionCheckIntervalRef.current) {
             clearInterval(sessionCheckIntervalRef.current);
           }
           sessionCheckIntervalRef.current = setInterval(() => {
-            if (existingSession) {
-              checkSessionValidity(existingSession);
-            }
+            supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
+              if (currentSession) {
+                checkSessionValidity(currentSession);
+              }
+            });
           }, 30000);
 
           if (heartbeatIntervalRef.current) {
             clearInterval(heartbeatIntervalRef.current);
           }
           heartbeatIntervalRef.current = setInterval(() => {
-            if (existingSession) {
-              sendHeartbeat(existingSession);
-            }
+            supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
+              if (currentSession) {
+                sendHeartbeat(currentSession);
+              }
+            });
           }, 5 * 60 * 1000);
         }
       }
@@ -326,11 +362,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, []);
 
   const signOut = async () => {
-    // Remove session from tracking before signing out
-    if (session) {
-      await removeSession(session);
-    }
-
+    // Don't manually call removeSession here anymore
+    // The SIGNED_OUT event handler will take care of it
+    // This prevents duplicate removeSession calls
     const { error } = await supabase.auth.signOut();
     if (error) {
       // Session already gone server-side — clear local state instead
