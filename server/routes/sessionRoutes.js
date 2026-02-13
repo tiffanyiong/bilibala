@@ -48,6 +48,7 @@ router.post('/sessions/register', async (req, res) => {
       sessionId,
       deviceFingerprint,
       loggedOutCount: data?.logged_out_count || 0,
+      loggedOutSessions: data?.logged_out_sessions || [],
       sessionLimit: data?.session_limit,
     });
 

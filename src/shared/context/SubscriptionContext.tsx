@@ -10,6 +10,7 @@ import {
 import {
   getOrCreateSubscription,
   getMonthlyUsage,
+  getDailyPracticeUsage,
   recordUsage,
   incrementMonthlyUsage,
   deductAiTutorCredits,
@@ -72,6 +73,7 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
     practiceSessionsUsed: 0,
     aiTutorMinutesUsed: 0,
     pdfExportsUsed: 0,
+    practiceSessionsDailyUsed: 0,
   });
   const [isLoading, setIsLoading] = useState(true);
 
@@ -82,7 +84,7 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
   useEffect(() => {
     if (!user) {
       setSubscription(null);
-      setUsage({ videosUsed: 0, practiceSessionsUsed: 0, aiTutorMinutesUsed: 0, pdfExportsUsed: 0 });
+      setUsage({ videosUsed: 0, practiceSessionsUsed: 0, aiTutorMinutesUsed: 0, pdfExportsUsed: 0, practiceSessionsDailyUsed: 0 });
       setIsLoading(false);
       return;
     }
@@ -93,12 +95,13 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
         // Fetch app config from server (non-blocking, uses defaults if fails)
         fetchAppConfig();
 
-        const [sub, monthlyUsage] = await Promise.all([
+        const [sub, monthlyUsage, dailyPracticeUsage] = await Promise.all([
           getOrCreateSubscription(user.id),
           getMonthlyUsage(user.id),
+          getDailyPracticeUsage(user.id),
         ]);
         setSubscription(sub);
-        setUsage(monthlyUsage);
+        setUsage({ ...monthlyUsage, practiceSessionsDailyUsed: dailyPracticeUsage });
 
         // Smart sync: Sync with Stripe if there's a potential mismatch:
         // 1. User has active subscription but tier is free (missed webhook)
@@ -149,8 +152,11 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
   const refreshUsage = useCallback(async () => {
     if (!user) return;
     try {
-      const monthlyUsage = await getMonthlyUsage(user.id);
-      setUsage(monthlyUsage);
+      const [monthlyUsage, dailyPracticeUsage] = await Promise.all([
+        getMonthlyUsage(user.id),
+        getDailyPracticeUsage(user.id),
+      ]);
+      setUsage({ ...monthlyUsage, practiceSessionsDailyUsed: dailyPracticeUsage });
     } catch (err) {
       console.error('Error refreshing usage:', err);
     }
@@ -257,20 +263,31 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
     }
 
     if (actionType === 'practice_session') {
-      const monthlyRemaining = limits.practiceSessionsPerMonth - usage.practiceSessionsUsed;
-      if (monthlyRemaining > 0) {
-        // Covered by monthly allowance (Pro = Infinity, always true)
+      // Free tier: Check daily limit (2/day), Pro tier: unlimited
+      if (tier === 'free') {
+        const dailyRemaining = limits.practiceSessionsPerDay - usage.practiceSessionsDailyUsed;
+        if (dailyRemaining > 0) {
+          // Within daily allowance — increment both monthly and daily counters
+          await incrementMonthlyUsage(user.id, actionType, 1);
+          setUsage(prev => ({
+            ...prev,
+            practiceSessionsUsed: prev.practiceSessionsUsed + 1,
+            practiceSessionsDailyUsed: prev.practiceSessionsDailyUsed + 1,
+          }));
+        } else {
+          // Daily limit exhausted — deduct from credits
+          const deducted = await deductPracticeCredits(user.id);
+          if (deducted > 0) {
+            setSubscription(prev => prev ? {
+              ...prev,
+              practice_session_credits: Math.max(0, (prev.practice_session_credits || 0) - 1),
+            } : null);
+          }
+        }
+      } else {
+        // Pro tier: unlimited, just track in monthly counter
         await incrementMonthlyUsage(user.id, actionType, 1);
         setUsage(prev => ({ ...prev, practiceSessionsUsed: prev.practiceSessionsUsed + 1 }));
-      } else {
-        // Monthly exhausted (free tier) — deduct from credits
-        const deducted = await deductPracticeCredits(user.id);
-        if (deducted > 0) {
-          setSubscription(prev => prev ? {
-            ...prev,
-            practice_session_credits: Math.max(0, (prev.practice_session_credits || 0) - 1),
-          } : null);
-        }
       }
     }
 
@@ -344,8 +361,10 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
 
   // Computed permissions (now credit-aware)
   const canAddVideo = usage.videosUsed < limits.videosPerMonth || videoCredits > 0;
-  // Free users can use credits for practice; Pro users have unlimited
-  const canStartPractice = usage.practiceSessionsUsed < limits.practiceSessionsPerMonth || practiceSessionCredits > 0;
+  // Free users: check daily limit (2/day), can use credits if daily exhausted; Pro users: unlimited
+  const canStartPractice = tier === 'free'
+    ? (usage.practiceSessionsDailyUsed < limits.practiceSessionsPerDay || practiceSessionCredits > 0)
+    : true; // Pro has unlimited
   // Users can use AI tutor if they have monthly allowance remaining OR have credits
   const aiTutorMonthlyRemaining = Math.max(0, limits.aiTutorMinutesPerMonth - usage.aiTutorMinutesUsed);
   const canUseAiTutor = aiTutorMonthlyRemaining > 0 || aiTutorCreditMinutes > 0;
@@ -368,7 +387,7 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
       canUseAiTutor,
       canExportPdf,
       videosLimit: limits.videosPerMonth,
-      practiceSessionsLimit: limits.practiceSessionsPerMonth,
+      practiceSessionsLimit: tier === 'free' ? limits.practiceSessionsPerDay : limits.practiceSessionsPerMonth,
       aiTutorMinutesLimit: limits.aiTutorMinutesPerMonth,
       aiTutorRemainingMinutes,
       aiTutorMonthlyRemaining,

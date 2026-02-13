@@ -46,7 +46,8 @@ import {
   updateLibraryAccess,
   updateVideoCategory,
 } from './shared/services/database';
-import { analyzeVideoContent } from './shared/services/geminiService';
+import { getDailyPracticeUsage } from './shared/services/subscriptionDatabase';
+import { analyzeVideoContent, fetchTranscript } from './shared/services/geminiService';
 import {
   checkAnonymousPracticeLimit,
   checkAnonymousUsageLimit,
@@ -135,7 +136,7 @@ const App: React.FC = () => {
   }, []);
 
   const { user, loading: authLoading } = useAuth();
-  const { canAddVideo, canStartPractice, canUseAiTutor, canExportPdf, recordAction, tier, syncWithStripe, aiTutorRemainingMinutes, createCreditCheckout } = useSubscription();
+  const { canAddVideo, canUseAiTutor, canExportPdf, recordAction, tier, syncWithStripe, aiTutorRemainingMinutes, createCreditCheckout, subscription } = useSubscription();
 
   // Sync subscription with Stripe when returning from checkout (handles missed webhooks)
   // This runs at app level to catch success redirects regardless of which page user lands on
@@ -766,10 +767,19 @@ const App: React.FC = () => {
         setShowAuthModal(true);
         return;
       }
-    } else if (!canStartPractice) {
-      setUpgradeFeature('Practice Session');
-      setShowUpgradeModal(true);
-      return;
+    } else {
+      // For authenticated users, fetch the latest daily practice usage count
+      const currentDailyUsage = await getDailyPracticeUsage(user.id);
+      const dailyLimit = TIER_LIMITS[tier].practiceSessionsPerDay;
+      const practiceCredits = subscription?.practice_session_credits || 0;
+
+      // For free users, check if they've hit their daily limit AND have no credits
+      if (tier === 'free' && currentDailyUsage >= dailyLimit && practiceCredits <= 0) {
+        setUpgradeFeature('Practice Session');
+        setShowUpgradeModal(true);
+        return;
+      }
+      // Pro users have unlimited practice, so no check needed
     }
 
     console.log('[App] handleStartPractice called. currentAnalysisId:', currentAnalysisId, 'topic:', topic.topic, 'question:', question.question);
@@ -1066,15 +1076,14 @@ const App: React.FC = () => {
       }
 
       // --- CACHE MISS: AI REQUIRED ---
-      console.log('Cache miss. Calling AI API...');
+      console.log('Cache miss. Progressive loading: fetch transcript first, then AI analysis...');
       setIsAnalysisLoading(true);
+      setLoadingText("Analyzing video...");
 
-      // Hybrid Loading Logic:
-      // - If analysis finishes fast (< 20s), go to dashboard immediately when done.
-      // - At 10s, update loading text.
-      // - If analysis is slow (> 25s), go to dashboard at 25s mark and show skeletons.
-
-      const analysisPromise = analyzeVideoContent(metadata.title, videoUrl, nativeLang, targetLang, level);
+      // PROGRESSIVE LOADING FLOW:
+      // Step 1: Fetch transcript first (~10-20s) → Show dashboard with transcript immediately
+      // Step 2: Run AI analysis in background (~20-30s) → Update summary/vocab when ready
+      // This makes the app feel 2-3x faster!
 
       let isDashboardShown = false;
       const showDashboard = () => {
@@ -1084,112 +1093,132 @@ const App: React.FC = () => {
           }
       };
 
-      // Timer 1: Update message at 10s
-      const messageTimerId = setTimeout(() => {
-          setLoadingText("Longer videos require more time to analyze...");
-      }, 10000);
+      // Timer 1: Update to "fetching transcript" after 2s
+      const messageTimer1 = setTimeout(() => {
+          setLoadingText("Fetching video transcript...");
+      }, 5000);
 
-      // Timer 2: Max wait time for loading screen: 25 seconds
-      const maxWaitTimerId = setTimeout(() => {
+      // Timer 2: Update to "longer videos" message at 12s (if transcript is slow)
+      const messageTimer2 = setTimeout(() => {
+          setLoadingText("Longer videos require more time to fetch the transcript...");
+      }, 12000);
+
+      // Step 1: Fetch transcript FIRST (faster!)
+      fetchTranscript(videoUrl, targetLang)
+        .then(async (transcriptData) => {
+          // Show transcript immediately
+          setTranscript(transcriptData.transcript || []);
+          setTranscriptLangMismatch(transcriptData.transcriptLangMismatch || false);
+
+          // Switch to dashboard and show transcript tab
+          clearTimeout(messageTimer1);
+          clearTimeout(messageTimer2);
           showDashboard();
-      }, 25000);
 
-      analysisPromise
-        .then(async (analysis) => {
-            setSummary(analysis.summary);
-            setTranslatedSummary(analysis.translatedSummary);
-            setTopics(analysis.topics);
-            setVocabulary(analysis.vocabulary);
-            setTranscript(analysis.transcript || []);
-            setTranscriptLangMismatch(analysis.transcriptLangMismatch || false);
-            setDiscussionTopics(analysis.discussionTopics || []);
-            setSelectedTopics([]);
+          // Update loading text for AI analysis phase
+          setLoadingText("Analyzing video content with AI...");
 
-            // Analysis succeeded - now save video to database
-            const dbVideo = await getOrCreateVideo(videoId, metadata.title);
+          // Step 2: Run AI analysis in BACKGROUND with preloaded transcript
+        
+          const analysis = await analyzeVideoContent(
+            metadata.title,
+            videoUrl,
+            nativeLang,
+            targetLang,
+            level,
+            transcriptData // Pass preloaded transcript to skip re-fetching
+          );
 
-            // Save to cache
-            if (dbVideo) {
-              const savedAnalysis = await saveCachedAnalysis(
-                dbVideo.id,
-                level,
-                targetLang,
-                nativeLang,
-                analysis,
-                user?.id
-              );
+          // AI analysis complete - update summary, vocab, outline
 
-              // Store the analysis ID for linking practice sessions
-              if (savedAnalysis) {
-                setCurrentAnalysisId(savedAnalysis.id);
 
-                // Add to user's library (for logged-in users)
-                if (user) {
-                  const libraryLimit = TIER_LIMITS[tier].videoLibraryMax;
-                  addToUserLibrary(user.id, savedAnalysis.id, libraryLimit)
-                    .then((entry) => {
-                      if (entry) {
-                        setLibraryEntry({
-                          libraryId: entry.id,
-                          isFavorite: entry.is_favorite,
-                        });
-                      } else {
-                        // Library limit reached - show upgrade modal
-                        setUpgradeFeature('Library Storage');
-                        setShowUpgradeModal(true);
-                      }
-                    })
-                    .catch((err) => {
-                      console.error('Failed to add to user library:', err);
-                    });
-                } else {
-                  setLibraryEntry(null);
-                }
+          setSummary(analysis.summary);
+          setTranslatedSummary(analysis.translatedSummary);
+          setTopics(analysis.topics);
+          setVocabulary(analysis.vocabulary);
+          // Transcript already set from Step 1
+          setDiscussionTopics(analysis.discussionTopics || []);
+          setSelectedTopics([]);
 
-                // Save practice topics for Quick Start feature and get IDs
-                if (analysis.discussionTopics) {
-                  const topicsWithIds = await savePracticeTopicsFromAnalysis(
-                    savedAnalysis.id,
-                    analysis.discussionTopics,
-                    targetLang,
-                    level
-                  );
-                  // Update discussion topics with database IDs (now with canonical names)
-                  if (topicsWithIds.length > 0) {
-                    setDiscussionTopics(topicsWithIds);
-                    // Update cached analysis with canonical topic names for future loads
-                    await updateCachedAnalysisContent(savedAnalysis.id, topicsWithIds);
-                  }
-                }
+          // Analysis succeeded - now save video to database
+          const dbVideo = await getOrCreateVideo(videoId, metadata.title);
 
-                // Save video category from AI analysis
-                if (analysis.videoCategory && dbVideo) {
-                  updateVideoCategory(dbVideo.id, analysis.videoCategory);
+          // Save to cache
+          if (dbVideo) {
+            const savedAnalysis = await saveCachedAnalysis(
+              dbVideo.id,
+              level,
+              targetLang,
+              nativeLang,
+              analysis,
+              user?.id
+            );
+
+            // Store the analysis ID for linking practice sessions
+            if (savedAnalysis) {
+              setCurrentAnalysisId(savedAnalysis.id);
+
+              // Add to user's library (for logged-in users)
+              if (user) {
+                const libraryLimit = TIER_LIMITS[tier].videoLibraryMax;
+                addToUserLibrary(user.id, savedAnalysis.id, libraryLimit)
+                  .then((entry) => {
+                    if (entry) {
+                      setLibraryEntry({
+                        libraryId: entry.id,
+                        isFavorite: entry.is_favorite,
+                      });
+                    } else {
+                      // Library limit reached - show upgrade modal
+                      setUpgradeFeature('Library Storage');
+                      setShowUpgradeModal(true);
+                    }
+                  })
+                  .catch((err) => {
+                    console.error('Failed to add to user library:', err);
+                  });
+              } else {
+                setLibraryEntry(null);
+              }
+
+              // Save practice topics for Quick Start feature and get IDs
+              if (analysis.discussionTopics) {
+                const topicsWithIds = await savePracticeTopicsFromAnalysis(
+                  savedAnalysis.id,
+                  analysis.discussionTopics,
+                  targetLang,
+                  level
+                );
+                // Update discussion topics with database IDs (now with canonical names)
+                if (topicsWithIds.length > 0) {
+                  setDiscussionTopics(topicsWithIds);
+                  // Update cached analysis with canonical topic names for future loads
+                  await updateCachedAnalysisContent(savedAnalysis.id, topicsWithIds);
                 }
               }
-            }
 
-            // Record usage (only for fresh analyses, not cached)
-            if (!user) {
-              recordAnonymousUsage();
-              // Update local state if needed
-              const info = await getUsageDisplayInfo();
-              setUsageInfo(info);
-            } else {
-              // Record usage for logged-in user
-              recordAction('video_analysis');
+              // Save video category from AI analysis
+              if (analysis.videoCategory && dbVideo) {
+                updateVideoCategory(dbVideo.id, analysis.videoCategory);
+              }
             }
+          }
 
-            // Done: Cancel timers and show dashboard now
-            clearTimeout(messageTimerId);
-            clearTimeout(maxWaitTimerId);
-            showDashboard();
+          // Record usage (only for fresh analyses, not cached)
+          if (!user) {
+            recordAnonymousUsage();
+            // Update local state if needed
+            const info = await getUsageDisplayInfo();
+            setUsageInfo(info);
+          } else {
+            // Record usage for logged-in user
+            recordAction('video_analysis');
+          }
         })
         .catch(err => {
-            // Analysis failed (e.g., transcript unavailable) - show error on landing page
-            console.error("Analysis failed:", err);
+            // Analysis failed (transcript or AI analysis error)
+            console.error("❌ Analysis failed:", err);
             clearTimeout(messageTimerId);
-            clearTimeout(maxWaitTimerId);
             setErrorMsg(err.message || "Failed to analyze video. Please try again.");
             setAppState(AppState.LANDING);
         })
@@ -1743,6 +1772,9 @@ const App: React.FC = () => {
                   layoutMode="fixed"
                   currentTime={currentTime}
                   transcriptLangMismatch={transcriptLangMismatch}
+                  hasTranscriptContent={transcript && transcript.length > 0}
+                  hasOutlineContent={topics && topics.length > 0}
+                  hasVocabContent={vocabulary && vocabulary.length > 0}
                 />
            </div>
 
@@ -1887,7 +1919,9 @@ const App: React.FC = () => {
           }
         }}
         feature={upgradeFeature}
+        message={upgradeFeature === 'Practice Session' ? "You've reached your daily limit. Upgrade to Pro for unlimited practice." : undefined}
         tier={tier}
+        hideCreditsOption={upgradeFeature === 'Practice Session'}
       />
 
       {/* Usage Limit Modal */}
