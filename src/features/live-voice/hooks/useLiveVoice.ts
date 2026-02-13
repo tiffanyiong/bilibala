@@ -24,6 +24,7 @@ export interface UseLiveVoiceConfig {
   nativeLang: string;
   targetLang: string;
   level: string;
+  transcript?: { text: string; duration: number; offset: number }[];
   /** User ID for server-side usage tracking */
   userId: string | null;
   /** Max seconds allowed for this session (e.g. 40 min = 2400) */
@@ -76,7 +77,7 @@ export interface UseLiveVoiceReturn {
 
 export function useLiveVoice(config: UseLiveVoiceConfig): UseLiveVoiceReturn {
   const {
-    videoTitle, summary, vocabulary, nativeLang, targetLang, level, userId,
+    videoTitle, summary, vocabulary, nativeLang, targetLang, level, transcript, userId,
     maxSessionSeconds, remainingMonthlySeconds, warningBeforeEndSeconds,
     onLimitReached,
   } = config;
@@ -292,6 +293,11 @@ export function useLiveVoice(config: UseLiveVoiceConfig): UseLiveVoiceReturn {
     setCallEndedNote(null);
     lastDurationRef.current = 0;
     setDurationSeconds(0);
+    setHistory([]);
+    setRealtimeInput('');
+    setRealtimeOutput('');
+    currentInputRef.current = '';
+    currentOutputRef.current = '';
     dlog('startSession() clicked');
 
     try {
@@ -342,7 +348,7 @@ export function useLiveVoice(config: UseLiveVoiceConfig): UseLiveVoiceReturn {
       ws.onopen = () => {
         const startMsg = {
           type: 'start',
-          payload: { videoTitle, summary, vocabulary, nativeLang, targetLang, level, userId },
+          payload: { videoTitle, summary, vocabulary, nativeLang, targetLang, level, transcript, userId },
         };
         try {
           ws.send(JSON.stringify(startMsg));
@@ -634,20 +640,10 @@ export function useLiveVoice(config: UseLiveVoiceConfig): UseLiveVoiceReturn {
       console.error("Start Session Error:", err);
       setError((err as Error).message || "Failed to start session.");
     }
-  }, [videoTitle, summary, vocabulary, nativeLang, targetLang, level, stopSession, showEndNote, durationSeconds]);
+  }, [videoTitle, summary, vocabulary, nativeLang, targetLang, level, transcript, userId, stopSession, showEndNote, durationSeconds]);
 
   const toggleMute = useCallback(() => {
-    if (activeSourcesRef.current.size > 0) {
-      const sources = Array.from(activeSourcesRef.current);
-      activeSourcesRef.current.clear();
-      sources.forEach((source: AudioBufferSourceNode) => {
-        try { source.stop(); } catch {}
-      });
-      setIsAiSpeaking(false);
-      nextStartTimeRef.current = 0;
-      audioQueueRef.current = Promise.resolve();
-    }
-
+    // Only toggle microphone mute state, don't interrupt AI audio
     setIsMuted(prev => {
       const next = !prev;
       isMutedRef.current = next;
