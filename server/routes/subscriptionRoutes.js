@@ -78,6 +78,7 @@ router.post('/subscriptions/create-checkout', async (req, res) => {
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${origin}/subscription?success=true`,
       cancel_url: `${origin}/subscription?canceled=true`,
+      allow_promotion_codes: true, // Enable promo code input
       metadata: {
         supabase_user_id: user.id,
       },
@@ -175,6 +176,7 @@ router.post('/subscriptions/create-credit-checkout', async (req, res) => {
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${origin}/subscription?credit_success=true&pack=${packType}`,
       cancel_url: `${origin}/subscription?canceled=true`,
+      allow_promotion_codes: true, // Enable promo code input
       metadata: {
         supabase_user_id: user.id,
         pack_type: packType, // 'starter' or 'topup'
