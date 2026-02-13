@@ -164,14 +164,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       if (!data.valid) {
         console.log('[Session] Invalidated:', { sessionId, reason: data.reason });
-        // Auto-logout this device silently
+        // Auto-logout this device silently (no alert for any reason)
         await supabase.auth.signOut({ scope: 'local' });
-
-        // Only show alert for deleted accounts, not for session limits
-        if (data.reason === 'user_deleted') {
-          alert('Your account has been deleted. You will now be logged out.');
-        }
-        // Session logout happens silently - no alert shown
       } else {
         console.log('[Session] Valid:', { sessionId });
       }
