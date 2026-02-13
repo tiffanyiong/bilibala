@@ -79,6 +79,12 @@ router.post('/subscriptions/create-checkout', async (req, res) => {
       success_url: `${origin}/subscription?success=true`,
       cancel_url: `${origin}/subscription?canceled=true`,
       allow_promotion_codes: true, // Enable promo code input
+      customer_update: {
+        address: 'auto', // Collect billing address
+      },
+      invoice_creation: {
+        enabled: true, // Create invoice for this session
+      },
       metadata: {
         supabase_user_id: user.id,
       },
@@ -177,6 +183,12 @@ router.post('/subscriptions/create-credit-checkout', async (req, res) => {
       success_url: `${origin}/subscription?credit_success=true&pack=${packType}`,
       cancel_url: `${origin}/subscription?canceled=true`,
       allow_promotion_codes: true, // Enable promo code input
+      customer_update: {
+        address: 'auto', // Collect billing address
+      },
+      invoice_creation: {
+        enabled: true, // Create invoice and send receipt email
+      },
       metadata: {
         supabase_user_id: user.id,
         pack_type: packType, // 'starter' or 'topup'
