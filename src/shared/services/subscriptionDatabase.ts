@@ -146,6 +146,7 @@ export async function getMonthlyUsage(
     practiceSessionsUsed: 0,
     aiTutorMinutesUsed: 0,
     pdfExportsUsed: 0,
+    practiceSessionsDailyUsed: 0,
   };
 
   const { data, error } = await supabase.rpc('get_current_monthly_usage', {
@@ -164,10 +165,30 @@ export async function getMonthlyUsage(
       practiceSessionsUsed: row.practice_sessions_used || 0,
       aiTutorMinutesUsed: row.ai_tutor_minutes_used || 0,
       pdfExportsUsed: 0, // PDF exports are permission-based, not counted
+      practiceSessionsDailyUsed: 0, // Will be fetched separately
     };
   }
 
   return defaultUsage;
+}
+
+/**
+ * Get current day's practice session usage (for free tier daily limit).
+ * Auto-resets if the day has changed (handled by the SQL function).
+ */
+export async function getDailyPracticeUsage(
+  userId: string
+): Promise<number> {
+  const { data, error } = await supabase.rpc('get_current_daily_practice_usage', {
+    p_user_id: userId,
+  });
+
+  if (error) {
+    console.error('Error fetching daily practice usage:', error);
+    return 0;
+  }
+
+  return data || 0;
 }
 
 /**

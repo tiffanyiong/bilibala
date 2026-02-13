@@ -46,6 +46,7 @@ import {
   updateLibraryAccess,
   updateVideoCategory,
 } from './shared/services/database';
+import { getDailyPracticeUsage } from './shared/services/subscriptionDatabase';
 import { analyzeVideoContent, fetchTranscript } from './shared/services/geminiService';
 import {
   checkAnonymousPracticeLimit,
@@ -135,7 +136,7 @@ const App: React.FC = () => {
   }, []);
 
   const { user, loading: authLoading } = useAuth();
-  const { canAddVideo, canStartPractice, canUseAiTutor, canExportPdf, recordAction, tier, syncWithStripe, aiTutorRemainingMinutes, createCreditCheckout } = useSubscription();
+  const { canAddVideo, canUseAiTutor, canExportPdf, recordAction, tier, syncWithStripe, aiTutorRemainingMinutes, createCreditCheckout, subscription } = useSubscription();
 
   // Sync subscription with Stripe when returning from checkout (handles missed webhooks)
   // This runs at app level to catch success redirects regardless of which page user lands on
@@ -766,10 +767,19 @@ const App: React.FC = () => {
         setShowAuthModal(true);
         return;
       }
-    } else if (!canStartPractice) {
-      setUpgradeFeature('Practice Session');
-      setShowUpgradeModal(true);
-      return;
+    } else {
+      // For authenticated users, fetch the latest daily practice usage count
+      const currentDailyUsage = await getDailyPracticeUsage(user.id);
+      const dailyLimit = TIER_LIMITS[tier].practiceSessionsPerDay;
+      const practiceCredits = subscription?.practice_session_credits || 0;
+
+      // For free users, check if they've hit their daily limit AND have no credits
+      if (tier === 'free' && currentDailyUsage >= dailyLimit && practiceCredits <= 0) {
+        setUpgradeFeature('Practice Session');
+        setShowUpgradeModal(true);
+        return;
+      }
+      // Pro users have unlimited practice, so no check needed
     }
 
     console.log('[App] handleStartPractice called. currentAnalysisId:', currentAnalysisId, 'topic:', topic.topic, 'question:', question.question);
@@ -1909,7 +1919,9 @@ const App: React.FC = () => {
           }
         }}
         feature={upgradeFeature}
+        message={upgradeFeature === 'Practice Session' ? "You've reached your daily limit. Upgrade to Pro for unlimited practice." : undefined}
         tier={tier}
+        hideCreditsOption={upgradeFeature === 'Practice Session'}
       />
 
       {/* Usage Limit Modal */}

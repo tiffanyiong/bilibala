@@ -3,11 +3,12 @@
 -- Run this in Supabase SQL Editor for a fresh production database.
 -- Order matters: tables are created in dependency order.
 --
--- Includes all migrations: 001-017
+-- Includes all migrations: 001-018
 -- Latest updates:
 --   - Migration 015: Free tier unlimited sessions, Pro tier 3 devices
 --   - Migration 016: Ghost session cleanup fix
 --   - Migration 017: Allow anonymous users to insert videos & analyses
+--   - Migration 018: Daily practice limit for free users (2/day instead of 5/month)
 -- ==============================================================================
 
 -- ==============================================================================
@@ -147,9 +148,16 @@ CREATE TABLE IF NOT EXISTS public.user_subscriptions (
   current_period_start TIMESTAMPTZ,
   current_period_end TIMESTAMPTZ,
   billing_interval TEXT DEFAULT 'month',
+  cancel_at_period_end BOOLEAN DEFAULT false,
   ai_tutor_credit_minutes INTEGER DEFAULT 0,
   practice_session_credits INTEGER DEFAULT 0,
   video_credits INTEGER DEFAULT 0,
+  video_monthly_usage INTEGER DEFAULT 0,
+  practice_session_monthly_usage INTEGER DEFAULT 0,
+  practice_session_daily_usage INTEGER DEFAULT 0,
+  ai_tutor_monthly_minutes_used INTEGER DEFAULT 0,
+  usage_month TEXT,
+  usage_day TEXT,
   usage_reset_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT timezone('utc', now()),
   updated_at TIMESTAMPTZ DEFAULT timezone('utc', now())

@@ -8,6 +8,7 @@ interface UpgradeModalProps {
   feature: string;
   message?: string;
   tier?: 'free' | 'pro';
+  hideCreditsOption?: boolean;
 }
 
 const UpgradeModal: React.FC<UpgradeModalProps> = ({
@@ -18,6 +19,7 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
   feature,
   message,
   tier = 'free',
+  hideCreditsOption = false,
 }) => {
   if (!isOpen) return null;
 
@@ -39,8 +41,8 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
 
   // Determine which credit option to show
   // Only show Starter Pack for Practice Session limit (not for AI Tutor - users can find it on subscription page)
-  const showStarterPackOption = !isProUser && isPracticeLimit;
-  const showTopupOption = isProUser && isLimitReached;
+  const showStarterPackOption = !isProUser && isPracticeLimit && !hideCreditsOption;
+  const showTopupOption = isProUser && isLimitReached && !hideCreditsOption;
 
   return (
     <div className="fixed inset-0 z-[400] flex items-center justify-center">

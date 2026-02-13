@@ -405,6 +405,76 @@ if (!canUseAiTutor) {
 
 ---
 
+## Tier Change Behavior (Free ↔ Pro)
+
+### What Gets Reset on Tier Changes
+
+When a user upgrades (Free → Pro) or downgrades (Pro → Free), the system automatically resets their **monthly usage counters** to give them a fresh start with their new tier limits.
+
+#### ✅ RESETS (Monthly Usage Counters)
+These are automatically reset to 0 on any tier change:
+- `video_monthly_usage` → 0
+- `practice_session_monthly_usage` → 0
+- `ai_tutor_monthly_minutes_used` → 0
+- `usage_month` → Set to current month
+- `usage_reset_at` → Set to current timestamp
+
+**Why?** To prevent confusion and give users a clean slate with their new tier's limits.
+
+#### ❌ DOES NOT RESET (Purchased Credits)
+Purchased credits are **NEVER affected** by tier changes and remain available:
+- `video_credits` (purchased video analysis credits)
+- `practice_session_credits` (purchased practice session credits)
+- `ai_tutor_credit_minutes` (purchased AI tutor minutes)
+
+**Why?** Users paid for these credits, so they persist across tier changes.
+
+#### ⏰ Daily Counters
+- `practice_session_daily_usage` is NOT reset on tier change
+- It continues to reset daily at UTC midnight as normal
+
+### Examples
+
+#### Example 1: Free → Pro Upgrade
+```
+Before (Free tier):
+- video_monthly_usage: 2/3 used
+- practice_session_daily_usage: 1/2 used today
+- video_credits: 5 (purchased)
+
+After (Pro tier):
+✅ video_monthly_usage: 0/100 (reset to 0, fresh start with Pro limit)
+⏰ practice_session_daily_usage: 1/2 (not reset, continues until UTC midnight)
+💰 video_credits: 5 (preserved! purchased credits never expire)
+```
+
+#### Example 2: Pro → Free Downgrade
+```
+Before (Pro tier):
+- video_monthly_usage: 45/100 used
+- ai_tutor_monthly_minutes_used: 30/60 used
+- practice_session_credits: 10 (purchased)
+
+After (Free tier):
+✅ video_monthly_usage: 0/3 (reset to 0, fresh start with Free limit)
+✅ ai_tutor_monthly_minutes_used: 0 (reset, but free users can't use AI tutor anyway)
+💰 practice_session_credits: 10 (preserved! can still use purchased credits)
+```
+
+### Implementation Details
+
+This behavior is implemented in:
+- **Stripe Webhooks** ([subscriptionRoutes.js](../server/routes/subscriptionRoutes.js))
+  - `checkout.session.completed` (Free → Pro upgrade)
+  - `customer.subscription.updated` (any tier change)
+  - `customer.subscription.deleted` (Pro → Free downgrade)
+- **Sync Endpoint** (`/api/subscriptions/sync`)
+  - Manual sync also checks for tier changes and resets if needed
+
+See [Migration 018](migrations/018_daily_practice_limit.md) and [Migration 019](migrations/019_billing_cycle_reset_for_pro.md) for more details.
+
+---
+
 ## Next Steps
 
 1. Confirm tier structure and pricing
