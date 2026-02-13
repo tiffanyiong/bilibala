@@ -1,17 +1,59 @@
 import { getBackendOrigin } from '../services/backend';
 import { ContentAnalysis } from '../types';
 
+export interface TranscriptData {
+  transcript: { text: string; offset: number; duration: number }[];
+  transcriptLang: string | null;
+  transcriptLangMismatch: boolean;
+  duration: number;
+}
+
+/**
+ * Fetch ONLY the transcript (fast, ~10-20s) - no AI analysis
+ * Used for progressive loading: show transcript immediately while AI analysis runs in background
+ */
+export const fetchTranscript = async (
+  videoUrl: string,
+  targetLang: string
+): Promise<TranscriptData> => {
+  const resp = await fetch(`${getBackendOrigin()}/api/fetch-transcript`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ videoUrl, targetLang }),
+  });
+
+  if (!resp.ok) {
+    const errorData = await resp.json().catch(() => ({}));
+    const errorMessage = errorData.error || 'Failed to fetch transcript. Please try again.';
+    throw new Error(errorMessage);
+  }
+
+  return (await resp.json()) as TranscriptData;
+};
+
+/**
+ * Analyze video content with AI
+ * Can optionally accept preloaded transcript to avoid re-fetching (progressive loading)
+ */
 export const analyzeVideoContent = async (
   videoTitle: string,
   videoUrl: string,
   nativeLang: string,
   targetLang: string,
-  level: string
+  level: string,
+  preloadedTranscript?: TranscriptData
 ): Promise<ContentAnalysis> => {
   const resp = await fetch(`${getBackendOrigin()}/api/analyze-video-content`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ videoTitle, videoUrl, nativeLang, targetLang, level }),
+    body: JSON.stringify({
+      videoTitle,
+      videoUrl,
+      nativeLang,
+      targetLang,
+      level,
+      preloadedTranscript
+    }),
   });
 
   if (!resp.ok) {

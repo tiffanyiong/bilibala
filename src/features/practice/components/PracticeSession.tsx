@@ -4,8 +4,10 @@ import { useAuth } from '../../../shared/context/AuthContext';
 import { useSubscription } from '../../../shared/context/SubscriptionContext';
 import { getBackendOrigin } from '../../../shared/services/backend';
 import { getUserVideoLibrary, incrementQuestionUseCount, incrementTopicPracticeCount, savePracticeSession, updateLibraryPracticeStats, uploadPracticeAudio } from '../../../shared/services/database';
+import { getDailyPracticeUsage } from '../../../shared/services/subscriptionDatabase';
 import { checkAnonymousPracticeLimit, recordAnonymousPractice } from '../../../shared/services/usageTracking';
 import { PracticeTopic, SpeechAnalysisResult, TopicQuestion } from '../../../shared/types';
+import UpgradeModal from '../../subscription/components/UpgradeModal';
 import DinoGame from '../../content/components/DinoGame';
 import AudioRecorder from './AudioRecorder';
 import PyramidFeedback from './PyramidFeedback';
@@ -107,8 +109,7 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
   onRequireAuth
 }) => {
   const { user } = useAuth();
-  const { tier } = useSubscription();
-  const { recordAction } = useSubscription();
+  const { tier, recordAction, refreshUsage, subscription } = useSubscription();
   
   // Basic State
   const [state, setState] = useState<SessionState>(SessionState.PREP);
@@ -118,6 +119,7 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
   const [userNote, setUserNote] = useState('');
   const [analyzingElapsed, setAnalyzingElapsed] = useState(0);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   // Cache for storing analysis results per question
   const [resultsCache, setResultsCache] = useState<Record<string, {
@@ -200,7 +202,33 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
     }
   }, [level, nativeLang, targetLang]);
 
-  const handleStartRecording = () => setState(SessionState.RECORDING);
+  const handleStartRecording = async () => {
+    // Check if user is authenticated
+    if (user) {
+      // Fetch the latest daily practice usage count directly from the database
+      const currentDailyUsage = await getDailyPracticeUsage(user.id);
+      const dailyLimit = TIER_LIMITS[tier].practiceSessionsPerDay;
+      const practiceCredits = subscription?.practice_session_credits || 0;
+
+      // For authenticated free users, check if they've hit their daily limit AND have no credits
+      if (tier === 'free' && currentDailyUsage >= dailyLimit && practiceCredits <= 0) {
+        // Show upgrade modal for free users who hit daily limit with no credits
+        setShowUpgradeModal(true);
+        return;
+      }
+      // Pro users have unlimited practice, so no check needed
+    } else {
+      // For anonymous users, check practice limit
+      if (onRequireAuth) {
+        const practiceStatus = await checkAnonymousPracticeLimit();
+        if (!practiceStatus.allowed) {
+          onRequireAuth();
+          return;
+        }
+      }
+    }
+    setState(SessionState.RECORDING);
+  };
 
   // referenceTranscript: If provided, this is a "retake" where user is practicing the improved version
   // The backend will focus on delivery scoring rather than content restructuring
@@ -304,7 +332,11 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
               score,
               feedback_data: analysisData
             });
-            if (savedSession) recordAction('practice_session');
+            if (savedSession) {
+              await recordAction('practice_session');
+              // Refresh usage to get updated daily count
+              await refreshUsage();
+            }
             // Only update stats if the video actually exists in the library
             if (analysisId && score !== null && !isLibraryFull) await updateLibraryPracticeStats(user.id, analysisId, score);
             if (topic.topicId) await incrementTopicPracticeCount(topic.topicId);
@@ -571,6 +603,22 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
             )}
         </div>
       </div>
+
+      {/* --- UPGRADE MODAL --- */}
+      {showUpgradeModal && (
+        <UpgradeModal
+          isOpen={showUpgradeModal}
+          onClose={() => setShowUpgradeModal(false)}
+          onUpgrade={() => {
+            setShowUpgradeModal(false);
+            // Navigation to subscription page would be handled by parent component
+          }}
+          feature="Practice Session"
+          message="You've reached your daily limit. Upgrade to Pro for unlimited practice."
+          tier={tier}
+          hideCreditsOption={true}
+        />
+      )}
     </div>
   );
 };
