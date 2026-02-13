@@ -152,6 +152,23 @@ router.post('/analyze-speech', async (req, res) => {
       You are an expert ${isIELTS ? 'IELTS Speaking Examiner & ' : ''}Communication Coach.
       Your goal is to compare the User's ACTUAL speech (The Mirror) vs. an OPTIMAL version (The Architect).
 
+      # CRITICAL: EMPTY/SILENT AUDIO DETECTION
+      **FIRST, LISTEN CAREFULLY TO THE AUDIO.**
+      - If the audio contains NO SPEECH, or is COMPLETELY SILENT, or contains only background noise:
+        → Set transcription to "No speech detected in audio."
+        → Set detected_framework to "MINTO"
+        → Set structure.conclusion to "No speech detected"
+        → Set structure.arguments to EMPTY ARRAY []
+        → Set improved_structure.conclusion to "No response provided"
+        → Set improved_structure.arguments to EMPTY ARRAY []
+        → Set improved_transcription to "No speech was detected in the audio. Please try recording again and make sure to speak clearly."
+        → Set feedback.score to 0
+        → Set feedback.strengths to ["Ready to practice when you are!"]
+        → Set feedback.weaknesses to ["No audio detected"]
+        → Set feedback.suggestions to ["Make sure your microphone is working and speak clearly into it"]
+        → Set improvements to EMPTY ARRAY []
+        → Return this response and STOP. Do NOT generate hallucinated content.
+
       # Context
       - **Topic:** "${topic}"
       - **Question:** "${question}"
@@ -214,23 +231,32 @@ router.post('/analyze-speech', async (req, res) => {
       **CRITICAL RULES FOR "MY LOGIC":**
       1. **EXTRACT EXACT QUOTES:** Each node's "point" field MUST be a direct quote or close extraction from the user's transcription. Preserve their exact wording, grammar (even if imperfect), and vocabulary. This reflects their real language level.
       2. **NO POLISHING:** Do NOT summarize, rephrase, or improve the user's words. If they said "I go to school yesterday", keep it as is - don't correct to "I went to school yesterday".
-      3. **FRAMEWORK FLOW ORDER:** Arrange the extracted quotes to match the detected framework's flow:
+      3. **NO HALLUCINATION:** ONLY use content that the user ACTUALLY SAID in the audio. Do NOT invent, assume, or add points that were not spoken. If the user only made 2 points, create EXACTLY 2 argument nodes - no more, no less.
+      4. **FRAMEWORK FLOW ORDER:** Arrange the extracted quotes to match the detected framework's flow:
          - PREP: Point (opening statement) → Reason (why) → Example (story/evidence) → Point (conclusion)
          - STAR: Situation → Task → Action → Result
          - GOLDEN_CIRCLE: Why → How → What
          - WSN: What → So What → Now What
          - MINTO: Conclusion → Arguments → Evidence
          - SCQA: Situation → Complication → Question → Answer
-      4. **TYPE DEFINITIONS:**
-         - **FACT:** Only for objective truths (e.g. "The sun is hot").
-         - **OPINION:** Personal preferences, habits, or feelings (e.g. "I like sleep", "I feel happy").
-         - **STORY:** Narrative events.
-      5. **NARRATIVE DEPTH:** Nest sequential events (A->B->C) using 'sub_points'.
+      5. **TYPE DEFINITIONS - BE ACCURATE:**
+         - **FACT:** Only for objective, universally verifiable truths (e.g. "The sun is hot", "Water boils at 100°C", "There are productive AI tools available").
+         - **OPINION:** Personal beliefs, preferences, habits, or subjective statements (e.g. "I think AI will help me", "I like sleep", "I feel happy", "It is a machine and does not have personal bias").
+         - **STORY:** Narrative events, personal experiences, or anecdotes.
+         - **CRITICAL:** Statements starting with "I think", "I believe", "In my opinion" are ALWAYS opinions, NOT facts.
+         - **CRITICAL:** Claims about what someone thinks/feels/prefers are OPINIONS, even if stated confidently.
+      6. **NARRATIVE DEPTH:** Nest sequential events (A->B->C) using 'sub_points'.
 
       # TASK 2: THE ARCHITECT (Generate "AI Improved")
       **TARGET PERSONA:** ${targetPersona}
       **TARGET STYLE:** ${targetStyle}
       **GOAL:** Reorganize thoughts into the BEST SUITED framework based on learner's level and detected logic. Then, IMPROVE the language while keeping the same meaning.
+
+      **CRITICAL CONSTRAINT:**
+      - Use ONLY the ideas and content that the user ACTUALLY MENTIONED in their speech.
+      - Do NOT add new ideas, examples, or arguments that the user never said.
+      - If the user mentioned "AI helps me work faster" and "AI has no personal bias", improve THOSE TWO points only. Do NOT add a third point about "productive tools" unless they specifically mentioned it.
+      - Your job is to POLISH what they said, not EXPAND with new content they never mentioned.
       
       - **If Level is Easy:**
         - *Bad Improvement:* "I derive pleasure from cinematic experiences." (Too formal!)
@@ -366,7 +392,23 @@ router.post('/analyze-speech', async (req, res) => {
 
       - **Gap Analysis:** Explain why the new structure is better.
 
-      # TASK 5: PRONUNCIATION & INTONATION ANALYSIS 
+      # TASK 4.5: LANGUAGE POLISH & IMPROVEMENTS ARRAY
+      **GOAL:** Suggest better phrasing for specific phrases the user ACTUALLY SAID.
+
+      **CRITICAL RULES:**
+      1. **ONLY USE ACTUAL USER PHRASES:** Each item in the improvements array must contain a phrase that the user ACTUALLY SAID in their original speech. Do NOT create improvements for phrases you wish they had said.
+      2. **MAXIMUM 5 ITEMS:** Limit to the 5 most important language improvements. Quality over quantity.
+      3. **FORMAT:**
+         - original: The exact phrase from the user's transcription (verbatim)
+         - improved: A better way to say the same thing
+         - explanation: Why the improved version is better (use nativeLang for Easy level, targetLang for Medium/Hard)
+      4. **EXAMPLE OF CORRECT USE:**
+         - User said: "AI will definitely help me do my work faster and better"
+         - ✅ CORRECT: { original: "help me do my work faster and better", improved: "enhance my productivity and performance", explanation: "..." }
+         - ❌ WRONG: Creating an improvement for something like "it is a machine" if the user never said that exact phrase
+      5. **If user's speech was very short or had minimal language issues, it's OK to have an empty improvements array []**
+
+      # TASK 5: PRONUNCIATION & INTONATION ANALYSIS
       Listen carefully to HOW the user speaks, not just WHAT they say.
 
       **Analyze:**
