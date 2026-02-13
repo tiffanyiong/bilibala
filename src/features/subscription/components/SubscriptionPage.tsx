@@ -259,17 +259,20 @@ const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ onOpenAuthModal }) 
                   label="Video Analysis"
                   used={usage.videosUsed}
                   limit={videosLimit}
+                  resetInfo={getMonthlyResetInfo(tier, subscription?.current_period_end)}
                 />
                 <UsageMeter
                   label="AI Report"
-                  used={usage.practiceSessionsUsed}
+                  used={tier === 'free' ? usage.practiceSessionsDailyUsed : usage.practiceSessionsUsed}
                   limit={practiceSessionsLimit}
+                  resetInfo={getPracticeResetInfo(tier)}
                 />
                 <UsageMeter
                   label="AI Tutor"
                   used={usage.aiTutorMinutesUsed}
                   limit={aiTutorMinutesLimit}
                   unit="min"
+                  resetInfo={tier === 'pro' ? getMonthlyResetInfo(tier, subscription?.current_period_end) : undefined}
                 />
                 <UsageMeter
                   label="PDF Export"
@@ -515,6 +518,85 @@ const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ onOpenAuthModal }) 
 };
 
 // ============================================
+// Helper functions
+// ============================================
+
+/**
+ * Get reset time info for practice sessions based on tier
+ * Free tier: Daily reset at UTC midnight (shows user's local time)
+ * Pro tier: No limit, so no reset needed
+ */
+const getPracticeResetInfo = (tier: 'free' | 'pro'): string | undefined => {
+  if (tier === 'pro') return undefined; // Pro has unlimited
+
+  // Calculate next UTC midnight in user's local time
+  const now = new Date();
+  const tomorrow = new Date(Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate() + 1,
+    0, 0, 0, 0
+  ));
+
+  // Format the reset time in user's local timezone
+  const timeString = tomorrow.toLocaleTimeString(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+
+  // Get timezone abbreviation (e.g., "PST", "EST", "CET")
+  const tzString = tomorrow.toLocaleTimeString(undefined, { timeZoneName: 'short' })
+    .split(' ')
+    .pop() || '';
+
+  return `Resets daily at ${timeString} ${tzString}`;
+};
+
+/**
+ * Get reset time info for monthly limits (videos, AI tutor)
+ * Free users: Resets first day of next month at UTC midnight
+ * Pro users: Resets based on billing period (current_period_end)
+ */
+const getMonthlyResetInfo = (tier: 'free' | 'pro', periodEnd?: string | null): string => {
+  let resetDate: Date;
+
+  if (tier === 'pro' && periodEnd) {
+    // Pro users: use billing period end date
+    resetDate = new Date(periodEnd);
+  } else {
+    // Free users: use next month at UTC midnight
+    const now = new Date();
+    resetDate = new Date(Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth() + 1,
+      1,
+      0, 0, 0, 0
+    ));
+  }
+
+  // Format date
+  const dateString = resetDate.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric'
+  });
+
+  // Format time in user's local timezone
+  const timeString = resetDate.toLocaleTimeString(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+
+  // Get timezone abbreviation (e.g., "PST", "EST", "CET")
+  const tzString = resetDate.toLocaleTimeString(undefined, { timeZoneName: 'short' })
+    .split(' ')
+    .pop() || '';
+
+  return `Resets ${dateString} at ${timeString} ${tzString}`;
+};
+
+// ============================================
 // Sub-components
 // ============================================
 
@@ -524,7 +606,8 @@ const UsageMeter: React.FC<{
   limit: number;
   unit?: string;
   showAsEnabled?: boolean;
-}> = ({ label, used, limit, unit = '', showAsEnabled }) => {
+  resetInfo?: string; // e.g., "Resets daily at 4:00 PM PST" or "Resets Feb 15"
+}> = ({ label, used, limit, unit = '', showAsEnabled, resetInfo }) => {
   if (showAsEnabled) {
     const enabled = limit > 0 || limit === Infinity;
     return (
@@ -561,23 +644,25 @@ const UsageMeter: React.FC<{
         </div>
       ) : (
         <>
-          <div className={`text-sm font-medium ${isNearLimit ? 'text-amber-600' : 'text-stone-700'}`}>
-            {remaining === 0
-              ? 'Limit reached'
-              : `${remaining}${unit} remaining`}
-          </div>
-          <div className="text-xs text-stone-400 mt-0.5">
+          <div className="text-xs text-stone-400">
             {monthlyUsed}{unit} / {limit}{unit} used
           </div>
         </>
       )}
       {!isUnlimited && limit > 0 && (
-        <div className="mt-1.5 h-1.5 bg-stone-100 rounded-full overflow-hidden">
-          <div
-            className={`h-full rounded-full transition-all ${isNearLimit ? 'bg-amber-500' : 'bg-stone-400'}`}
-            style={{ width: `${percentage}%` }}
-          />
-        </div>
+        <>
+          <div className="mt-1.5 h-1.5 bg-stone-100 rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${isNearLimit ? 'bg-amber-500' : 'bg-stone-400'}`}
+              style={{ width: `${percentage}%` }}
+            />
+          </div>
+          {resetInfo && (
+            <div className="text-xs text-stone-400 mt-1">
+              {resetInfo}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

@@ -281,13 +281,15 @@ export interface MonthlyUsage {
   practiceSessionsUsed: number;
   aiTutorMinutesUsed: number;
   pdfExportsUsed: number;
+  practiceSessionsDailyUsed: number; // Daily usage for free tier (2/day limit)
 }
 
 // Tier limits configuration
 export const TIER_LIMITS = {
   free: {
     videosPerMonth: 3,
-    practiceSessionsPerMonth: 5,
+    practiceSessionsPerMonth: 5, // DEPRECATED: Free tier now uses daily limit (2/day)
+    practiceSessionsPerDay: 2, // NEW: Free tier daily limit
     aiTutorMinutesPerMonth: 0,
     pdfExport: false,
     videoLibraryMax: 10,
@@ -295,6 +297,7 @@ export const TIER_LIMITS = {
   pro: {
     videosPerMonth: PRO_VIDEOS_PER_MONTH,
     practiceSessionsPerMonth: Infinity,
+    practiceSessionsPerDay: Infinity, // Pro has unlimited daily
     aiTutorMinutesPerMonth: MONTHLY_MAX_MINUTES,
     pdfExport: true,
     videoLibraryMax: Infinity,
