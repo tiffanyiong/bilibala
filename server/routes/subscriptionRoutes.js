@@ -83,7 +83,6 @@ router.post('/subscriptions/create-checkout', async (req, res) => {
         address: 'auto', // Collect billing address
         name: 'auto',    // Allow customer to update name
       },
-      customer_email: user.email, // Pre-fill email (customer can update if needed)
       invoice_creation: {
         enabled: true, // Create invoice for this session
       },
@@ -189,7 +188,6 @@ router.post('/subscriptions/create-credit-checkout', async (req, res) => {
         address: 'auto', // Collect billing address
         name: 'auto',    // Allow customer to update name
       },
-      customer_email: user.email, // Pre-fill email (customer can update if needed)
       invoice_creation: {
         enabled: true, // Create invoice and send receipt email
       },
