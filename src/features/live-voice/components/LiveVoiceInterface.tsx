@@ -79,6 +79,7 @@ const LiveVoiceInterface: React.FC<LiveVoiceInterfaceProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [callEndedNote, setCallEndedNote] = useState<string | null>(null);
   const [durationSeconds, setDurationSeconds] = useState(0);
+  const [timeWarning, setTimeWarning] = useState<number | null>(null); // seconds left warning
 
   // --- Transcript States ---
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -250,6 +251,7 @@ const LiveVoiceInterface: React.FC<LiveVoiceInterfaceProps> = ({
     setIsHintsLoading(false);
     pendingAudioRef.current = [];
     liveReadyRef.current = false;
+    setTimeWarning(null); // Clear time warning
 
     // Friendly end-call note
     showEndNote({ durationSecs: lastDurationRef.current || durationSeconds });
@@ -401,6 +403,13 @@ const LiveVoiceInterface: React.FC<LiveVoiceInterfaceProps> = ({
         if (msg.type === 'error') {
             console.error("Server Error:", msg.error);
             if (!isStoppingRef.current) setError(String(msg.error || 'Live error'));
+            return;
+        }
+
+        if (msg.type === 'time_warning') {
+            const secondsLeft = msg.secondsLeft || 0;
+            console.log(`⏰ Time warning: ${secondsLeft}s remaining`);
+            setTimeWarning(secondsLeft);
             return;
         }
 
@@ -678,13 +687,20 @@ const LiveVoiceInterface: React.FC<LiveVoiceInterfaceProps> = ({
                  </div>
               </div>
 
-              <div className="min-h-[2rem] mt-4 flex items-center justify-center relative z-20 px-4">
+              <div className="min-h-[2rem] mt-4 flex flex-col items-center justify-center relative z-20 px-4 gap-2">
+                 {/* Time Warning Banner */}
+                 {timeWarning !== null && isConnected && (
+                   <div className="px-4 py-2 rounded-full text-xs md:text-sm font-semibold bg-orange-100 text-orange-800 border border-orange-300 shadow-md flex items-center gap-2 animate-pulse">
+                      <span>⏰ {Math.floor(timeWarning / 60)}:{(timeWarning % 60).toString().padStart(2, '0')} left</span>
+                   </div>
+                 )}
+
                  {callEnded ? (
                    <div className="px-4 py-2 rounded-full text-xs md:text-[13px] font-medium bg-zinc-50 text-zinc-600 border border-zinc-200 shadow-sm flex items-center gap-2">
                       <span>{callEndedNote}</span>
                    </div>
                  ) : isIdle ? null : (
-                   <StatusPill 
+                   <StatusPill
                       isConnected={isConnected}
                       isAiSpeaking={isAiSpeaking}
                       isAiThinking={isAiThinking}

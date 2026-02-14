@@ -257,7 +257,8 @@ export function setupLiveWebSocket(wss) {
                   endOfSpeechSensitivity: 'END_SENSITIVITY_LOW',
                   startOfSpeechSensitivity: 'START_SENSITIVITY_HIGH',
                   // Longer silence before considering speech ended (helps with Chinese pauses)
-                  silenceDurationMs: 1500, // 1.5 seconds instead of default
+                  silenceDurationMs: 1500, // 1.5 seconds - balanced for natural conversation
+                  prefixPaddingMs: 300, // Add padding at start to catch full utterance
                 }
               },
               systemInstruction,
@@ -300,10 +301,16 @@ export function setupLiveWebSocket(wss) {
           // Warning timer
           const warningDelay = (effectiveMaxSeconds - warningBeforeEnd) * 1000;
           if (warningDelay > 0) {
+            // Normal case: warn 60s before limit
             warningTimer = setTimeout(() => {
               send({ type: 'time_warning', secondsLeft: warningBeforeEnd });
               console.log(`[server] Sent time_warning: ${warningBeforeEnd}s remaining`);
             }, warningDelay);
+          } else if (effectiveMaxSeconds > 10) {
+            // Low credits case: if remaining time < 60s but > 10s, warn immediately
+            const actualSecondsLeft = effectiveMaxSeconds;
+            send({ type: 'time_warning', secondsLeft: actualSecondsLeft });
+            console.log(`[server] Low credits: sent immediate warning with ${actualSecondsLeft}s remaining`);
           }
 
           // Limit timer — forcefully end session
