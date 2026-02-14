@@ -247,7 +247,19 @@ export function setupLiveWebSocket(wss) {
               responseModalities: [Modality.AUDIO],
               inputAudioTranscription: {},
               outputAudioTranscription: {},
-              speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
+              speechConfig: {
+                voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } }
+              },
+              // Configure VAD to prevent premature turn completion in Chinese
+              // Use LOW end-of-speech sensitivity so the AI completes full sentences
+              realtimeInputConfig: {
+                automaticActivityDetection: {
+                  endOfSpeechSensitivity: 'END_SENSITIVITY_LOW',
+                  startOfSpeechSensitivity: 'START_SENSITIVITY_HIGH',
+                  // Longer silence before considering speech ended (helps with Chinese pauses)
+                  silenceDurationMs: 1500, // 1.5 seconds instead of default
+                }
+              },
               systemInstruction,
             },
             callbacks: {
