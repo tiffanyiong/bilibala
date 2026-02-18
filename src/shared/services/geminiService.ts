@@ -14,11 +14,15 @@ export interface TranscriptData {
  */
 export const fetchTranscript = async (
   videoUrl: string,
-  targetLang: string
+  targetLang: string,
+  accessToken?: string
 ): Promise<TranscriptData> => {
   const resp = await fetch(`${getBackendOrigin()}/api/fetch-transcript`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(accessToken && { 'Authorization': `Bearer ${accessToken}` }),
+    },
     body: JSON.stringify({ videoUrl, targetLang }),
   });
 
@@ -41,11 +45,15 @@ export const analyzeVideoContent = async (
   nativeLang: string,
   targetLang: string,
   level: string,
-  preloadedTranscript?: TranscriptData
+  preloadedTranscript?: TranscriptData,
+  accessToken?: string
 ): Promise<ContentAnalysis> => {
   const resp = await fetch(`${getBackendOrigin()}/api/analyze-video-content`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(accessToken && { 'Authorization': `Bearer ${accessToken}` }),
+    },
     body: JSON.stringify({
       videoTitle,
       videoUrl,
@@ -69,14 +77,18 @@ export const analyzeVideoContent = async (
 export const generateConversationHints = async (
     lastAiQuestion: string,
     targetLang: string,
-    level: string
+    level: string,
+    accessToken?: string
 ): Promise<string[]> => {
     if (!lastAiQuestion) return [];
 
     try {
         const resp = await fetch(`${getBackendOrigin()}/api/conversation-hints`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(accessToken && { 'Authorization': `Bearer ${accessToken}` }),
+          },
           body: JSON.stringify({ lastAiQuestion, targetLang, level }),
         });
         if (!resp.ok) return [];
@@ -100,7 +112,8 @@ export interface SearchableVideo {
 
 export const searchVideos = async (
   query: string,
-  videos: SearchableVideo[]
+  videos: SearchableVideo[],
+  accessToken?: string
 ): Promise<string[]> => {
   if (!query.trim() || videos.length === 0) {
     return videos.map(v => v.libraryId);
@@ -109,7 +122,10 @@ export const searchVideos = async (
   try {
     const resp = await fetch(`${getBackendOrigin()}/api/search-videos`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(accessToken && { 'Authorization': `Bearer ${accessToken}` }),
+      },
       body: JSON.stringify({ query, videos }),
     });
     if (!resp.ok) {

@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import { config } from '../config/env.js';
 import { getConfigNumber } from '../services/configService.js';
 import { createAi } from '../services/geminiService.js';
-import { supabaseAdmin } from '../services/supabaseAdmin.js';
+import { getUserFromToken, supabaseAdmin } from '../services/supabaseAdmin.js';
 import { safeJsonParse } from '../utils/helpers.js';
 
 const router = Router();
@@ -12,9 +12,11 @@ const router = Router();
 /**
  * POST /api/analyze-speech
  * Analyzes user speech audio and provides structured feedback
+ * ✅ ALLOWS ANONYMOUS (frontend enforces 2/month practice limit via browser fingerprint)
  */
 router.post('/analyze-speech', async (req, res) => {
   try {
+    // No authentication required - anonymous users allowed (frontend enforces usage limits)
     if (!config.gemini.apiKey) return res.status(500).json({ error: 'Server missing GEMINI_API_KEY' });
     const { audioData, topic, question, level, targetLang, nativeLang, referenceTranscript } = req.body || {};
 
@@ -105,6 +107,11 @@ router.post('/analyze-speech', async (req, res) => {
       - Do NOT restructure or re-improve the content
       - improvements array: empty (no language polish needed)
       - IMPORTANT: Do NOT mention "PRACTICE_DELIVERY" or framework names in feedback text - just give natural delivery feedback
+      ${level === 'Easy' ? `
+      - LANGUAGE FOR FEEDBACK: Write ALL feedback text (strengths, weaknesses, suggestions) in ${nativeLang || 'English'} so the beginner can understand
+      ` : `
+      - LANGUAGE FOR FEEDBACK: Write ALL feedback text in ${targetLang || 'English'}
+      `}
       ${isIELTS ? `
       - ALSO provide feedback.breakdown with IELTS delivery sub-scores:
         { "framework": "ielts", "band_score": <0-9>, "fluency_coherence": <0-9>, "lexical_resource": <0-9>, "grammatical_range": <0-9>, "pronunciation": <0-9>, "band_descriptor": "..." }
@@ -184,10 +191,12 @@ router.post('/analyze-speech', async (req, res) => {
 
       FIELD-BY-FIELD LANGUAGE REQUIREMENTS:
 
+      📌 FIELDS THAT MUST PRESERVE USER'S ACTUAL LANGUAGE (do NOT translate):
+      - transcription: Keep as-is in whatever language user spoke
+      - structure.conclusion: User's exact words - do NOT translate
+      - structure.arguments[].point: User's exact words - do NOT translate
+
       📌 FIELDS THAT MUST BE IN ${targetLang || 'English'} (the language being learned):
-      - transcription: Keep as-is (user's actual speech)
-      - structure.conclusion: User's main point in ${targetLang || 'English'}
-      - structure.arguments[].point: User's argument points in ${targetLang || 'English'}
       - improved_structure.conclusion: Improved conclusion in ${targetLang || 'English'}
       - improved_structure.arguments[].headline: Step headlines in ${targetLang || 'English'}
       - improved_structure.arguments[].elaboration: Model sentences/content to practice in ${targetLang || 'English'}
@@ -208,13 +217,17 @@ router.post('/analyze-speech', async (req, res) => {
       ⚠️ ELABORATIONS must ALWAYS be in ${targetLang || 'English'} - they are model content for the learner to practice.
       ` : `
       FOR INTERMEDIATE/ADVANCED LEVEL:
-      ALL text content in your response MUST be in ${targetLang || 'English'}. This includes:
-      - conclusion (both in structure and improved_structure) MUST be in ${targetLang || 'English'}.
-      - All argument points, headlines, elaborations, critiques, and evidence MUST be in ${targetLang || 'English'}.
-      - All feedback (strengths, weaknesses, suggestions) MUST be in ${targetLang || 'English'}.
+
+      📌 FIELDS THAT MUST PRESERVE USER'S ACTUAL LANGUAGE (do NOT translate):
+      - transcription: Keep as-is in whatever language user spoke
+      - structure.conclusion: User's exact words - do NOT translate
+      - structure.arguments[].point: User's exact words - do NOT translate
+
+      📌 FIELDS THAT MUST BE IN ${targetLang || 'English'}:
+      - improved_structure: conclusion, headlines, elaborations MUST be in ${targetLang || 'English'}
+      - All feedback (strengths, weaknesses, suggestions) MUST be in ${targetLang || 'English'}
       - All improvement suggestions (original, improved, explanation) MUST be in ${targetLang || 'English'}
-      - Pronunciation feedback (summary, intonation feedback, word-level feedback) MUST be in ${targetLang || 'English'}
-      - The transcription field must remain as-is (user's actual speech)
+      - Pronunciation feedback MUST be in ${targetLang || 'English'}
       `}
 
       # FRAMEWORK DEFINITIONS
@@ -226,26 +239,78 @@ router.post('/analyze-speech', async (req, res) => {
       6. **SCQA (Problem-Solving):** Situation -> Complication -> Question -> Answer.
 
       # TASK 1: THE MIRROR (Analyze User's "My Logic")
-      **GOAL:** Extract and display the user's EXACT words from their speech - DO NOT polish or rewrite.
+      **GOAL:** Extract EVERY distinct sentence/idea from the user's speech as separate nodes using their EXACT words. Do NOT combine, summarize, or rewrite anything.
+
+      ⚠️ ⚠️ ⚠️ CRITICAL: DO NOT TRANSLATE THE USER'S WORDS ⚠️ ⚠️ ⚠️
+
+      For the "structure" object (user's original logic):
+      - transcription: Whatever language they spoke
+      - structure.conclusion: SAME LANGUAGE as transcription (do NOT translate)
+      - structure.arguments[].point: SAME LANGUAGE as transcription (do NOT translate)
+      - structure.arguments[].sub_points[].point: SAME LANGUAGE as transcription (do NOT translate)
+
+      If user spoke English → graph shows English
+      If user spoke Chinese → graph shows Chinese
+      If user spoke Spanish → graph shows Spanish
+
+      DO NOT convert to targetLang. DO NOT convert to nativeLang. Just keep the original language.
 
       **CRITICAL RULES FOR "MY LOGIC":**
-      1. **EXTRACT EXACT QUOTES:** Each node's "point" field MUST be a direct quote or close extraction from the user's transcription. Preserve their exact wording, grammar (even if imperfect), and vocabulary. This reflects their real language level.
-      2. **NO POLISHING:** Do NOT summarize, rephrase, or improve the user's words. If they said "I go to school yesterday", keep it as is - don't correct to "I went to school yesterday".
-      3. **NO HALLUCINATION:** ONLY use content that the user ACTUALLY SAID in the audio. Do NOT invent, assume, or add points that were not spoken. If the user only made 2 points, create EXACTLY 2 argument nodes - no more, no less.
-      4. **FRAMEWORK FLOW ORDER:** Arrange the extracted quotes to match the detected framework's flow:
-         - PREP: Point (opening statement) → Reason (why) → Example (story/evidence) → Point (conclusion)
-         - STAR: Situation → Task → Action → Result
-         - GOLDEN_CIRCLE: Why → How → What
-         - WSN: What → So What → Now What
-         - MINTO: Conclusion → Arguments → Evidence
-         - SCQA: Situation → Complication → Question → Answer
-      5. **TYPE DEFINITIONS - BE ACCURATE:**
+      1. **EXTRACT EVERY DISTINCT IDEA AS SEPARATE NODES:** Go through the transcription sentence by sentence. Each complete thought/sentence the user said should become its own node with their EXACT words copied verbatim.
+         - ❌ WRONG: User said "I use Twitter to find trends" + "I use Weibo for Chinese trends" → Creating one node "I use Twitter and Weibo to find trends"
+         - ✅ CORRECT: Create TWO separate nodes: Node 1: "I use Twitter to find new trends" | Node 2: "I also I use Weibo to see, to explore the Chinese new trends"
+      2. **COPY-PASTE EXACT WORDS - DO NOT TRANSLATE:**
+         - Copy user's words EXACTLY from transcription in the SAME LANGUAGE they spoke
+         - Include all grammar mistakes, fillers, and hesitations
+         - DO NOT translate to any other language
+         - Example: Transcription says "So by using these social media..." → point = "So by using these social media..."
+         - Example: Transcription says "I use x" → point = "I use x" (do NOT change to "I use Twitter and Weibo to find trends")
+      3. **RECORD CHRONOLOGICAL SEQUENCE (MANDATORY):**
+         - EVERY node MUST have a sequence_order field (0, 1, 2, 3...)
+         - Assign sequence_order based on the EXACT ORDER the user spoke each sentence
+         - First sentence in transcription = sequence_order: 0
+         - Second sentence = sequence_order: 1
+         - Third sentence = sequence_order: 2, and so on
+         - This is CRITICAL for showing the user's actual chaotic thinking flow
+      4. **NO HALLUCINATION:** ONLY use sentences that the user ACTUALLY SAID. Each node must be traceable back to specific words in the transcription.
+      5. **STRUCTURE GUIDELINES:**
+         - Group related ideas using parent-child (arguments + sub_points)
+         - Use sequence_order to preserve the actual speaking order
+         - detected_framework should DESCRIBE the pattern you observe, not force reorganization
+         - Example: User says "I like sushi" (0) → "My friend went to London" (1) → "Weather is cold" (2) → "So I can travel for food" (3)
+           Structure: { point: "I like sushi", sequence_order: 0, sub_points: [{ point: "So I can travel for food", sequence_order: 3 }] }, { point: "My friend went to London", sequence_order: 1, sub_points: [{ point: "Weather is cold", sequence_order: 2 }] }
+      6. **TYPE DEFINITIONS - BE ACCURATE:**
          - **FACT:** Only for objective, universally verifiable truths (e.g. "The sun is hot", "Water boils at 100°C", "There are productive AI tools available").
          - **OPINION:** Personal beliefs, preferences, habits, or subjective statements (e.g. "I think AI will help me", "I like sleep", "I feel happy", "It is a machine and does not have personal bias").
          - **STORY:** Narrative events, personal experiences, or anecdotes.
          - **CRITICAL:** Statements starting with "I think", "I believe", "In my opinion" are ALWAYS opinions, NOT facts.
          - **CRITICAL:** Claims about what someone thinks/feels/prefers are OPINIONS, even if stated confidently.
-      6. **NARRATIVE DEPTH:** Nest sequential events (A->B->C) using 'sub_points'.
+      7. **USE SUB_POINTS TO SHOW ELABORATION:**
+         - When user mentions a topic, then adds details about it → Main topic in arguments, details in sub_points
+         - When user switches to new topic → New node in arguments array
+         - This creates tree structure: topics spread horizontally, details nest vertically under parent
+      8. **EXAMPLE WITH SEQUENCE_ORDER:**
+         If User speaks in ENGLISH: "I use Twitter for trends. I also use Weibo for Chinese trends. WeChat is different, it's for chatting. It has a Moments feature."
+         Structure (note: ALL points are in ENGLISH because transcription is in English):
+         arguments: [
+           { point: "I use Twitter for trends", sequence_order: 0, status: "strong", type: "opinion", evidence: [] },
+           { point: "I also use Weibo for Chinese trends", sequence_order: 1, status: "strong", type: "opinion", evidence: [], sub_points: [] },
+           { point: "WeChat is different, it's for chatting", sequence_order: 2, status: "strong", type: "opinion", evidence: [], sub_points: [
+               { point: "It has a Moments feature", sequence_order: 3, status: "strong", type: "fact", evidence: [] }
+             ]}
+         ]
+
+         If User speaks in CHINESE: "我用Twitter找趋势。我也用微博看中国的趋势。微信不一样，是用来聊天的。它有朋友圈功能。"
+         Structure (note: ALL points are in CHINESE because transcription is in Chinese):
+         arguments: [
+           { point: "我用Twitter找趋势", sequence_order: 0, status: "strong", type: "opinion", evidence: [] },
+           { point: "我也用微博看中国的趋势", sequence_order: 1, status: "strong", type: "opinion", evidence: [], sub_points: [] },
+           { point: "微信不一样，是用来聊天的", sequence_order: 2, status: "strong", type: "opinion", evidence: [], sub_points: [
+               { point: "它有朋友圈功能", sequence_order: 3, status: "strong", type: "fact", evidence: [] }
+             ]}
+         ]
+
+         Note: sequence_order goes 0, 1, 2, 3 in the order they spoke, even though node 3 is nested under node 2.
 
       # TASK 2: THE ARCHITECT (Generate "AI Improved")
       **TARGET PERSONA:** ${targetPersona}
@@ -479,6 +544,7 @@ router.post('/analyze-speech', async (req, res) => {
         type: { type: Type.STRING, enum: ["fact", "story", "opinion"] },
         evidence: { type: Type.ARRAY, items: { type: Type.STRING } },
         critique: { type: Type.STRING }, // Critique for Top Level
+        sequence_order: { type: Type.NUMBER }, // Order in which user spoke this idea (0, 1, 2, ...)
         // RECURSION: Add sub_points here
         sub_points: {
             type: Type.ARRAY,
@@ -489,7 +555,8 @@ router.post('/analyze-speech', async (req, res) => {
                     status: { type: Type.STRING },
                     type: { type: Type.STRING },
                     evidence: { type: Type.ARRAY, items: { type: Type.STRING } },
-                    critique: { type: Type.STRING }
+                    critique: { type: Type.STRING },
+                    sequence_order: { type: Type.NUMBER }
                 }
             }
         }
@@ -550,7 +617,7 @@ router.post('/analyze-speech', async (req, res) => {
                   items: {
                     type: Type.OBJECT,
                     properties: argumentSchemaProperties,
-                    required: ['point', 'status', 'type', 'evidence']
+                    required: ['point', 'status', 'type', 'evidence', 'sequence_order']
                   }
                 }
               },
@@ -788,9 +855,17 @@ function getTTSCacheKey(text, language) {
 /**
  * POST /api/tts
  * Text-to-speech using Google Cloud TTS with Supabase caching
+ * 🔒 REQUIRES AUTHENTICATION
  */
 router.post('/tts', async (req, res) => {
   try {
+    // Authentication check
+    const user = await getUserFromToken(req);
+    if (!user) {
+      console.error('[tts] Unauthorized request - no valid token');
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
     // Use dedicated TTS API key if available, otherwise fall back to Gemini key
     const apiKey = config.google?.ttsApiKey || config.gemini.apiKey;
     if (!apiKey) return res.status(500).json({ error: 'Server missing API key (GOOGLE_TTS_API_KEY or GEMINI_API_KEY)' });

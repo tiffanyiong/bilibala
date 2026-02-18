@@ -85,7 +85,7 @@ const FloatingTutorWindow: React.FC<FloatingTutorWindowProps> = ({
   const dragStartRef = useRef({ x: 0, y: 0 });
   const positionRef = useRef({ x: 0, y: 0 });
 
-  const { user } = useAuth();
+  const { user, session } = useAuth();
   const { refreshUsage, refreshSubscription, usage, aiTutorMinutesLimit, aiTutorCreditMinutes } = useSubscription();
 
   const remainingMonthlySeconds = Math.max(0, (aiTutorMinutesLimit - usage.aiTutorMinutesUsed) * 60);
@@ -109,6 +109,7 @@ const FloatingTutorWindow: React.FC<FloatingTutorWindowProps> = ({
     level,
     transcript,
     userId: user?.id ?? null,
+    accessToken: session?.access_token,
     maxSessionSeconds: SESSION_MAX_MINUTES * 60,
     remainingMonthlySeconds: totalRemainingSeconds, // Include credits in available time
     warningBeforeEndSeconds: WARNING_BEFORE_END_SECONDS,
