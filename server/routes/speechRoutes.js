@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import { config } from '../config/env.js';
 import { getConfigNumber } from '../services/configService.js';
 import { createAi } from '../services/geminiService.js';
-import { getUserFromToken, supabaseAdmin } from '../services/supabaseAdmin.js';
+import { supabaseAdmin } from '../services/supabaseAdmin.js';
 import { safeJsonParse } from '../utils/helpers.js';
 
 const router = Router();
@@ -855,16 +855,12 @@ function getTTSCacheKey(text, language) {
 /**
  * POST /api/tts
  * Text-to-speech using Google Cloud TTS with Supabase caching
- * 🔒 REQUIRES AUTHENTICATION
+ * ✅ ALLOWS ANONYMOUS (used in practice sessions which have frontend limits)
  */
 router.post('/tts', async (req, res) => {
   try {
-    // Authentication check
-    const user = await getUserFromToken(req);
-    if (!user) {
-      console.error('[tts] Unauthorized request - no valid token');
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
+    // No authentication required - used by anonymous users in practice sessions
+    // Frontend enforces practice session limits (2/month for anonymous)
 
     // Use dedicated TTS API key if available, otherwise fall back to Gemini key
     const apiKey = config.google?.ttsApiKey || config.gemini.apiKey;
