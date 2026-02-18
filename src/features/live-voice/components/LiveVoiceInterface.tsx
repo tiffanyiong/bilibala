@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { getBackendOrigin, getBackendWsOrigin } from '../../../shared/services/backend';
 import { generateConversationHints } from '../../../shared/services/geminiService';
 import { HistoryItem, VocabularyItem } from '../../../shared/types';
+import { useAuth } from '../../../shared/context/AuthContext';
 
 // Components
 import ControlBar from '../../../shared/components/ControlBar';
@@ -55,16 +56,17 @@ interface LiveVoiceInterfaceProps {
   onSessionEnd?: () => void;
 }
 
-const LiveVoiceInterface: React.FC<LiveVoiceInterfaceProps> = ({ 
-    videoTitle, 
-    videoUrl, 
-    summary, 
-    vocabulary, 
-    nativeLang, 
-    targetLang, 
-    level, 
-    onSessionEnd 
+const LiveVoiceInterface: React.FC<LiveVoiceInterfaceProps> = ({
+    videoTitle,
+    videoUrl,
+    summary,
+    vocabulary,
+    nativeLang,
+    targetLang,
+    level,
+    onSessionEnd
 }) => {
+  const { session } = useAuth();
   const debug = import.meta.env.DEV;
   const dlog = (...args: any[]) => {
     if (!debug) return;
@@ -186,7 +188,7 @@ const LiveVoiceInterface: React.FC<LiveVoiceInterfaceProps> = ({
       }
 
       try {
-          const newHints = await generateConversationHints(textToHint, targetLang, level);
+          const newHints = await generateConversationHints(textToHint, targetLang, level, session?.access_token);
           if (mountedRef.current) {
               setHints(newHints);
               setIsHintsLoading(false);

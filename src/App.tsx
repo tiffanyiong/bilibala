@@ -135,7 +135,7 @@ const App: React.FC = () => {
     });
   }, []);
 
-  const { user, loading: authLoading } = useAuth();
+  const { user, session, loading: authLoading } = useAuth();
   const { canAddVideo, canUseAiTutor, canExportPdf, recordAction, tier, syncWithStripe, aiTutorRemainingMinutes, createCreditCheckout, subscription } = useSubscription();
 
   // Sync subscription with Stripe when returning from checkout (handles missed webhooks)
@@ -877,7 +877,10 @@ const App: React.FC = () => {
       // Pass video summary and existing questions for better context
       const response = await fetch(`${getBackendOrigin()}/api/generate-question`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`,
+        },
         body: JSON.stringify({
           topicName: activePracticeTopic.topic,
           targetLang,
@@ -1104,7 +1107,7 @@ const App: React.FC = () => {
       }, 12000);
 
       // Step 1: Fetch transcript FIRST (faster!)
-      fetchTranscript(videoUrl, targetLang)
+      fetchTranscript(videoUrl, targetLang, session?.access_token)
         .then(async (transcriptData) => {
           // Show transcript immediately
           setTranscript(transcriptData.transcript || []);
@@ -1119,14 +1122,15 @@ const App: React.FC = () => {
           setLoadingText("Analyzing video content with AI...");
 
           // Step 2: Run AI analysis in BACKGROUND with preloaded transcript
-        
+
           const analysis = await analyzeVideoContent(
             metadata.title,
             videoUrl,
             nativeLang,
             targetLang,
             level,
-            transcriptData // Pass preloaded transcript to skip re-fetching
+            transcriptData, // Pass preloaded transcript to skip re-fetching
+            session?.access_token
           );
 
           // AI analysis complete - update summary, vocab, outline
@@ -1190,7 +1194,8 @@ const App: React.FC = () => {
                   savedAnalysis.id,
                   analysis.discussionTopics,
                   targetLang,
-                  level
+                  level,
+                  session?.access_token
                 );
                 // Update discussion topics with database IDs (now with canonical names)
                 if (topicsWithIds.length > 0) {
