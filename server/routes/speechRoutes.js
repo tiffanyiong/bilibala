@@ -121,6 +121,11 @@ router.post('/analyze-speech', async (req, res) => {
         - grammatical_range: How correctly they produced the grammar structures when speaking aloud
         - pronunciation: Clarity, word stress, intonation
         Each sub-score should reflect what you hear — do NOT set any to 0.
+
+        **REQUIRED: band_descriptor MUST be included with a descriptive comment in ${targetLang || 'English'}:**
+        - Use descriptive phrases like "You demonstrate..." or "能够..." (NOT just labels like "Good User")
+        - Must be in ${targetLang || 'English'} (the language being learned)
+        - Example: "You demonstrate a wide range of vocabulary but often use it inappropriately for the context, leading to a lack of coherence despite clear pronunciation."
       ` : isHSK ? `
       - ALSO provide feedback.breakdown with HSK delivery sub-scores:
         { "framework": "hsk", "hsk_level": <1-6>, "pronunciation_tones": <0-100>, "vocabulary_grammar": <0-100>, "fluency_coherence": <0-100>, "content_expressiveness": <0-100>, "level_descriptor": "..." }
@@ -130,6 +135,11 @@ router.post('/analyze-speech', async (req, res) => {
         - fluency_coherence: Smoothness, pacing, natural flow
         - content_expressiveness: Confidence, emotion, and expressiveness in delivery
         Each sub-score should reflect what you hear — do NOT set any to 0.
+
+        **REQUIRED: level_descriptor MUST be included with a descriptive comment in ${targetLang || 'English'}:**
+        - Use descriptive phrases (NOT just labels like "Intermediate")
+        - Must be in ${targetLang || 'English'} (the language being learned)
+        - Example for Chinese: "能够就各种话题进行较长的谈话，表达连贯且多样，词汇使用非常准确且多样。"
       ` : ''}
 
       ## IF FULL ANALYSIS MODE (new answer):
@@ -183,51 +193,24 @@ router.post('/analyze-speech', async (req, res) => {
       - **Target Language:** ${targetLang || 'English'}
       - **Native Language:** ${nativeLang || 'English'}
 
-      # CRITICAL LANGUAGE REQUIREMENT - READ CAREFULLY
+      # LANGUAGE REQUIREMENTS FOR FEEDBACK & EXPLANATIONS
       ${level === 'Easy' ? `
-      ⚠️ IMPORTANT: This is a BEGINNER learning ${targetLang || 'English'}. Their NATIVE language is ${nativeLang || 'English'}.
-
-      ALL EXPLANATORY TEXT must be written in ${nativeLang || 'English'} so the beginner can understand.
-
-      FIELD-BY-FIELD LANGUAGE REQUIREMENTS:
-
-      📌 FIELDS THAT MUST PRESERVE USER'S ACTUAL LANGUAGE (do NOT translate):
-      - transcription: Keep as-is in whatever language user spoke
-      - structure.conclusion: User's exact words - do NOT translate
-      - structure.arguments[].point: User's exact words - do NOT translate
+      ⚠️ BEGINNER LEVEL: This user is learning ${targetLang || 'English'}. Their native language is ${nativeLang || 'English'}.
 
       📌 FIELDS THAT MUST BE IN ${targetLang || 'English'} (the language being learned):
-      - improved_structure.conclusion: Improved conclusion in ${targetLang || 'English'}
-      - improved_structure.arguments[].headline: Step headlines in ${targetLang || 'English'}
-      - improved_structure.arguments[].elaboration: Model sentences/content to practice in ${targetLang || 'English'}
-      - improvements[].original: Original phrase in ${targetLang || 'English'}
-      - improvements[].improved: Improved phrase in ${targetLang || 'English'}
+      - improved_structure: All content (conclusion, headlines, elaborations) for practice
 
       📌 FIELDS THAT MUST BE IN ${nativeLang || 'English'} (native language for explanations):
-      - structure.arguments[].critique: Write critique/explanation WHY in ${nativeLang || 'English'}
-      - feedback.strengths[]: Write each strength in ${nativeLang || 'English'}
-      - feedback.weaknesses[]: Write each weakness in ${nativeLang || 'English'}
-      - feedback.suggestions[]: Write each suggestion in ${nativeLang || 'English'}
-      - improvements[].explanation: Write explanation WHY in ${nativeLang || 'English'}
-      - pronunciation.summary: Write summary in ${nativeLang || 'English'}
-      - pronunciation.intonation.feedback: Write feedback in ${nativeLang || 'English'}
-      - pronunciation.words[].feedback: Write word feedback in ${nativeLang || 'English'}
+      - structure.arguments[].critique: Explanation of strengths/weaknesses
+      - feedback.strengths[], weaknesses[], suggestions[]: All feedback text
+      - improvements[].explanation: Why the improvement is better
+      - pronunciation feedback: summary, intonation.feedback, words[].feedback
 
-      ⚠️ DO NOT write critique, explanation, or feedback fields in ${targetLang || 'English'}. The beginner needs to understand these in their native language.
-      ⚠️ ELABORATIONS must ALWAYS be in ${targetLang || 'English'} - they are model content for the learner to practice.
+      ⚠️ Write ALL explanatory text in ${nativeLang || 'English'} so beginners can understand WHY.
       ` : `
       FOR INTERMEDIATE/ADVANCED LEVEL:
-
-      📌 FIELDS THAT MUST PRESERVE USER'S ACTUAL LANGUAGE (do NOT translate):
-      - transcription: Keep as-is in whatever language user spoke
-      - structure.conclusion: User's exact words - do NOT translate
-      - structure.arguments[].point: User's exact words - do NOT translate
-
-      📌 FIELDS THAT MUST BE IN ${targetLang || 'English'}:
-      - improved_structure: conclusion, headlines, elaborations MUST be in ${targetLang || 'English'}
-      - All feedback (strengths, weaknesses, suggestions) MUST be in ${targetLang || 'English'}
-      - All improvement suggestions (original, improved, explanation) MUST be in ${targetLang || 'English'}
-      - Pronunciation feedback MUST be in ${targetLang || 'English'}
+      - improved_structure: MUST be in ${targetLang || 'English'}
+      - All feedback and explanations: MUST be in ${targetLang || 'English'}
       `}
 
       # FRAMEWORK DEFINITIONS
@@ -426,7 +409,13 @@ router.post('/analyze-speech', async (req, res) => {
       **CRITICAL: Each sub-score MUST be evaluated INDEPENDENTLY.** Do NOT give the same band score to all 4 categories — that is unrealistic. A speaker's fluency, vocabulary, grammar, and pronunciation are almost never at the same level. For example, a learner might have Band 7.0 fluency but Band 5.5 grammar. Differentiate based on what you actually hear.
 
       Output format for feedback.breakdown:
-      { "framework": "ielts", "band_score": 6.5, "fluency_coherence": 7.0, "lexical_resource": 6.0, "grammatical_range": 5.5, "pronunciation": 7.5, "band_descriptor": "Competent User" }
+      { "framework": "ielts", "band_score": 6.5, "fluency_coherence": 7.0, "lexical_resource": 6.0, "grammatical_range": 5.5, "pronunciation": 7.5, "band_descriptor": "You demonstrate a wide range of vocabulary but often use it inappropriately for the context, leading to a lack of coherence despite clear pronunciation." }
+
+      **CRITICAL: band_descriptor must be a DESCRIPTIVE comment in ${targetLang || 'English'}, NOT just a label!**
+      - Write a detailed 1-2 sentence summary of their overall performance
+      - Use ${targetLang || 'English'} (the target language they're learning)
+      - Focus on strengths + key weaknesses
+      - Example: "You can engage in extended conversations on various topics with coherent and varied expression, accurate vocabulary, but occasional grammatical errors."
       ` : isHSK ? `
       **HSK SPEAKING BREAKDOWN (REQUIRED for Chinese):**
       You are also an expert HSK Speaking (HSKK) examiner. You MUST provide a "breakdown" object inside the "feedback" field.
@@ -452,7 +441,13 @@ router.post('/analyze-speech', async (req, res) => {
       **CRITICAL: Each sub-score MUST be evaluated INDEPENDENTLY.** Do NOT give the same score to all 4 categories — that is unrealistic. A speaker's tones, vocabulary, fluency, and expressiveness are almost never at the same level. For example, a learner might score 75 on fluency but 50 on pronunciation/tones. Differentiate based on what you actually hear.
 
       Output format for feedback.breakdown:
-      { "framework": "hsk", "hsk_level": 4, "pronunciation_tones": 55, "vocabulary_grammar": 60, "fluency_coherence": 70, "content_expressiveness": 50, "level_descriptor": "Intermediate (中级)" }
+      { "framework": "hsk", "hsk_level": 4, "pronunciation_tones": 55, "vocabulary_grammar": 60, "fluency_coherence": 70, "content_expressiveness": 50, "level_descriptor": "能够就常见话题进行交流，表达观点，但语法错误较多，声调准确性需要提高。" }
+
+      **CRITICAL: level_descriptor must be a DESCRIPTIVE comment in ${targetLang || 'Chinese'}, NOT just a label!**
+      - Write a detailed 1-2 sentence summary of their overall performance in Chinese
+      - Use ${targetLang || 'Chinese'} (the target language they're learning)
+      - Focus on strengths + key weaknesses
+      - Example: "能够就各种话题进行较长的谈话，表达连贯且多样，词汇使用准确，但声调偶尔不准确，语速较慢。"
       ` : ''}
 
       - **Gap Analysis:** Explain why the new structure is better.
