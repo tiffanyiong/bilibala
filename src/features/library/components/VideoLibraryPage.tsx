@@ -16,7 +16,7 @@ interface VideoLibraryPageProps {
 const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({
   onSelectVideo,
 }) => {
-  const { user } = useAuth();
+  const { user, session } = useAuth();
   const { tier } = useSubscription();
   const [videos, setVideos] = useState<VideoHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,7 +87,7 @@ const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({
         level: v.level,
       }));
 
-      const matchedIds = await searchVideos(query, searchableVideos);
+      const matchedIds = await searchVideos(query, searchableVideos, session?.access_token);
       setSearchResults(matchedIds);
       setIsSearching(false);
     }, 500);

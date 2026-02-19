@@ -27,6 +27,8 @@ export interface UseLiveVoiceConfig {
   transcript?: { text: string; duration: number; offset: number }[];
   /** User ID for server-side usage tracking */
   userId: string | null;
+  /** Access token for authenticated API calls */
+  accessToken?: string;
   /** Max seconds allowed for this session (e.g. 40 min = 2400) */
   maxSessionSeconds: number;
   /** Seconds remaining in monthly allowance */
@@ -77,7 +79,7 @@ export interface UseLiveVoiceReturn {
 
 export function useLiveVoice(config: UseLiveVoiceConfig): UseLiveVoiceReturn {
   const {
-    videoTitle, summary, vocabulary, nativeLang, targetLang, level, transcript, userId,
+    videoTitle, summary, vocabulary, nativeLang, targetLang, level, transcript, userId, accessToken,
     maxSessionSeconds, remainingMonthlySeconds, warningBeforeEndSeconds,
     onLimitReached,
   } = config;
@@ -669,7 +671,7 @@ export function useLiveVoice(config: UseLiveVoiceConfig): UseLiveVoiceReturn {
     }
 
     try {
-      const newHints = await generateConversationHints(textToHint, targetLang, level);
+      const newHints = await generateConversationHints(textToHint, targetLang, level, accessToken);
       if (mountedRef.current) {
         setHints(newHints);
         setIsHintsLoading(false);

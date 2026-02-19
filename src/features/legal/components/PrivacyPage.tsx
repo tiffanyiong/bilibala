@@ -112,7 +112,7 @@ const PrivacyPage: React.FC = () => {
             <li><strong>Right to Opt-out:</strong> You may opt-out of marketing emails or weekly reports via the "Unsubscribe" link in our emails.</li>
           </ul>
           <p className="text-stone-600 leading-relaxed mt-4">
-            To exercise these rights, please contact us at <strong>support@bilibala.app</strong>.
+            To exercise these rights, please contact us at <strong>support@mybilibala.com</strong>.
           </p>
         </section>
 
@@ -143,7 +143,7 @@ const PrivacyPage: React.FC = () => {
             If you have any questions about this Privacy Policy, please contact us:
           </p>
           <p className="text-stone-600 leading-relaxed mt-2">
-            <strong>By email:</strong> support@bilibala.app
+            <strong>By email:</strong> support@mybilibala.com
           </p>
         </section>
       </div>
