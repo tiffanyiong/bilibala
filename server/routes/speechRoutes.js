@@ -285,6 +285,12 @@ router.post('/analyze-speech', async (req, res) => {
          - **STORY:** Narrative events, personal experiences, or anecdotes.
          - **CRITICAL:** Statements starting with "I think", "I believe", "In my opinion" are ALWAYS opinions, NOT facts.
          - **CRITICAL:** Claims about what someone thinks/feels/prefers are OPINIONS, even if stated confidently.
+      6.5. **CRITIQUE IS MANDATORY FOR EVERY NODE:**
+         - **EVERY node** (both in arguments[] and sub_points[]) MUST have a non-empty "critique" field
+         - The critique should explain WHY this point is strong, weak, or could be improved
+         - Even strong points need critique (e.g., "Good specific example - this makes your argument convincing")
+         - For weak points, explain what's missing or how to strengthen it
+         - Write critique in ${level === 'Easy' ? nativeLang : targetLang} so the learner understands the feedback
       7. **USE SUB_POINTS TO SHOW ELABORATION:**
          - When user mentions a topic, then adds details about it → Main topic in arguments, details in sub_points
          - When user switches to new topic → New node in arguments array
@@ -557,7 +563,8 @@ router.post('/analyze-speech', async (req, res) => {
                     evidence: { type: Type.ARRAY, items: { type: Type.STRING } },
                     critique: { type: Type.STRING },
                     sequence_order: { type: Type.NUMBER }
-                }
+                },
+                required: ['point', 'status', 'type', 'evidence', 'sequence_order', 'critique']
             }
         }
     };
@@ -617,7 +624,7 @@ router.post('/analyze-speech', async (req, res) => {
                   items: {
                     type: Type.OBJECT,
                     properties: argumentSchemaProperties,
-                    required: ['point', 'status', 'type', 'evidence', 'sequence_order']
+                    required: ['point', 'status', 'type', 'evidence', 'sequence_order', 'critique']
                   }
                 }
               },
