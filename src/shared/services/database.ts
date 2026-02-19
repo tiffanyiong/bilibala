@@ -349,7 +349,8 @@ export async function savePracticeTopicsFromAnalysis(
   analysisId: string,
   discussionTopics: PracticeTopic[],
   targetLang: string,
-  difficultyLevel?: string
+  difficultyLevel?: string,
+  accessToken?: string
 ): Promise<PracticeTopic[]> {
   if (!discussionTopics || discussionTopics.length === 0) {
     return [];
@@ -385,7 +386,10 @@ export async function savePracticeTopicsFromAnalysis(
       const backendOrigin = getBackendOrigin();
       const response = await fetch(`${backendOrigin}/api/match-topics`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(accessToken && { 'Authorization': `Bearer ${accessToken}` }),
+        },
         body: JSON.stringify({
           newTopics: unmatched.map(t => t.topic),
           existingTopics: (existingTopics || []).map((t: any) => ({ id: t.id, topic: t.topic })),
