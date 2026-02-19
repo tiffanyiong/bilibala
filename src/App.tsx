@@ -53,6 +53,7 @@ import {
   checkAnonymousUsageLimit,
   getUsageDisplayInfo,
   recordAnonymousUsage,
+  trackPageVisit,
   UsageDisplayInfo
 } from './shared/services/usageTracking';
 import { AppState, PracticeTopic, TopicPoint, TopicQuestion, VideoData, VocabularyItem } from './shared/types';
@@ -136,6 +137,11 @@ const App: React.FC = () => {
   }, []);
 
   const { user, session, loading: authLoading } = useAuth();
+
+  // Track page visit for analytics (once per session)
+  useEffect(() => {
+    trackPageVisit(user?.id);
+  }, [user?.id]);
   const { canAddVideo, canUseAiTutor, canExportPdf, recordAction, tier, syncWithStripe, aiTutorRemainingMinutes, createCreditCheckout, subscription } = useSubscription();
 
   // Sync subscription with Stripe when returning from checkout (handles missed webhooks)
