@@ -158,7 +158,13 @@ npm run dev
 
 ---
 ### updated on Feb 10:
+If there's no webhook endpoint configured, that's the problem — Stripe generated the events but had nowhere to send them. You'd need to add one..
+
+
 You need to check in Stripe Dashboard → Developers → Webhooks → [your endpoint] — there should be a list of events it's listening for. Make sure all of these are enabled:
+
+- URL: 
+   https://<your-railway-domain>/api/subscriptions/webhook
 
 `checkout.session.completed`
 `customer.subscription.created`
