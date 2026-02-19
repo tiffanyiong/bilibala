@@ -1,7 +1,7 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode, useRef } from 'react';
 import { Session, User } from '@supabase/supabase-js';
-import { supabase } from '../services/supabaseClient';
+import React, { createContext, ReactNode, useContext, useEffect, useRef, useState } from 'react';
 import { getFingerprint } from '../services/fingerprint';
+import { supabase } from '../services/supabaseClient';
 
 interface UserProfile {
   name: string | null;
@@ -134,10 +134,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       const data = await response.json();
 
-      console.log('[Session] Registered:', { sessionId, deviceFingerprint, sessionLimit: data.sessionLimit });
-
       if (data.loggedOutCount && data.loggedOutCount > 0) {
-        console.log(`[Session] ${data.loggedOutCount} older session(s) were automatically logged out due to device limit (${data.sessionLimit})`);
+       //  console.log(`[Session] ${data.loggedOutCount} older session(s) were automatically logged out due to device limit (${data.sessionLimit})`);
       }
     } catch (error) {
       console.error('[Session] Failed to register session:', error);
@@ -164,17 +162,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       if (!data.valid) {
         console.log('[Session] Invalidated:', { sessionId, reason: data.reason });
-        // Auto-logout this device silently
+        // Auto-logout this device silently (no alert for any reason)
         await supabase.auth.signOut({ scope: 'local' });
+      } 
 
-        // Only show alert for deleted accounts, not for session limits
-        if (data.reason === 'user_deleted') {
-          alert('Your account has been deleted. You will now be logged out.');
-        }
-        // Session logout happens silently - no alert shown
-      } else {
-        console.log('[Session] Valid:', { sessionId });
-      }
     } catch (error) {
       console.error('[Session] Failed to check session validity:', error);
     }
@@ -196,7 +187,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }),
       });
 
-      console.log('[Session] Heartbeat sent:', { sessionId });
+    
     } catch (error) {
       console.error('[Session] Failed to send heartbeat:', error);
     }
@@ -219,14 +210,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       });
 
       if (response.ok) {
-        console.log('[Session] Removed:', { sessionId });
+        // console.log('[Session] Removed:', { sessionId });
       } else {
         // 401 is expected when token is already invalidated (e.g., kicked out by device limit)
         // In this case, the session was already removed from database by register_session()
         if (response.status === 401) {
-          console.log('[Session] Session already invalidated (expected on device limit logout):', { sessionId });
+         // console.log('[Session] Session already invalidated (expected on device limit logout):', { sessionId });
         } else {
-          console.warn('[Session] Failed to remove session:', response.status, { sessionId });
+         // console.warn('[Session] Failed to remove session:', response.status, { sessionId });
         }
       }
     } catch (error) {

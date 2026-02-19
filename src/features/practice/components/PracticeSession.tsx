@@ -108,7 +108,7 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
   videoId,
   onRequireAuth
 }) => {
-  const { user } = useAuth();
+  const { user, session } = useAuth();
   const { tier, recordAction, refreshUsage, subscription } = useSubscription();
   
   // Basic State
@@ -256,7 +256,10 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
       // Include referenceTranscript for retake mode (practicing improved version)
       const analysisPromise = fetch(`${getBackendOrigin()}/api/analyze-speech`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`,
+        },
         body: JSON.stringify({
           audioData,
           topic: topic.topic,

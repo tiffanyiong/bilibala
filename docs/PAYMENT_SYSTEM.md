@@ -307,7 +307,7 @@ STRIPE_TOPUP_PRICE_ID=price_...        # $3
 
 ## 48-Hour Money-Back Guarantee (Annual Plans Only)
 
-First-time Annual Plan subscribers can request a full refund within **48 hours** of purchase by emailing support@bilibala.app. This does not apply to Monthly subscriptions or renewal charges.
+First-time Annual Plan subscribers can request a full refund within **48 hours** of purchase by emailing support@mybilibala.com. This does not apply to Monthly subscriptions or renewal charges.
 
 ### How to Process a Refund in Stripe
 

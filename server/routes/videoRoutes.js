@@ -2,6 +2,7 @@ import { Type } from '@google/genai';
 import { Router } from 'express';
 import { config } from '../config/env.js';
 import { createAi } from '../services/geminiService.js';
+import { getUserFromToken } from '../services/supabaseAdmin.js';
 import { fetchVideoContext } from '../services/videoService.js';
 import { extractVideoId, safeJsonParse } from '../utils/helpers.js';
 
@@ -40,9 +41,11 @@ const PRO_MODEL = 'gemini-3-flash-preview';
  * POST /api/fetch-transcript
  * Fetches ONLY the transcript (fast, ~10-20s) - no AI analysis
  * Used for progressive loading: show transcript immediately while AI analysis runs in background
+ * ✅ ALLOWS ANONYMOUS (frontend enforces 2/month limit via browser fingerprint)
  */
 router.post('/fetch-transcript', async (req, res) => {
   try {
+    // No authentication required - anonymous users allowed (frontend enforces usage limits)
     const { videoUrl, targetLang } = req.body || {};
     const videoId = videoUrl ? extractVideoId(videoUrl) : null;
 
@@ -74,9 +77,11 @@ router.post('/fetch-transcript', async (req, res) => {
  * POST /api/analyze-video-content
  * Analyzes video content and generates learning materials
  * Now accepts optional preloaded transcript to avoid re-fetching
+ * ✅ ALLOWS ANONYMOUS (frontend enforces 2/month limit via browser fingerprint)
  */
 router.post('/analyze-video-content', async (req, res) => {
   try {
+    // No authentication required - anonymous users allowed (frontend enforces usage limits)
     if (!config.gemini.apiKey) return res.status(500).json({ error: 'Server missing GEMINI_API_KEY' });
     const { videoTitle, videoUrl, nativeLang, targetLang, level, preloadedTranscript } = req.body || {};
     const ai = createAi();
@@ -394,9 +399,17 @@ router.post('/analyze-video-content', async (req, res) => {
 /**
  * POST /api/search-videos
  * AI-powered semantic search for user's video library
+ * 🔒 REQUIRES AUTHENTICATION
  */
 router.post('/search-videos', async (req, res) => {
   try {
+    // Authentication check
+    const user = await getUserFromToken(req);
+    if (!user) {
+      console.error('[search-videos] Unauthorized access attempt');
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
     if (!config.gemini.apiKey) return res.status(500).json({ error: 'Server missing GEMINI_API_KEY' });
 
     const { query, videos } = req.body || {};
@@ -498,9 +511,11 @@ router.post('/search-videos', async (req, res) => {
  * POST /api/match-topics
  * AI-powered semantic matching of new topics against existing canonical topics.
  * Used during video analysis to deduplicate similar topics (e.g., "jobs" ≈ "work & career").
+ * ✅ ALLOWS ANONYMOUS (called automatically after analyze-video-content)
  */
 router.post('/match-topics', async (req, res) => {
   try {
+    // No authentication required - called as part of video analysis flow
     const { newTopics, existingTopics, targetLang } = req.body || {};
 
     if (!newTopics || !Array.isArray(newTopics)) {
@@ -598,9 +613,12 @@ router.post('/match-topics', async (req, res) => {
  * POST /api/generate-question
  * AI-generates a new practice question for a given topic based on video content + user level.
  * Limited to 3 AI-generated questions per topic (enforced by frontend).
+ * ✅ ALLOWS ANONYMOUS (users who analyzed videos can generate questions)
  */
 router.post('/generate-question', async (req, res) => {
   try {
+    // No authentication required - anonymous users with analyzed videos can use this
+    // Frontend limits to 3 AI-generated questions per topic
     if (!config.gemini.apiKey) return res.status(500).json({ error: 'Server missing GEMINI_API_KEY' });
 
     const { topicName, targetLang, nativeLang, level, videoSummary, existingQuestions } = req.body || {};
