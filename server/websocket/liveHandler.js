@@ -247,7 +247,20 @@ export function setupLiveWebSocket(wss) {
               responseModalities: [Modality.AUDIO],
               inputAudioTranscription: {},
               outputAudioTranscription: {},
-              speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
+              speechConfig: {
+                voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } }
+              },
+              // Configure VAD to prevent premature turn completion in Chinese
+              // Use LOW end-of-speech sensitivity so the AI completes full sentences
+              realtimeInputConfig: {
+                automaticActivityDetection: {
+                  endOfSpeechSensitivity: 'END_SENSITIVITY_LOW',
+                  startOfSpeechSensitivity: 'START_SENSITIVITY_HIGH',
+                  // Longer silence before considering speech ended (helps with Chinese pauses)
+                  silenceDurationMs: 1500, // 1.5 seconds - balanced for natural conversation
+                  prefixPaddingMs: 300, // Add padding at start to catch full utterance
+                }
+              },
               systemInstruction,
             },
             callbacks: {
@@ -288,10 +301,16 @@ export function setupLiveWebSocket(wss) {
           // Warning timer
           const warningDelay = (effectiveMaxSeconds - warningBeforeEnd) * 1000;
           if (warningDelay > 0) {
+            // Normal case: warn 60s before limit
             warningTimer = setTimeout(() => {
               send({ type: 'time_warning', secondsLeft: warningBeforeEnd });
               console.log(`[server] Sent time_warning: ${warningBeforeEnd}s remaining`);
             }, warningDelay);
+          } else if (effectiveMaxSeconds > 10) {
+            // Low credits case: if remaining time < 60s but > 10s, warn immediately
+            const actualSecondsLeft = effectiveMaxSeconds;
+            send({ type: 'time_warning', secondsLeft: actualSecondsLeft });
+            console.log(`[server] Low credits: sent immediate warning with ${actualSecondsLeft}s remaining`);
           }
 
           // Limit timer — forcefully end session

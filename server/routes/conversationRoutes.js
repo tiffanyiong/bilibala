@@ -1,17 +1,27 @@
-import { Router } from 'express';
 import { Type } from '@google/genai';
-import { createAi } from '../services/geminiService.js';
-import { safeJsonParse } from '../utils/helpers.js';
+import { Router } from 'express';
 import { config } from '../config/env.js';
+import { createAi } from '../services/geminiService.js';
+import { getUserFromToken } from '../services/supabaseAdmin.js';
+import { safeJsonParse } from '../utils/helpers.js';
 
 const router = Router();
 
 /**
  * POST /api/conversation-hints
  * Generates conversation hints for the user
+ * 🔒 REQUIRES AUTHENTICATION
  */
 router.post('/conversation-hints', async (req, res) => {
   try {
+    // Authentication check
+    const user = await getUserFromToken(req);
+    if (!user) {
+      console.error('[Conversation Hints] Unauthorized access attempt');
+      return res.status(401).json({ error: 'Unauthorized' });
+
+    }
+
     if (!config.gemini.apiKey) return res.status(500).json({ error: 'Server missing GEMINI_API_KEY' });
     const { lastAiQuestion, targetLang, level } = req.body || {};
     if (!lastAiQuestion) return res.json({ hints: [] });
