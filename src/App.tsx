@@ -46,8 +46,8 @@ import {
   updateLibraryAccess,
   updateVideoCategory,
 } from './shared/services/database';
-import { getDailyPracticeUsage } from './shared/services/subscriptionDatabase';
 import { analyzeVideoContent, fetchTranscript } from './shared/services/geminiService';
+import { getDailyPracticeUsage } from './shared/services/subscriptionDatabase';
 import {
   checkAnonymousPracticeLimit,
   checkAnonymousUsageLimit,
@@ -548,6 +548,7 @@ const App: React.FC = () => {
               setTopics(p.topics || []);
               setVocabulary(p.vocabulary || []);
               setTranscript(p.transcript || []);
+              setTranscriptLangMismatch(p.transcriptLangMismatch || false);
               setDiscussionTopics(p.discussionTopics || []);
               setSelectedTopics(p.selectedTopics || []);
               setCurrentAnalysisId(p.currentAnalysisId || null);
@@ -735,13 +736,13 @@ const App: React.FC = () => {
     if (videoData) {
         localStorage.setItem(STORAGE_KEY, JSON.stringify({
             videoUrl, nativeLang, targetLang, level, videoData,
-            summary, translatedSummary, topics, vocabulary, transcript, discussionTopics, selectedTopics,
+            summary, translatedSummary, topics, vocabulary, transcript, transcriptLangMismatch, discussionTopics, selectedTopics,
             currentAnalysisId, libraryEntry
         }));
     } else {
         localStorage.removeItem(STORAGE_KEY);
     }
-  }, [videoData, videoUrl, nativeLang, targetLang, level, summary, translatedSummary, topics, vocabulary, transcript, discussionTopics, selectedTopics, currentAnalysisId, libraryEntry]);
+  }, [videoData, videoUrl, nativeLang, targetLang, level, summary, translatedSummary, topics, vocabulary, transcript, transcriptLangMismatch, discussionTopics, selectedTopics, currentAnalysisId, libraryEntry]);
 
   const playerRef = useRef<VideoPlayerRef>(null);
 
@@ -782,7 +783,6 @@ const App: React.FC = () => {
       // Pro users have unlimited practice, so no check needed
     }
 
-    console.log('[App] handleStartPractice called. currentAnalysisId:', currentAnalysisId, 'topic:', topic.topic, 'question:', question.question);
 
     // Get all selected topic objects
     const allTopics = discussionTopics.filter(t => selectedTopics.includes(t.topic));
@@ -1226,11 +1226,10 @@ const App: React.FC = () => {
         .catch(err => {
             // Analysis failed (transcript or AI analysis error)
             console.error("❌ Analysis failed:", err);
-            clearTimeout(messageTimerId);
+            clearTimeout(messageTimer1);
+            clearTimeout(messageTimer2);
             setErrorMsg(err.message || "Failed to analyze video. Please try again.");
             setAppState(AppState.LANDING);
-        })
-        .finally(() => {
             setIsAnalysisLoading(false);
         });
 
@@ -1304,23 +1303,27 @@ const App: React.FC = () => {
 
         // Fetch practice topics with database IDs and merge with discussion topics
         const dbTopics = await getPracticeTopicsForAnalysis(video.analysisId);
-        if (dbTopics.length > 0) {
-        // Use the database topics as the primary source for the UI
-        const topicsForUI: PracticeTopic[] = dbTopics.map(dt => ({
-          topic: dt.topic,
-          topicId: dt.id,
-          question: dt.question,
-          questionId: dt.questionId,
-          // Add these required properties with default values
-          targetWords: [], 
-          description: '',
-        }));
-        
-        setDiscussionTopics(topicsForUI);
-      } else {
-        // Fallback to what was in the analysis JSON if DB is empty
-        setDiscussionTopics(analysis.discussionTopics || []);
-      }
+        if (dbTopics.length > 0 && analysis.discussionTopics) {
+          // Match by QUESTION text (not topic name) since canonical topics may have different names
+          // e.g., analysis has "Dealing with Setbacks" but DB has canonical "Overcoming Obstacles"
+          const topicsForUI: PracticeTopic[] = analysis.discussionTopics.map(topic => {
+            // Find matching DB topic by question text (most reliable)
+            const dbTopic = dbTopics.find(dt => dt.question === topic.question);
+            if (dbTopic) {
+              return {
+                ...topic, // Keep original topic name and all properties from analysis
+                topicId: dbTopic.id,
+                questionId: dbTopic.questionId,
+              };
+            }
+            return topic;
+          });
+
+          setDiscussionTopics(topicsForUI);
+        } else {
+          // Fallback to what was in the analysis JSON if DB is empty
+          setDiscussionTopics(analysis.discussionTopics || []);
+        }
       // Clear selected topics to prevent stale selection
       setSelectedTopics([]);
 
