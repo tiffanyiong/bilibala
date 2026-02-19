@@ -194,6 +194,84 @@ export async function recordAnonymousPractice(): Promise<void> {
 }
 
 /**
+ * Track page visit (landing page) - called once per session
+ * Uses sessionStorage to prevent duplicate tracking during same session
+ */
+export async function trackPageVisit(userId?: string): Promise<void> {
+  // Check if already tracked this session
+  const sessionTracked = sessionStorage.getItem('page_visit_tracked');
+  if (sessionTracked) {
+    console.log('[Analytics] Page visit already tracked this session');
+    return;
+  }
+
+  try {
+    const fingerprint = await getFingerprint();
+    const now = new Date().toISOString();
+
+    // Check if fingerprint exists in DB
+    const { data: existing, error: fetchError } = await supabase
+      .from('browser_fingerprints')
+      .select('id, page_visit_count, user_id')
+      .eq('fingerprint_hash', fingerprint)
+      .single();
+
+    if (fetchError && fetchError.code !== 'PGRST116') {
+      console.error('[Analytics] Error fetching fingerprint:', fetchError);
+      return;
+    }
+
+    if (existing) {
+      // Update existing fingerprint
+      const updateData: any = {
+        page_visit_count: (existing.page_visit_count || 0) + 1,
+        last_page_visit_at: now,
+        last_seen_at: now
+      };
+
+      // Link to user if signed in and not already linked
+      if (userId && !existing.user_id) {
+        updateData.user_id = userId;
+      }
+
+      const { error } = await supabase
+        .from('browser_fingerprints')
+        .update(updateData)
+        .eq('id', existing.id);
+
+      if (error) {
+        console.error('[Analytics] Error updating page visit:', error);
+      }
+    } else {
+      // New visitor - insert fingerprint
+      const { error } = await supabase
+        .from('browser_fingerprints')
+        .insert({
+          fingerprint_hash: fingerprint,
+          user_id: userId || null,
+          page_visit_count: 1,
+          first_page_visit_at: now,
+          last_page_visit_at: now,
+          first_seen_at: now,
+          last_seen_at: now,
+          monthly_usage_count: 0,
+          usage_reset_month: getCurrentMonth()
+        });
+
+      if (error) {
+        console.error('[Analytics] Error inserting page visit:', error);
+      }
+    }
+
+    // Mark as tracked for this session
+    sessionStorage.setItem('page_visit_tracked', 'true');
+    console.log('[Analytics] Page visit tracked successfully');
+  } catch (error) {
+    console.error('[Analytics] Error tracking page visit:', error);
+  }
+}
+
+/**
  * Get usage info formatted for UI display
  */
 export async function getUsageDisplayInfo(): Promise<UsageDisplayInfo> {
