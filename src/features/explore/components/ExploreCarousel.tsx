@@ -9,6 +9,7 @@ interface ExploreCarouselProps {
 }
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const EXPLORE_VIDEOS_LIMIT = 21;
 
 const ExploreCarousel: React.FC<ExploreCarouselProps> = ({
   targetLang,
@@ -32,7 +33,7 @@ const ExploreCarousel: React.FC<ExploreCarouselProps> = ({
         const params = new URLSearchParams({
           targetLang,
           level,
-          limit: '20',
+          limit: String(EXPLORE_VIDEOS_LIMIT),
         });
 
         const response = await fetch(`${API_BASE}/api/explore?${params}`);
