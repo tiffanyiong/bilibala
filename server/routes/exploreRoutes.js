@@ -36,11 +36,11 @@ router.get('/explore', async (req, res) => {
     }
 
     // Parse and validate limit
-    let limit = 8;
+    let limit = 20;
     if (limitParam) {
       limit = parseInt(limitParam, 10);
-      if (isNaN(limit) || limit < 1) limit = 8;
-      if (limit > 20) limit = 20;
+      if (isNaN(limit) || limit < 1) limit = 20;
+      if (limit > 30) limit = 30;
     }
 
     const result = await getExploreVideos(targetLang, level, limit);
