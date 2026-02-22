@@ -117,7 +117,7 @@ export async function checkAnonymousPracticeLimit(): Promise<UsageStatus> {
 
   const { data, error } = await supabase
     .from('browser_fingerprints')
-    .select('practice_session_count, practice_reset_month')
+    .select('monthly_usage_count, usage_reset_month')
     .eq('fingerprint_hash', fingerprint)
     .single();
 
@@ -127,8 +127,8 @@ export async function checkAnonymousPracticeLimit(): Promise<UsageStatus> {
 
   let used = 0;
   if (data) {
-    if (data.practice_reset_month === currentMonth) {
-      used = data.practice_session_count || 0;
+    if (data.usage_reset_month === currentMonth) {
+      used = data.monthly_usage_count || 0;
     }
   }
 
@@ -149,7 +149,7 @@ export async function recordAnonymousPractice(): Promise<void> {
 
   const { data: existing, error: fetchError } = await supabase
     .from('browser_fingerprints')
-    .select('id, practice_session_count, practice_reset_month')
+    .select('id, monthly_usage_count, usage_reset_month')
     .eq('fingerprint_hash', fingerprint)
     .single();
 
@@ -159,15 +159,15 @@ export async function recordAnonymousPractice(): Promise<void> {
 
   if (existing) {
     let newCount = 1;
-    if (existing.practice_reset_month === currentMonth) {
-      newCount = (existing.practice_session_count || 0) + 1;
+    if (existing.usage_reset_month === currentMonth) {
+      newCount = (existing.monthly_usage_count || 0) + 1;
     }
 
     const { error } = await supabase
       .from('browser_fingerprints')
       .update({
-        practice_session_count: newCount,
-        practice_reset_month: currentMonth,
+        monthly_usage_count: newCount,
+        usage_reset_month: currentMonth,
         last_seen_at: new Date().toISOString()
       })
       .eq('id', existing.id);
@@ -180,9 +180,7 @@ export async function recordAnonymousPractice(): Promise<void> {
       .from('browser_fingerprints')
       .insert({
         fingerprint_hash: fingerprint,
-        practice_session_count: 1,
-        practice_reset_month: currentMonth,
-        monthly_usage_count: 0,
+        monthly_usage_count: 1,
         usage_reset_month: currentMonth,
         last_seen_at: new Date().toISOString()
       });
