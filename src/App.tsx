@@ -59,6 +59,9 @@ import {
 import { AppState, PracticeTopic, TopicPoint, TopicQuestion, VideoData, VocabularyItem } from './shared/types';
 import { ExploreVideo, TIER_LIMITS, VideoHistoryItem } from './shared/types/database';
 
+// Explore videos configuration
+const EXPLORE_VIDEOS_LIMIT = 21;
+
 // Mobile-only translator selector component
 const MobileTranslatorSelector: React.FC<{
   translatorLang: string;
@@ -260,7 +263,7 @@ const App: React.FC = () => {
     if (appState !== AppState.LANDING) return;
     const fetchVideos = async () => {
       try {
-        const params = new URLSearchParams({ targetLang, level, limit: '8' });
+        const params = new URLSearchParams({ targetLang, level, limit: String(EXPLORE_VIDEOS_LIMIT) });
         const response = await fetch(`${getBackendOrigin()}/api/explore?${params}`);
         if (response.ok) {
           const data = await response.json();
