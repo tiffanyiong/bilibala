@@ -32,7 +32,7 @@ const ExploreCarousel: React.FC<ExploreCarouselProps> = ({
         const params = new URLSearchParams({
           targetLang,
           level,
-          limit: '30',
+          limit: '20',
         });
 
         const response = await fetch(`${API_BASE}/api/explore?${params}`);
