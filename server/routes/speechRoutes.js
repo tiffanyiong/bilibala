@@ -272,7 +272,13 @@ router.post('/analyze-speech', async (req, res) => {
          - Second sentence = sequence_order: 1
          - Third sentence = sequence_order: 2, and so on
          - This is CRITICAL for showing the user's actual chaotic thinking flow
-      4. **NO HALLUCINATION:** ONLY use sentences that the user ACTUALLY SAID. Each node must be traceable back to specific words in the transcription.
+      4. **NO HALLUCINATION - CRITICAL:**
+         - ONLY use sentences that the user ACTUALLY SAID. Each node must be traceable back to specific words in the transcription.
+         - DO NOT interpret, infer, or add meaning that the user didn't explicitly state.
+         - DO NOT create descriptive labels like "Mentioning recording attempts" - use ONLY the user's exact words.
+         - If user says "Today is my birthday" → structure.arguments[].point = "Today is my birthday" (EXACT WORDS)
+         - DO NOT convert it to YOUR interpretations e.g. "your birthday is on July 8, 1900", these are not THEIR words.
+         - Even if the user's speech seems irrelevant or meta (talking about the recording process), you MUST still use their EXACT words, not your interpretation of what they meant.
       5. **STRUCTURE GUIDELINES:**
          - Group related ideas using parent-child (arguments + sub_points)
          - Use sequence_order to preserve the actual speaking order
