@@ -32,6 +32,10 @@ import { startStripeCleanup } from './services/stripeCleanup.js';
 // Create Express app
 const app = express();
 
+// Trust proxy headers (Railway, Cloudflare, etc.)
+// This allows req.ip to correctly read client IP from x-forwarded-for
+app.set('trust proxy', true);
+
 // Stripe webhook needs raw body - must be before express.json()
 app.use('/api/subscriptions/webhook', express.raw({ type: 'application/json' }));
 
