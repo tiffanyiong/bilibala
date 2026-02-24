@@ -403,7 +403,12 @@ router.post('/analyze-speech', async (req, res) => {
       ${isIELTS ? `
       **IELTS SPEAKING BREAKDOWN (REQUIRED for English):**
       You are also an expert IELTS Speaking Examiner. You MUST provide a "breakdown" object inside the "feedback" field.
-      
+
+      **EDGE CASE HANDLING (Check First):**
+      1. **Silent/Empty Audio:** If transcription is empty or contains only "[inaudible]" → All scores = 0, band_score = 0.0, band_descriptor = "No Response"
+      2. **Wrong Language:** If user speaks in a language other than English → All scores = 1.0, band_score = 1.0, band_descriptor = "Did Not Respond in English"
+      3. **Extremely Short Response:** If transcription is under 10 words → Cap all scores at maximum Band 3.0 (insufficient content)
+
       **ADAPTIVE SCORING CRITERIA:**
       You must first analyze the **Question Complexity**:
       1. **Level 1 (Basic):** Daily life, personal preferences. (Target: Accuracy & Fluency).
@@ -413,14 +418,44 @@ router.post('/analyze-speech', async (req, res) => {
       Then,
       Evaluate the response on the official IELTS band scale (0-9, in 0.5 increments) for each of these 4 equally weighted categories:
 
-      1. **Fluency & Coherence (fluency_coherence):** Ability to speak without long pauses, logical flow, and use of cohesive devices like "however" or "consequently".
-      2. **Lexical Resource (lexical_resource):** Range and precision of vocabulary. Look for idiomatic expressions and less common words for higher scores.
-      3. **Grammatical Range & Accuracy (grammatical_range):** Use of complex structures (conditionals, relative clauses) and the number of errors.
-      4. **Pronunciation (pronunciation):** Clarity of speech, use of intonation, and correct word stress.
+      1. **Fluency & Coherence (fluency_coherence):**
+         - Evaluate speech continuity (minimal hesitation/repetition) AND logical sequencing of ideas
+         - Band 7+: Speaks at length with few hesitations; develops topics coherently and appropriately
+         - Band 6: Willing to speak at length but loses coherence at times due to repetition or self-correction
+         - Band 5: Usually maintains flow but uses repetition and/or self-correction; over-relies on basic linking words; may jump between ideas
+         - Band 4: Cannot respond without noticeable pauses; speech is fragmented; gives simple responses with frequent repetition
+         - **RED FLAG:** If answer wanders off-topic or jumps between unrelated ideas (A→B→A→C pattern) without clear transitions, coherence must be capped at Band 5 maximum regardless of fluency
+      2. **Lexical Resource (lexical_resource):**
+         - Band 7+: Uses vocabulary flexibly to convey precise meanings; uses less common and idiomatic vocabulary; shows awareness of style and collocation
+         - Band 6: Has sufficient vocabulary to discuss topics at length; makes mistakes in word choice but meaning is clear
+         - Band 5: Manages to talk about familiar topics but uses basic vocabulary for unfamiliar ones; attempts paraphrasing but not always successfully
+         - Band 4: Limited vocabulary; often repeats same words ("very good", "I think", "because"); cannot discuss unfamiliar topics
+         - Band 3: Uses isolated words or very short formulaic phrases; extreme repetition; meaning often unclear
+         - Band 0-2: Essentially no communication possible; only a few isolated words
+         - **Special Case:** If user speaks in wrong language (not English), cap at Band 1 and note "Did not respond in English"
 
-      **Scoring Penalty Rule:**
-      - If the user provides "Level 1" vocabulary (e.g., "good," "happy," "a lot") for a "Level 3" question, **Lexical Resource** must be capped at 5.5, even if they are perfectly fluent.
-      - For "Level 3" questions, higher scores (7.0+) REQUIRE speculative language ("I would argue," "It is highly probable") and complex connectors.
+      3. **Grammatical Range & Accuracy (grammatical_range):**
+         - Band 7+: Uses complex structures with flexibility; frequent error-free sentences; makes occasional errors in complex structures
+         - Band 6: Uses mix of simple and complex structures; makes errors but they rarely reduce communication
+         - Band 5: Produces basic sentence forms and some complex structures; errors are frequent but message usually clear
+         - Band 4: Uses mostly short simple sentences; frequent errors; limits meaning or requires listener effort
+         - Band 3: Attempts basic sentences but errors dominant; meaning seriously impaired; relies heavily on short memorized phrases
+         - Band 0-2: Cannot produce basic sentence forms; only isolated words
+         - **Special Case:** If audio is silent/empty/unintelligible, assign Band 0 (no response)
+
+      4. **Pronunciation (pronunciation):**
+         - Band 7+: Easy to understand throughout; L1 accent has minimal effect on intelligibility; uses features of natural connected speech
+         - Band 6: Generally clear and intelligible despite L1 accent; uses a range of pronunciation features with mixed control
+         - Band 5: Usually intelligible despite mispronunciations; tends to speak in word-by-word manner
+         - Band 4: Mispronunciations frequent; requires listener effort; often speaks too quietly or with unusual intonation
+         - Band 3: Very difficult to understand; severe mispronunciations; long pauses between words
+         - Band 0-2: Speech so unclear that understanding is virtually impossible
+         - **Special Case:** If speaking wrong language, pronunciation score is N/A (assign Band 1)
+
+      **Scoring Penalty Rules:**
+      - **Vocabulary Mismatch:** If the user provides "Level 1" vocabulary (e.g., "good," "happy," "a lot") for a "Level 3" question, **Lexical Resource** must be capped at 5.5, even if they are perfectly fluent.
+      - **Abstract Questions:** For "Level 3" questions, higher scores (7.0+) REQUIRE speculative language ("I would argue," "It is highly probable") and complex connectors.
+      - **Coherence Penalty:** If answer jumps between unrelated topics without transitions (e.g., English → cooking → supermarket → Tesla), **Fluency & Coherence** must be capped at Band 5.0 maximum, regardless of speaking speed.
       
       **IELTS Band Reference:**
       - Band 9 (Expert): Fluent, accurate, idiomatic, full range of complex grammar, rare errors.
@@ -435,7 +470,13 @@ router.post('/analyze-speech', async (req, res) => {
       **Calculate band_score** as the average of the 4 sub-scores, rounded to nearest 0.5.
       **CONSISTENCY RULE:** Band 7+ = Score 75+, Band 6 = ~65-74, Band 5 = ~55-64, Band 4 = ~45-54, Below 4 = below 45.   
 
-      **CRITICAL: Each sub-score MUST be evaluated INDEPENDENTLY.** Do NOT give the same band score to all 4 categories — that is unrealistic. A speaker's fluency, vocabulary, grammar, and pronunciation are almost never at the same level. For example, a learner might have Band 7.0 fluency but Band 5.5 grammar. Differentiate based on what you actually hear.
+      **CRITICAL EVALUATION RULES:**
+      1. **Independent Scoring:** Each sub-score MUST be evaluated INDEPENDENTLY. Do NOT give the same band score to all 4 categories — that is unrealistic. A speaker's fluency, vocabulary, grammar, and pronunciation are almost never at the same level. For example, a learner might have Band 7.0 fluency but Band 5.5 grammar.
+      2. **Coherence Analysis:** Before scoring Fluency & Coherence, explicitly trace the logical flow of ideas:
+         - Does the answer stay on-topic throughout?
+         - Are ideas connected with appropriate transitions?
+         - Is there a clear beginning-middle-end structure, or does it jump randomly?
+         - Example of POOR coherence: "I practice English (A) every day because I want to be better. I use my phone to see some videos and news. But, um... I really like cooking (B) too. My husband says my fried rice is very good. I bought the rice from a supermarket in San Jose..." [This jumps A→B without connection = Band 4-5 max]
 
       Output format for feedback.breakdown:
       { "framework": "ielts", "band_score": 6.5, "fluency_coherence": 7.0, "lexical_resource": 6.0, "grammatical_range": 5.5, "pronunciation": 7.5, "band_descriptor": "Competent User" }
