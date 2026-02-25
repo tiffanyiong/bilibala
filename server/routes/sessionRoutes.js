@@ -18,7 +18,6 @@ router.post('/sessions/register', async (req, res) => {
       sessionId,
       deviceFingerprint,
       userAgent,
-      ipAddress,
       deviceInfo,
       expiresAt,
     } = req.body;
@@ -27,13 +26,21 @@ router.post('/sessions/register', async (req, res) => {
       return res.status(400).json({ error: 'Missing required fields: sessionId, deviceFingerprint' });
     }
 
+    // Extract IP address from request (server-side only)
+    // Check for proxy headers first (Railway, Cloudflare, etc.)
+    const ipAddress = req.headers['x-forwarded-for']?.split(',')[0].trim()
+                   || req.headers['x-real-ip']
+                   || req.socket.remoteAddress
+                   || req.ip
+                   || null;
+
     // Call database function to register session
     const { data, error } = await supabaseAdmin.rpc('register_session', {
       p_user_id: user.id,
       p_session_id: sessionId,
       p_device_fingerprint: deviceFingerprint,
       p_user_agent: userAgent || null,
-      p_ip_address: ipAddress || null,
+      p_ip_address: ipAddress,
       p_device_info: deviceInfo || {},
       p_expires_at: expiresAt || null,
     });

@@ -263,7 +263,7 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
     }
 
     if (actionType === 'practice_session') {
-      // Free tier: Check daily limit (2/day), Pro tier: unlimited
+      // Free tier: Check daily limit (5/day), Pro tier: unlimited
       if (tier === 'free') {
         const dailyRemaining = limits.practiceSessionsPerDay - usage.practiceSessionsDailyUsed;
         if (dailyRemaining > 0) {
@@ -361,7 +361,7 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
 
   // Computed permissions (now credit-aware)
   const canAddVideo = usage.videosUsed < limits.videosPerMonth || videoCredits > 0;
-  // Free users: check daily limit (2/day), can use credits if daily exhausted; Pro users: unlimited
+  // Free users: check daily limit (5/day), can use credits if daily exhausted; Pro users: unlimited
   const canStartPractice = tier === 'free'
     ? (usage.practiceSessionsDailyUsed < limits.practiceSessionsPerDay || practiceSessionCredits > 0)
     : true; // Pro has unlimited
