@@ -165,18 +165,47 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
           </svg>
         </button>
 
-        {/* Header */}
-        <div className="text-center mb-6">
-          <h2 className="text-2xl font-serif text-stone-900">
-            {view === 'sign_in' && 'Bililala'}
-            {view === 'sign_up' && 'Create account'}
-            {view === 'forgot_password' && 'Reset password'}
-          </h2>
-          <p className="text-stone-500 text-sm mt-1">
-            {view === 'sign_in' && 'Sign in to continue your learning journey'}
-            {view === 'sign_up' && 'Start your learning journey today'}
-            {view === 'forgot_password' && 'Enter your email to reset your password'}
-          </p>
+        {/* Header with Tabs */}
+        <div className="mb-6">
+          {view !== 'forgot_password' ? (
+            <div className="text-center">
+              <h2 className="text-2xl font-serif text-stone-900 mb-3">Bililala</h2>
+
+              {/* Compact Tab Navigation */}
+              <div className="inline-flex bg-stone-100 rounded-lg p-1 mb-3">
+                <button
+                  onClick={() => setView('sign_in')}
+                  className={`px-6 py-1.5 text-sm font-medium rounded-md transition-all ${
+                    view === 'sign_in'
+                      ? 'bg-white text-stone-900 shadow-sm'
+                      : 'text-stone-500 hover:text-stone-700'
+                  }`}
+                >
+                  Sign In
+                </button>
+                <button
+                  onClick={() => setView('sign_up')}
+                  className={`px-6 py-1.5 text-sm font-medium rounded-md transition-all ${
+                    view === 'sign_up'
+                      ? 'bg-white text-stone-900 shadow-sm'
+                      : 'text-stone-500 hover:text-stone-700'
+                  }`}
+                >
+                  Sign Up
+                </button>
+              </div>
+
+              <p className="text-stone-500 text-sm">
+                {view === 'sign_in' && 'Sign in to continue your learning journey'}
+                {view === 'sign_up' && 'Start your learning journey today'}
+              </p>
+            </div>
+          ) : (
+            <div className="text-center">
+              <h2 className="text-2xl font-serif text-stone-900">Reset password</h2>
+              <p className="text-stone-500 text-sm mt-1">Enter your email to reset your password</p>
+            </div>
+          )}
         </div>
 
         {/* Message */}
@@ -233,20 +262,37 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                   className={inputClasses}
                 />
               </div>
+
+              {/* Terms and Privacy Notice */}
+              <p className="text-stone-500 text-xs text-center">
+                By signing in, you agree to our{' '}
+                <a
+                  href="https://mybilibala.com/terms"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-stone-700 hover:underline"
+                >
+                  Terms of Service
+                </a>
+                {' '}and{' '}
+                <a
+                  href="https://mybilibala.com/privacy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-stone-700 hover:underline"
+                >
+                  Privacy Policy
+                </a>
+              </p>
+
               <button type="submit" disabled={loading || !email || password.length < 8} className={buttonClasses}>
                 {loading ? 'Signing in...' : 'Sign in'}
               </button>
             </form>
 
-            <div className="mt-4 flex flex-col items-center gap-2">
+            <div className="mt-4 text-center">
               <span className={linkClasses} onClick={() => setView('forgot_password')}>
                 Forgot your password?
-              </span>
-              <span className="text-stone-500 text-sm">
-                Don't have an account?{' '}
-                <span className="text-stone-800 hover:underline cursor-pointer" onClick={() => setView('sign_up')}>
-                  Sign up
-                </span>
               </span>
             </div>
           </>
@@ -333,15 +379,6 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                 {loading ? 'Creating account...' : 'Sign up'}
               </button>
             </form>
-
-            <div className="mt-4 text-center">
-              <span className="text-stone-500 text-sm">
-                Already have an account?{' '}
-                <span className="text-stone-800 hover:underline cursor-pointer" onClick={() => setView('sign_in')}>
-                  Sign in
-                </span>
-              </span>
-            </div>
           </>
         )}
 
