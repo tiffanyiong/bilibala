@@ -8,6 +8,39 @@ interface ReportsOverviewProps {
   activeLanguage?: string | null;
 }
 
+interface LanguageSwitcherProps {
+  languages: string[];
+  selectedLanguage: string;
+  onLanguageChange: (lang: string) => void;
+  disabled?: boolean;
+}
+
+const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({ languages, selectedLanguage, onLanguageChange, disabled = false }) => {
+  if (languages.length <= 1) return null;
+
+  return (
+    <div className="flex items-center gap-2 mb-4 overflow-x-auto scrollbar-hide">
+      <span className="text-xs font-medium text-stone-500 flex-shrink-0">Language:</span>
+      <div className="flex gap-1.5">
+        {languages.map((lang) => (
+          <button
+            key={lang}
+            onClick={() => !disabled && onLanguageChange(lang)}
+            disabled={disabled}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all flex-shrink-0 ${
+              selectedLanguage === lang
+                ? 'bg-stone-800 text-white shadow-sm'
+                : 'bg-white/70 text-stone-600 hover:bg-white hover:text-stone-800 border border-stone-200'
+            } ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+          >
+            {lang}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 function formatDuration(totalSeconds: number): string {
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
@@ -16,13 +49,43 @@ function formatDuration(totalSeconds: number): string {
 }
 
 const ReportsOverview: React.FC<ReportsOverviewProps> = ({ sessions, activeLanguage }) => {
-  // Filter sessions by active language for stats
-  const filtered = useMemo(() => {
-    if (!activeLanguage) return sessions;
-    return sessions.filter((s) => s.target_lang === activeLanguage);
-  }, [sessions, activeLanguage]);
+  // When "All" is active and user has multiple languages, allow them to switch
+  const [overviewLanguage, setOverviewLanguage] = React.useState<string | null>(null);
 
-  const framework = activeLanguage ? getScoringFramework(activeLanguage) : null;
+  // Determine available languages
+  const availableLanguages = useMemo(() => {
+    const langSet = new Set<string>();
+    for (const s of sessions) {
+      if (s.target_lang) langSet.add(s.target_lang);
+    }
+    return Array.from(langSet).sort();
+  }, [sessions]);
+
+  // When activeLanguage is null (All filter), find most recently used language
+  const mostRecentLanguage = useMemo(() => {
+    if (!sessions.length) return null;
+    // Sort by created_at descending, find first session with a target_lang
+    const sorted = [...sessions].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    return sorted.find((s) => s.target_lang)?.target_lang || null;
+  }, [sessions]);
+
+  // Reset overviewLanguage when activeLanguage changes
+  React.useEffect(() => {
+    if (activeLanguage) {
+      setOverviewLanguage(null); // Reset when a specific language is selected
+    }
+  }, [activeLanguage]);
+
+  // Determine which language to use for stats
+  const statsLanguage = activeLanguage || overviewLanguage || mostRecentLanguage;
+
+  // Filter sessions by stats language for overview calculations
+  const filtered = useMemo(() => {
+    if (!statsLanguage) return sessions;
+    return sessions.filter((s) => s.target_lang === statsLanguage);
+  }, [sessions, statsLanguage]);
+
+  const framework = statsLanguage ? getScoringFramework(statsLanguage) : null;
 
   const stats = useMemo(() => {
     if (filtered.length === 0) return null;
@@ -52,22 +115,26 @@ const ReportsOverview: React.FC<ReportsOverviewProps> = ({ sessions, activeLangu
       return sum;
     }, 0);
 
-    // Strongest topic — also use framework-native scores
+    // Strongest topic — group by topic and accumulate GENERIC scores
     const topicScores = new Map<string, { total: number; count: number }>();
     for (const s of scoredSessions) {
       const topic = s.topic_text || 'General';
       const entry = topicScores.get(topic) || { total: 0, count: 0 };
-      const score = framework ? framework.fromGenericScore(s.score || 0) : (s.score || 0);
-      entry.total += score;
+      entry.total += (s.score || 0); // Keep generic score
       entry.count += 1;
       topicScores.set(topic, entry);
     }
     let strongestTopic = '-';
     let highestAvg = 0;
     for (const [topic, { total, count }] of topicScores) {
-      const avg = total / count;
-      if (avg > highestAvg) {
-        highestAvg = avg;
+      // Calculate average in generic scale first, then convert to framework scale
+      // This matches ReportsVideoGroup.tsx logic (lines 83-87)
+      const genericAvg = total / count;
+      const frameworkAvg = framework
+        ? Math.round(framework.fromGenericScore(genericAvg) * 2) / 2
+        : Math.round(genericAvg);
+      if (frameworkAvg > highestAvg) {
+        highestAvg = frameworkAvg;
         strongestTopic = topic;
       }
     }
@@ -119,6 +186,15 @@ const ReportsOverview: React.FC<ReportsOverviewProps> = ({ sessions, activeLangu
 
   return (
     <div>
+      {/* Language switcher (only show when All filter is active and multiple languages exist) */}
+      {!activeLanguage && availableLanguages.length > 1 && (
+        <LanguageSwitcher
+          languages={availableLanguages}
+          selectedLanguage={statsLanguage || availableLanguages[0]}
+          onLanguageChange={setOverviewLanguage}
+        />
+      )}
+
       {/* Stats cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {cards.map((card, i) => (
