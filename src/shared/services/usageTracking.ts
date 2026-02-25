@@ -194,8 +194,10 @@ export async function recordAnonymousPractice(): Promise<void> {
 /**
  * Track page visit (landing page) - called once per session
  * Uses sessionStorage to prevent duplicate tracking during same session
+ * Now uses backend endpoint to capture IP address server-side
+ * Note: userId is automatically detected from auth token by backend
  */
-export async function trackPageVisit(userId?: string): Promise<void> {
+export async function trackPageVisit(): Promise<void> {
   // Check if already tracked this session
   const sessionTracked = sessionStorage.getItem('page_visit_tracked');
   if (sessionTracked) {
@@ -205,65 +207,31 @@ export async function trackPageVisit(userId?: string): Promise<void> {
 
   try {
     const fingerprint = await getFingerprint();
-    const now = new Date().toISOString();
 
-    // Check if fingerprint exists in DB
-    const { data: existing, error: fetchError } = await supabase
-      .from('browser_fingerprints')
-      .select('id, page_visit_count, user_id')
-      .eq('fingerprint_hash', fingerprint)
-      .single();
+    // Call backend endpoint to record page visit with IP address
+    const response = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/analytics/page-visit`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        fingerprintHash: fingerprint
+      })
+    });
 
-    if (fetchError && fetchError.code !== 'PGRST116') {
-      console.error('[Analytics] Error fetching fingerprint:', fetchError);
+    if (!response.ok) {
+      console.error('[Analytics] Failed to track page visit:', response.status);
       return;
     }
 
-    if (existing) {
-      // Update existing fingerprint
-      const updateData: any = {
-        page_visit_count: (existing.page_visit_count || 0) + 1,
-        last_page_visit_at: now,
-        last_seen_at: now
-      };
-
-      // Link to user if signed in and not already linked
-      if (userId && !existing.user_id) {
-        updateData.user_id = userId;
-      }
-
-      const { error } = await supabase
-        .from('browser_fingerprints')
-        .update(updateData)
-        .eq('id', existing.id);
-
-      if (error) {
-        console.error('[Analytics] Error updating page visit:', error);
-      }
-    } else {
-      // New visitor - insert fingerprint
-      const { error } = await supabase
-        .from('browser_fingerprints')
-        .insert({
-          fingerprint_hash: fingerprint,
-          user_id: userId || null,
-          page_visit_count: 1,
-          first_page_visit_at: now,
-          last_page_visit_at: now,
-          first_seen_at: now,
-          last_seen_at: now,
-          monthly_usage_count: 0,
-          usage_reset_month: getCurrentMonth()
-        });
-
-      if (error) {
-        console.error('[Analytics] Error inserting page visit:', error);
-      }
-    }
+    const data = await response.json();
+    console.log('[Analytics] Page visit tracked successfully', {
+      ip: data.ip_address,
+      userLinked: data.user_linked
+    });
 
     // Mark as tracked for this session
     sessionStorage.setItem('page_visit_tracked', 'true');
-    console.log('[Analytics] Page visit tracked successfully');
   } catch (error) {
     console.error('[Analytics] Error tracking page visit:', error);
   }

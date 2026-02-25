@@ -21,6 +21,7 @@ import deeplRoutes from './routes/deeplRoutes.js';
 import exploreRoutes from './routes/exploreRoutes.js';
 import sessionRoutes from './routes/sessionRoutes.js';
 import configRoutes from './routes/configRoutes.js';
+import analyticsRoutes from './routes/analyticsRoutes.js';
 
 // Import WebSocket handler
 import { setupLiveWebSocket } from './websocket/liveHandler.js';
@@ -31,6 +32,10 @@ import { startStripeCleanup } from './services/stripeCleanup.js';
 
 // Create Express app
 const app = express();
+
+// Trust proxy headers (Railway, Cloudflare, etc.)
+// This allows req.ip to correctly read client IP from x-forwarded-for
+app.set('trust proxy', true);
 
 // Stripe webhook needs raw body - must be before express.json()
 app.use('/api/subscriptions/webhook', express.raw({ type: 'application/json' }));
@@ -52,6 +57,7 @@ app.use('/api', deeplRoutes);
 app.use('/api', exploreRoutes);
 app.use('/api', sessionRoutes);
 app.use('/api', configRoutes);
+app.use('/api', analyticsRoutes);
 
 // Serve static files in production (Vite build output)
 if (isProduction) {
