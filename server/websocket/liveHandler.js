@@ -141,11 +141,6 @@ export function setupLiveWebSocket(wss) {
 
     ws.on('message', async (raw, isBinary) => {
       try {
-        console.log('[server] WS message received', {
-          isBinary: !!isBinary,
-          type: typeof raw,
-          bytes: typeof raw === 'string' ? raw.length : (raw?.length ?? raw?.byteLength ?? null),
-        });
 
         if (isBinary) {
           const buf = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
@@ -270,6 +265,23 @@ export function setupLiveWebSocket(wss) {
               },
               onmessage: (m) => {
                 if (m?.setupComplete) console.log('[server] Gemini setupComplete');
+
+                // Extract text and audio data directly from parts to avoid SDK warning
+                // (SDK warns when accessing .text if inlineData parts exist, but we handle both separately)
+                let text = null;
+                let data = null;
+
+                if (m.serverContent?.modelTurn?.parts) {
+                  const parts = m.serverContent.modelTurn.parts;
+                  // Concatenate all text parts
+                  const textParts = parts.filter(p => p.text).map(p => p.text);
+                  if (textParts.length > 0) text = textParts.join('');
+
+                  // Get audio data from inlineData parts
+                  const audioPart = parts.find(p => p.inlineData?.data);
+                  if (audioPart) data = audioPart.inlineData.data;
+                }
+
                 send({
                   type: 'live',
                   setupComplete: m.setupComplete ?? null,
@@ -280,8 +292,8 @@ export function setupLiveWebSocket(wss) {
                   goAway: m.goAway ?? null,
                   sessionResumptionUpdate: m.sessionResumptionUpdate ?? null,
                   voiceActivityDetectionSignal: m.voiceActivityDetectionSignal ?? null,
-                  text: m.text ?? null,
-                  data: m.data ?? null,
+                  text: text,
+                  data: data,
                 });
               },
               onerror: (e) => {
