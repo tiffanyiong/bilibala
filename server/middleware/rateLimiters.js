@@ -50,22 +50,23 @@ export const createLimiter = (windowMs, max, message = 'Too many requests, pleas
 // ==========================================
 
 /**
- * Video analysis: 5 minutes, 3 requests
+ * Video analysis: 5 minutes, 5 requests
  * Expensive operation (Gemini API + Supadata API)
  */
 export const videoAnalysisLimiter = createLimiter(
   5 * 60 * 1000,
-  3,
+  5,
   'Too many video analysis requests. Please wait 5 minutes before trying again.'
 );
 
 /**
- * Practice session (speech analysis): 10 minutes, 5 requests
+ * Practice session (speech analysis): 10 minutes, 30 requests
  * Expensive operation (Gemini API)
+ * Note: Each question answered calls this API, so limit is generous
  */
 export const practiceLimiter = createLimiter(
   10 * 60 * 1000,
-  5,
+  30,
   'Too many practice attempts. Please wait 10 minutes before trying again.'
 );
 
