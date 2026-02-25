@@ -80,8 +80,8 @@ The system uses a **two-layer defense strategy**:
 
 | Endpoint | Window | Max Requests | Purpose |
 |----------|--------|--------------|---------|
-| `/api/analyze-video-content` | 5 min | 3 | Expensive Gemini + Supadata API |
-| `/api/analyze-speech` | 10 min | 5 | Expensive Gemini API |
+| `/api/analyze-video-content` | 5 min | 5 | Expensive Gemini + Supadata API |
+| `/api/analyze-speech` | 10 min | 30 | Expensive Gemini API (called per question) |
 | `/api/generate-question` | 1 min | 5 | Lightweight Gemini API |
 | `/api/conversation-hints` | 1 min | 5 | AI Tutor "rescue ring" |
 | `/api/search-videos` | 1 min | 10 | Lightweight Gemini API |
@@ -137,11 +137,11 @@ These endpoints check both monthly usage and rate limits:
 
 - `POST /api/analyze-video-content`
   - Subscription: Anonymous 2/month, Free 3/month, Pro 100/month
-  - Rate limit: 3 requests per 5 minutes
+  - Rate limit: 5 requests per 5 minutes
 
 - `POST /api/analyze-speech`
   - Subscription: Anonymous 2/month, Free 5/month, Pro unlimited
-  - Rate limit: 5 requests per 10 minutes
+  - Rate limit: 30 requests per 10 minutes
 
 ### ⚡ Rate Limit Only
 
