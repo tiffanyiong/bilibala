@@ -4,15 +4,16 @@ import { config } from '../config/env.js';
 import { createAi } from '../services/geminiService.js';
 import { getUserFromToken } from '../services/supabaseAdmin.js';
 import { safeJsonParse } from '../utils/helpers.js';
+import { hintsLimiter } from '../middleware/rateLimiters.js';
 
 const router = Router();
 
 /**
  * POST /api/conversation-hints
  * Generates conversation hints for the user
- * 🔒 REQUIRES AUTHENTICATION
+ * 🔒 REQUIRES AUTHENTICATION + rate limit (5 requests per minute)
  */
-router.post('/conversation-hints', async (req, res) => {
+router.post('/conversation-hints', hintsLimiter, async (req, res) => {
   try {
     // Authentication check
     const user = await getUserFromToken(req);
