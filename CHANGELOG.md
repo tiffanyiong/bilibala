@@ -1,6 +1,69 @@
 # Changelog
 
-## [Unreleased] - 2026-02-11
+## [Unreleased] - 2026-03-09
+
+### Added
+
+#### Multi-Level Video Analysis with Background Processing
+- **Automatic multi-level analysis**: When a video is analyzed at one difficulty level (Easy/Medium/Hard), the other 2 levels are automatically analyzed in the background
+  - Primary level analysis completes first and shows dashboard immediately
+  - Background analyses run for remaining levels without blocking UI
+  - Transcript is fetched once and reused for all 3 levels (efficient!)
+  - Each level gets separate cached analysis with level-specific content:
+    - **Easy**: High-frequency keywords, simple phrases, basic questions
+    - **Medium**: Collocations, functional phrases, storytelling questions
+    - **Hard**: Precision vocabulary, abstract concepts, debate questions
+  - Files changed:
+    - `src/App.tsx` - Added `availableLevels` and `levelAnalysisIds` state, `analyzeRemainingLevels()` function
+    - `src/shared/services/geminiService.ts` - Reuses transcript data for background analyses
+  - Database impact: Each video can have up to 3 cached analyses (one per level)
+
+#### Level Switching UI
+- **Interactive level selector**: Users can switch between difficulty levels instantly (no re-analysis needed)
+  - Dropdown appears in header (desktop) and mobile badges showing available levels
+  - Only shows dropdown when 2+ levels are available
+  - Shows "Loading..." for levels still being analyzed in background
+  - Instant content switching when clicking different level
+  - Files added:
+    - `src/shared/components/LevelSelector.tsx` - New component for level dropdown
+  - Files changed:
+    - `src/shared/components/Layout.tsx` - Integrated level selector into header
+    - `src/App.tsx` - Added `handleLevelChange()` to switch between levels
+
+#### URL-Based Level Persistence
+- **Level query parameter**: URLs now include difficulty level for shareability and navigation
+  - Format: `/{analysisId}?level=Easy` or `?level=Medium` or `?level=Hard`
+  - Shared links preserve the difficulty level
+  - Browser back/forward navigation preserves level
+  - URL updates when switching levels via dropdown
+  - Deep linking works: visiting `/{analysisId}?level=Hard` loads Hard analysis if it exists
+  - Files changed:
+    - `src/App.tsx` - Updated `parsePathRoute()` to extract level from query params, updated all `pushState`/`replaceState` calls
+    - All video loading paths (new analysis, cached, explore, library) respect URL level parameter
+
+#### Smart Cache Detection for Multi-Level
+- **Automatic level availability check**: When loading a video, system checks which difficulty levels are already cached
+  - On explore page: Checks all 3 levels, triggers background analysis for missing ones
+  - From library: Checks all 3 levels, triggers background analysis for missing ones
+  - From cached analysis: Checks all 3 levels, shows available levels in dropdown
+  - URL with specific level: Loads that level if cached, falls back to default level
+  - Console logs show: `[Cache Check] Available levels: Easy, Medium, Hard`
+  - Files changed: `src/App.tsx` - Updated `handleStart()`, `handleExploreVideoSelect()`, `handleLoadFromLibrary()`
+
+### Changed
+
+#### Rate Limiting Optimization for Multi-Level Analysis
+- **Increased video analysis rate limit**: Adjusted rate limit to accommodate background multi-level analysis
+  - Before: 5 requests per 5 minutes
+  - After: **15 requests per 5 minutes** (allows 5 complete videos, each with 3 levels)
+  - Each video triggers 3 requests (Easy + Medium + Hard), so 15 requests = 5 videos max per 5-minute window
+  - Prevents rate limit conflicts during background analysis
+  - Files changed:
+    - `server/middleware/rateLimiters.js` - Updated `videoAnalysisLimiter` from 5 → 15 requests
+    - `docs/RATE_LIMITING.md` - Updated documentation with new limits and cost calculations
+  - Cost impact: Maximum abuse exposure increased from ~$2/month to ~$8/month (still acceptable)
+
+## [Previous Release] - 2026-02-11
 
 ### Changed
 
