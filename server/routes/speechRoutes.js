@@ -6,15 +6,17 @@ import { getConfigNumber } from '../services/configService.js';
 import { createAi } from '../services/geminiService.js';
 import { supabaseAdmin } from '../services/supabaseAdmin.js';
 import { safeJsonParse } from '../utils/helpers.js';
+import { checkSubscriptionLimit } from '../middleware/subscriptionCheck.js';
+import { practiceLimiter, ttsLimiter } from '../middleware/rateLimiters.js';
 
 const router = Router();
 
 /**
  * POST /api/analyze-speech
  * Analyzes user speech audio and provides structured feedback
- * ✅ ALLOWS ANONYMOUS (frontend enforces 2/month practice limit via browser fingerprint)
+ * 🔒 PROTECTED: Subscription check + rate limit (5 requests per 10 minutes)
  */
-router.post('/analyze-speech', async (req, res) => {
+router.post('/analyze-speech', checkSubscriptionLimit('practice_session'), practiceLimiter, async (req, res) => {
   try {
     // No authentication required - anonymous users allowed (frontend enforces usage limits)
     if (!config.gemini.apiKey) return res.status(500).json({ error: 'Server missing GEMINI_API_KEY' });
@@ -1269,9 +1271,9 @@ function getTTSCacheKey(text, language) {
 /**
  * POST /api/tts
  * Text-to-speech using Google Cloud TTS with Supabase caching
- * ✅ ALLOWS ANONYMOUS (used in practice sessions which have frontend limits)
+ * ✅ ALLOWS ANONYMOUS (rate limited: 30 requests per minute)
  */
-router.post('/tts', async (req, res) => {
+router.post('/tts', ttsLimiter, async (req, res) => {
   try {
     // No authentication required - used by anonymous users in practice sessions
     // Frontend enforces practice session limits (2/month for anonymous)
