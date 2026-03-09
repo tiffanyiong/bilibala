@@ -230,6 +230,33 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
+      - name: Update package.json version
+        run: |
+          # Extract version number without 'v' prefix and '-beta.X' suffix
+          VERSION="${{ steps.get_tag.outputs.tag }}"
+          VERSION=${VERSION#v}  # Remove 'v' prefix
+
+          # For production, use exact version. For beta, keep beta suffix
+          if [[ "${{ github.ref_name }}" == "production" ]]; then
+            PACKAGE_VERSION="$VERSION"
+          else
+            PACKAGE_VERSION="$VERSION"
+          fi
+
+          echo "Updating package.json to version: $PACKAGE_VERSION"
+
+          # Update package.json
+          npm version "$PACKAGE_VERSION" --no-git-tag-version --allow-same-version
+
+          # Commit if there are changes
+          if [[ -n $(git status --porcelain package.json) ]]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add package.json
+            git commit -m "chore: bump version to $PACKAGE_VERSION [skip ci]"
+            git push origin ${{ github.ref_name }}
+          fi
+
       - name: Create tag
         run: |
           git config user.name "github-actions[bot]"
