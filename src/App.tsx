@@ -1051,8 +1051,10 @@ const App: React.FC = () => {
 
       // Fetch practice topics for the new level
       const dbTopics = await getPracticeTopicsForAnalysis(analysisId);
+      let topicsWithIds: PracticeTopic[] = [];
+
       if (dbTopics.length > 0 && analysis.discussionTopics) {
-        const topicsWithIds = analysis.discussionTopics.map(topic => {
+        topicsWithIds = analysis.discussionTopics.map(topic => {
           const dbTopic = dbTopics.find(dt => dt.question === topic.question) ||
                           dbTopics.find(dt => dt.topic === topic.topic);
           if (dbTopic) {
@@ -1062,11 +1064,46 @@ const App: React.FC = () => {
         });
         setDiscussionTopics(topicsWithIds);
       } else {
-        setDiscussionTopics(analysis.discussionTopics || []);
+        topicsWithIds = analysis.discussionTopics || [];
+        setDiscussionTopics(topicsWithIds);
       }
 
-      // Clear selected topics when switching levels
+      // Clear selected topics and practice state when switching levels
       setSelectedTopics([]);
+
+      // If in practice session, load all topics from new level
+      if (appState === AppState.PRACTICE_SESSION && topicsWithIds.length > 0) {
+        // Show all topics from the new level
+        setAllSelectedPracticeTopics(topicsWithIds);
+
+        // Set first topic as active
+        const firstTopic = topicsWithIds[0];
+        setActivePracticeTopic(firstTopic);
+
+        // Load questions for first topic
+        if (firstTopic.topicId) {
+          const newQuestions = filterQuestionsByLang(
+            await getQuestionsForTopic(firstTopic.topicId, newLevel),
+            targetLang
+          );
+          setAllQuestionsForTopic(newQuestions);
+
+          const aiCount = await countAiGeneratedQuestions(
+            firstTopic.topicId,
+            user?.id
+          );
+          setAiGeneratedQuestionCount(aiCount);
+        } else {
+          setAllQuestionsForTopic([]);
+          setAiGeneratedQuestionCount(0);
+        }
+      } else {
+        // Not in practice session or no topics available
+        setAllSelectedPracticeTopics([]);
+        setAllQuestionsForTopic([]);
+        setActivePracticeTopic(null);
+        setAiGeneratedQuestionCount(0);
+      }
 
       // Update URL with new level parameter
       const currentPath = window.location.pathname;
