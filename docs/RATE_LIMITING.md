@@ -80,7 +80,7 @@ The system uses a **two-layer defense strategy**:
 
 | Endpoint | Window | Max Requests | Purpose |
 |----------|--------|--------------|---------|
-| `/api/analyze-video-content` | 5 min | 5 | Expensive Gemini + Supadata API |
+| `/api/analyze-video-content` | 5 min | 15 | Expensive Gemini + Supadata API (3 requests per video for Easy/Medium/Hard levels = 5 videos max) |
 | `/api/analyze-speech` | 10 min | 30 | Expensive Gemini API (called per question) |
 | `/api/generate-question` | 1 min | 5 | Lightweight Gemini API |
 | `/api/conversation-hints` | 1 min | 5 | AI Tutor "rescue ring" |
@@ -137,7 +137,7 @@ These endpoints check both monthly usage and rate limits:
 
 - `POST /api/analyze-video-content`
   - Subscription: Anonymous 2/month, Free 3/month, Pro 100/month
-  - Rate limit: 5 requests per 5 minutes
+  - Rate limit: 15 requests per 5 minutes (allows 5 videos, each analyzed at 3 difficulty levels)
 
 - `POST /api/analyze-speech`
   - Subscription: Anonymous 2/month, Free 5/month, Pro unlimited
@@ -196,11 +196,11 @@ This will:
 
 **For authenticated users:**
 ```bash
-# First 3 requests within 5 minutes - ALLOWED
+# First 15 requests within 5 minutes - ALLOWED (5 videos × 3 levels each)
 curl -X POST http://localhost:3000/api/analyze-video-content -H "Authorization: Bearer TOKEN" -d '...'
 # ✅ 200 OK
 
-# 4th request within 5 minutes - RATE LIMITED
+# 16th request within 5 minutes - RATE LIMITED
 curl -X POST http://localhost:3000/api/analyze-video-content -H "Authorization: Bearer TOKEN" -d '...'
 # ❌ 429 Rate Limit
 ```
@@ -255,14 +255,14 @@ curl -X POST http://localhost:3000/api/analyze-video-content -d '{"fingerprintHa
 
 ### After Protection
 
-- ✅ Anonymous user limited to 2 videos/month (cost: ~$0.002/user)
-- ✅ Attacker limited to 3 requests per 5 minutes (cost: max $0.036/hour)
+- ✅ Anonymous user limited to 2 videos/month (cost: ~$0.006/user with 3 levels)
+- ✅ Attacker limited to 15 requests per 5 minutes (cost: max $0.18/hour)
 - ✅ All endpoints protected, even if called directly
 
 **Maximum monthly cost from abuse:**
-- Anonymous: 200 unique devices × 2 analyses × $0.001 = $0.40
-- Rate limit bypass: 3 req/5min × 60min/hr × 24hr × 30 days × $0.001 = $1.30
-- **Total exposure: ~$2/month** (vs unlimited before)
+- Anonymous: 200 unique devices × 2 videos × 3 levels × $0.001 = $1.20
+- Rate limit bypass: 15 req/5min × 60min/hr × 24hr × 30 days × $0.001 = $6.48
+- **Total exposure: ~$8/month** (vs unlimited before)
 
 ---
 

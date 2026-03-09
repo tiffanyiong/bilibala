@@ -1,4 +1,4 @@
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 
 /**
  * Create a rate limiter with per-user/fingerprint key generation
@@ -16,10 +16,10 @@ export const createLimiter = (windowMs, max, message = 'Too many requests, pleas
 
     // Generate unique key per user/fingerprint/IP
     keyGenerator: (req) => {
-      // Priority: user ID > fingerprint > IP
+      // Priority: user ID > fingerprint > IP (with IPv6 normalization)
       if (req.user?.id) return `user:${req.user.id}`;
       if (req.body?.fingerprintHash) return `fingerprint:${req.body.fingerprintHash}`;
-      return `ip:${req.ip}`;
+      return ipKeyGenerator(req); // Properly handles IPv6 normalization
     },
 
     // Custom error response with logging
@@ -50,12 +50,14 @@ export const createLimiter = (windowMs, max, message = 'Too many requests, pleas
 // ==========================================
 
 /**
- * Video analysis: 5 minutes, 5 requests
+ * Video analysis: 5 minutes, 15 requests
  * Expensive operation (Gemini API + Supadata API)
+ * Note: Each video triggers 3 requests (Easy, Medium, Hard levels)
+ * So 15 requests = 5 videos per 5 minutes
  */
 export const videoAnalysisLimiter = createLimiter(
   5 * 60 * 1000,
-  5,
+  15,
   'Too many video analysis requests. Please wait 5 minutes before trying again.'
 );
 
