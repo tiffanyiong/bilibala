@@ -1,6 +1,6 @@
 # Release Guide
 
-This project uses automatic versioning and releases. When you merge code to `beta` or `production`, a GitHub release is created automatically.
+This project uses automatic versioning and releases. When you merge PRs to `beta` or `production`, a GitHub release is created automatically.
 
 ## Version Format
 
@@ -12,15 +12,18 @@ Example: `v1.2.3`
 
 ## How to Control Version Bumps
 
-Add keywords to your **merge commit message** to control what version is created:
+Add **labels** or **keywords in PR title** to control what version is created:
 
 ### MAJOR Version (Breaking Changes)
 Use when you make incompatible changes that require users to update their code/usage.
 
-```bash
-# Examples:
-git merge main -m "[major] Redesign authentication system"
-git merge main -m "BREAKING CHANGE: Remove legacy API endpoints"
+**Option 1: PR Label**
+- Add label: `major` or `breaking`
+
+**Option 2: PR Title**
+```
+[major] Redesign authentication system
+BREAKING CHANGE: Remove legacy API endpoints
 ```
 
 Result: `v1.0.0` → `v2.0.0`
@@ -28,36 +31,41 @@ Result: `v1.0.0` → `v2.0.0`
 ### MINOR Version (New Features)
 Use when you add new functionality in a backward-compatible manner.
 
-```bash
-# Examples:
-git merge main -m "[minor] Add dark mode support"
-git merge main -m "feat: Add export to PDF feature"
-git merge main -m "feat(auth): Add social login"
+**Option 1: PR Label**
+- Add label: `minor` or `feature`
+
+**Option 2: PR Title**
+```
+[minor] Add dark mode support
+feat: Add export to PDF feature
+✨ Add multi-level video analysis
 ```
 
 Result: `v1.0.0` → `v1.1.0`
 
 ### PATCH Version (Bug Fixes) - Default
-Use for backward-compatible bug fixes. This is the default if no keyword is specified.
+Use for backward-compatible bug fixes. This is the default if no keyword/label is specified.
 
-```bash
-# Examples:
-git merge main -m "Fix login button not working"
-git merge main -m "Update dependencies"
+**Option 1: PR Label**
+- Add label: `patch` or `bugfix`
+
+**Option 2: PR Title**
+```
+Fix login button not working
+🐛 Fix audio sync issue
+chore: Update dependencies
 ```
 
 Result: `v1.0.0` → `v1.0.1`
 
 ## Quick Reference
 
-| Keyword | Version Bump | When to Use |
-|---------|--------------|-------------|
-| `[major]` | 1.0.0 → 2.0.0 | Breaking changes, major redesigns |
-| `BREAKING CHANGE` | 1.0.0 → 2.0.0 | Same as above |
-| `[minor]` | 1.0.0 → 1.1.0 | New features |
-| `feat:` | 1.0.0 → 1.1.0 | New features (conventional commits) |
-| `feat(scope):` | 1.0.0 → 1.1.0 | New features with scope |
-| *(none)* | 1.0.0 → 1.0.1 | Bug fixes, small changes |
+| PR Label | PR Title Keyword | Version Bump | When to Use |
+|----------|------------------|--------------|-------------|
+| `major`, `breaking` | `[major]`, `BREAKING CHANGE` | 1.0.0 → 2.0.0 | Breaking changes, major redesigns |
+| `minor`, `feature` | `[minor]`, `feat:`, `✨` | 1.0.0 → 1.1.0 | New features |
+| `patch`, `bugfix` | `fix:`, `🐛`, `chore:` | 1.0.0 → 1.0.1 | Bug fixes, small changes |
+| *(none)* | *(none)* | 1.0.0 → 1.0.1 | Defaults to patch |
 
 ## Branch Workflow
 
@@ -65,56 +73,125 @@ Result: `v1.0.0` → `v1.0.1`
 main (develop) → beta → production
 ```
 
-1. **Develop** on `main` branch
-2. **Merge to beta** for testing: creates `v1.1.0-beta.1`, `v1.1.0-beta.2`, etc.
-3. **Merge to production** for release: creates `v1.1.0`, `v1.1.1`, etc.
+1. **Develop** on `main` branch (or feature branches)
+2. **Create PR to beta** for testing: creates `v1.1.0-beta.1`, `v1.1.0-beta.2`, etc.
+3. **Create PR to production** for release: creates `v1.1.0`, `v1.1.1`, etc.
 
 ## Examples
 
-### Adding a new feature
-```bash
-# On main branch, after making changes
-git checkout beta
-git merge main -m "[minor] Add video export feature"
-git push origin beta
-# Creates: v1.1.0-beta.1
+### Adding a New Feature (Minor Version)
 
-# After testing, promote to production
-git checkout production
-git merge beta -m "[minor] Add video export feature"
-git push origin production
-# Creates: v1.1.0
-```
+**Step 1: PR to Beta**
+1. Create PR: `main` → `beta`
+2. Set PR title: `✨ Add video export feature` or `[minor] Add video export feature`
+3. OR add label: `minor` or `feature`
+4. Merge PR → Creates: `v1.1.0-beta.1`
 
-### Fixing a bug
-```bash
-git checkout beta
-git merge main -m "Fix audio sync issue"
-git push origin beta
-# Creates: v1.2.0-beta.1 (minor bump for beta)
+**Step 2: PR to Production (after testing)**
+1. Create PR: `beta` → `production`
+2. Set PR title: `✨ Add video export feature`
+3. OR add label: `minor`
+4. Merge PR → Creates: `v1.1.0`
 
-git checkout production
-git merge beta -m "Fix audio sync issue"
-git push origin production
-# Creates: v1.1.1 (patch bump for production)
-```
+---
 
-### Major version bump
-```bash
-git checkout production
-git merge beta -m "[major] Complete UI redesign with new navigation"
-git push origin production
-# Creates: v2.0.0
-```
+### Fixing a Bug (Patch Version)
+
+**Step 1: PR to Beta**
+1. Create PR: `main` → `beta`
+2. Set PR title: `🐛 Fix audio sync issue` or `Fix audio sync issue`
+3. OR add label: `patch` or `bugfix` (or no label at all)
+4. Merge PR → Creates: `v1.1.1-beta.1`
+
+**Step 2: PR to Production**
+1. Create PR: `beta` → `production`
+2. Set PR title: `🐛 Fix audio sync issue`
+3. Merge PR → Creates: `v1.1.1`
+
+---
+
+### Breaking Changes (Major Version)
+
+**Step 1: PR to Beta**
+1. Create PR: `main` → `beta`
+2. Set PR title: `[major] Complete UI redesign with new navigation`
+3. OR add label: `major` or `breaking`
+4. Merge PR → Creates: `v2.0.0-beta.1`
+
+**Step 2: PR to Production**
+1. Create PR: `beta` → `production`
+2. Set PR title: `[major] Complete UI redesign with new navigation`
+3. OR add label: `major`
+4. Merge PR → Creates: `v2.0.0`
+
+---
+
+### Multiple Changes in One Release
+
+If your PR contains multiple commits with different types:
+- **Labels take precedence**: Add the highest-level label needed
+- **No label?** System checks PR title, then commit messages
+- **Priority order**: major > minor > patch
+
+Example:
+- PR has both bug fixes and new features
+- Add label: `minor` (since features > fixes)
+- Result: Minor version bump
 
 ## View Releases
 
 - **GitHub Releases**: https://github.com/tiffanyiong/bilibala/releases
 - **GitHub Actions**: https://github.com/tiffanyiong/bilibala/actions
 
+## Real-World PR Examples
+
+### Example 1: New Feature with Label
+```
+PR #42: main → beta
+Title: "Add multi-level video analysis"
+Labels: feature
+Result: v1.2.0-beta.1
+```
+
+### Example 2: Bug Fix with Emoji Title
+```
+PR #43: main → beta
+Title: "🐛 Fix session timeout causing unexpected logout"
+Labels: (none)
+Result: v1.2.1-beta.1 (patch is default)
+```
+
+### Example 3: Breaking Change
+```
+PR #44: beta → production
+Title: "[major] Migrate to new subscription API"
+Labels: breaking
+Result: v2.0.0
+```
+
+### Example 4: Hotfix to Production
+```
+PR #45: main → beta
+Title: "🔒 Fix critical security vulnerability"
+Labels: patch
+
+PR #46: beta → production
+Title: "🔒 Fix critical security vulnerability"
+Labels: patch
+Result: v1.2.2
+```
+
+## Tips
+
+- **Labels are easiest**: Just add `major`, `minor`, or `patch` label to your PR
+- **Emojis work**: GitHub recognizes `✨` (feature), `🐛` (fix), etc.
+- **Keywords are case-insensitive**: `[MAJOR]`, `[major]`, `[Major]` all work
+- **Priority**: Labels > PR Title > Commit Messages
+- **Beta releases** are marked as "pre-release" on GitHub
+- **Each PR merge** triggers a new release automatically
+
 ## Notes
 
-- Keywords are **case-insensitive** (`[MAJOR]` works too)
-- Keywords can appear anywhere in the commit message
-- Beta releases are marked as "pre-release" on GitHub
-- Each merge triggers a new release automatically
+- When in doubt, use **labels** - they're visible and easy to understand
+- Beta releases help catch issues before production
+- You can always create additional releases manually if needed

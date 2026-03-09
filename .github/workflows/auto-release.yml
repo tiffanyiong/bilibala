@@ -18,23 +18,88 @@ jobs:
         with:
           fetch-depth: 0  # Fetch all history for tags
 
+      - name: Get PR details
+        id: pr_details
+        run: |
+          # Get the merge commit SHA
+          MERGE_COMMIT="${{ github.sha }}"
+
+          # Find the PR number from the merge commit
+          PR_NUMBER=$(gh pr list --state merged --json number,mergeCommit --jq ".[] | select(.mergeCommit.oid==\"$MERGE_COMMIT\") | .number")
+
+          if [[ -n "$PR_NUMBER" ]]; then
+            echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+
+            # Get PR labels and title
+            PR_LABELS=$(gh pr view $PR_NUMBER --json labels --jq '.labels[].name' | tr '\n' ',' || echo "")
+            PR_TITLE=$(gh pr view $PR_NUMBER --json title --jq '.title' || echo "")
+
+            echo "pr_labels=$PR_LABELS" >> $GITHUB_OUTPUT
+            echo "pr_title=$PR_TITLE" >> $GITHUB_OUTPUT
+            echo "Found PR #$PR_NUMBER"
+            echo "Labels: $PR_LABELS"
+            echo "Title: $PR_TITLE"
+          else
+            echo "pr_number=" >> $GITHUB_OUTPUT
+            echo "pr_labels=" >> $GITHUB_OUTPUT
+            echo "pr_title=" >> $GITHUB_OUTPUT
+            echo "No PR found for this merge commit"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
       - name: Determine version bump type
         id: bump_type
         run: |
-          # Get the commit message
+          PR_LABELS="${{ steps.pr_details.outputs.pr_labels }}"
+          PR_TITLE="${{ steps.pr_details.outputs.pr_title }}"
           COMMIT_MSG=$(git log -1 --pretty=%B)
-          echo "Commit message: $COMMIT_MSG"
 
-          # Check for version bump keywords
+          echo "Analyzing version bump from:"
+          echo "  PR Labels: $PR_LABELS"
+          echo "  PR Title: $PR_TITLE"
+          echo "  Commit message: $COMMIT_MSG"
+
+          # Priority 1: PR Labels (highest priority)
+          if echo "$PR_LABELS" | grep -qiE 'major|breaking'; then
+            echo "bump=major" >> $GITHUB_OUTPUT
+            echo "✅ Detected from PR label: MAJOR version bump"
+            exit 0
+          elif echo "$PR_LABELS" | grep -qiE 'minor|feature'; then
+            echo "bump=minor" >> $GITHUB_OUTPUT
+            echo "✅ Detected from PR label: MINOR version bump"
+            exit 0
+          elif echo "$PR_LABELS" | grep -qiE 'patch|bugfix'; then
+            echo "bump=patch" >> $GITHUB_OUTPUT
+            echo "✅ Detected from PR label: PATCH version bump"
+            exit 0
+          fi
+
+          # Priority 2: PR Title
+          if echo "$PR_TITLE" | grep -qiE '\[major\]|BREAKING CHANGE'; then
+            echo "bump=major" >> $GITHUB_OUTPUT
+            echo "✅ Detected from PR title: MAJOR version bump"
+            exit 0
+          elif echo "$PR_TITLE" | grep -qiE '\[minor\]|^feat:|feat\(|^✨'; then
+            echo "bump=minor" >> $GITHUB_OUTPUT
+            echo "✅ Detected from PR title: MINOR version bump"
+            exit 0
+          elif echo "$PR_TITLE" | grep -qiE 'fix:|^🐛|chore:'; then
+            echo "bump=patch" >> $GITHUB_OUTPUT
+            echo "✅ Detected from PR title: PATCH version bump"
+            exit 0
+          fi
+
+          # Priority 3: Commit Message (fallback)
           if echo "$COMMIT_MSG" | grep -qiE '\[major\]|BREAKING CHANGE'; then
             echo "bump=major" >> $GITHUB_OUTPUT
-            echo "Detected: MAJOR version bump"
-          elif echo "$COMMIT_MSG" | grep -qiE '\[minor\]|^feat:|feat\('; then
+            echo "⚠️  Detected from commit message: MAJOR version bump"
+          elif echo "$COMMIT_MSG" | grep -qiE '\[minor\]|^feat:|feat\(|^✨'; then
             echo "bump=minor" >> $GITHUB_OUTPUT
-            echo "Detected: MINOR version bump"
+            echo "⚠️  Detected from commit message: MINOR version bump"
           else
             echo "bump=patch" >> $GITHUB_OUTPUT
-            echo "Detected: PATCH version bump (default)"
+            echo "ℹ️  Default: PATCH version bump"
           fi
 
       - name: Get latest tag and calculate new version
@@ -116,6 +181,8 @@ jobs:
         run: |
           BRANCH="${{ github.ref_name }}"
           BUMP_TYPE="${{ steps.bump_type.outputs.bump }}"
+          PR_NUMBER="${{ steps.pr_details.outputs.pr_number }}"
+          PR_TITLE="${{ steps.pr_details.outputs.pr_title }}"
 
           # Get commits since last tag
           if [[ "$BRANCH" == "production" ]]; then
@@ -133,6 +200,12 @@ jobs:
           # Write to file for multiline support
           echo "## What's Changed" > release_notes.md
           echo "" >> release_notes.md
+
+          # Add PR info if available
+          if [[ -n "$PR_NUMBER" ]]; then
+            echo "📋 **Pull Request**: #$PR_NUMBER - $PR_TITLE" >> release_notes.md
+            echo "" >> release_notes.md
+          fi
 
           # Add version bump type indicator
           if [[ "$BUMP_TYPE" == "major" ]]; then
@@ -153,6 +226,8 @@ jobs:
           if [[ -n "$PREV_TAG" ]]; then
             echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${{ steps.get_tag.outputs.tag }}" >> release_notes.md
           fi
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       - name: Create tag
         run: |
