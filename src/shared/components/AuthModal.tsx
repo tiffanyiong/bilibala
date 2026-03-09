@@ -36,6 +36,20 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     }
   }, [isOpen, onClose]);
 
+  // Reset loading state when user navigates back from OAuth
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && loading) {
+        setLoading(false);
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }
+  }, [isOpen, loading]);
+
   // Reset form when modal opens/closes
   useEffect(() => {
     if (isOpen) {
