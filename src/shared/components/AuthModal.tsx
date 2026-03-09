@@ -17,6 +17,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [oauthInProgress, setOauthInProgress] = useState(false);
 
   // Close modal when user successfully logs in
   useEffect(() => {
@@ -39,8 +40,16 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   // Reset loading state when user navigates back from OAuth
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && loading) {
-        setLoading(false);
+      if (document.visibilityState === 'visible' && oauthInProgress) {
+        // User returned to the page - check if URL has OAuth params
+        const hasOAuthParams = window.location.search.includes('code=') ||
+                              window.location.search.includes('error=');
+
+        if (!hasOAuthParams) {
+          // No OAuth params means user cancelled/went back
+          setLoading(false);
+          setOauthInProgress(false);
+        }
       }
     };
 
@@ -48,7 +57,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
       document.addEventListener('visibilitychange', handleVisibilityChange);
       return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
     }
-  }, [isOpen, loading]);
+  }, [isOpen, oauthInProgress]);
 
   // Reset form when modal opens/closes
   useEffect(() => {
@@ -58,6 +67,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
       setMessage(null);
       setView('sign_in');
       setAgreedToTerms(false);
+      setOauthInProgress(false);
     }
   }, [isOpen]);
 
@@ -136,6 +146,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     }
 
     setLoading(true);
+    setOauthInProgress(true);
     setMessage(null);
 
     const { error } = await supabase.auth.signInWithOAuth({
@@ -148,6 +159,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     if (error) {
       setMessage({ type: 'error', text: error.message });
       setLoading(false);
+      setOauthInProgress(false);
     }
   };
 
