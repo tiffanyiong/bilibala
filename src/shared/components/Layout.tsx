@@ -2,6 +2,7 @@ import React, { ReactNode, useEffect, useRef, useState } from 'react';
 import AuthModal from './AuthModal';
 import Footer from './Footer';
 import UserMenu from './UserMenu';
+import LevelSelector from './LevelSelector';
 import { DEEPL_SUPPORTED_LANGUAGES } from '../constants';
 
 interface LayoutProps {
@@ -9,6 +10,8 @@ interface LayoutProps {
   onLogoClick?: () => void;
   targetLang?: string;
   level?: string;
+  availableLevels?: Set<string>; // Levels that have been analyzed
+  onLevelChange?: (level: string) => void;
   isScrollable?: boolean;
   authModalOpen?: boolean;
   onAuthModalClose?: () => void;
@@ -25,7 +28,7 @@ interface LayoutProps {
   showFooter?: boolean;
 }
 
-const Layout: React.FC<LayoutProps> = ({ children, onLogoClick, targetLang, level, isScrollable = false, authModalOpen, onAuthModalClose, onOpenVideoLibrary, onOpenSubscription, onOpenProfile, onOpenSettings, onOpenReports, onOpenPrivacy, onOpenTerms, translatorLang, onTranslatorLangChange, showFooter = false }) => {
+const Layout: React.FC<LayoutProps> = ({ children, onLogoClick, targetLang, level, availableLevels, onLevelChange, isScrollable = false, authModalOpen, onAuthModalClose, onOpenVideoLibrary, onOpenSubscription, onOpenProfile, onOpenSettings, onOpenReports, onOpenPrivacy, onOpenTerms, translatorLang, onTranslatorLangChange, showFooter = false }) => {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isTranslatorOpen, setIsTranslatorOpen] = useState(false);
   const translatorRef = useRef<HTMLDivElement>(null);
@@ -113,10 +116,20 @@ const Layout: React.FC<LayoutProps> = ({ children, onLogoClick, targetLang, leve
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400 border border-amber-500"></span>
                 {targetLang}
               </span>
-              <span className="flex items-center gap-2 bg-white/50 backdrop-blur-sm border border-white/60 text-stone-600 px-3 py-1 rounded-lg shadow-sm ring-1 ring-black/[0.04] text-xs font-medium uppercase tracking-wide">
-                <span className="w-1.5 h-1.5 rounded-full bg-stone-400"></span>
-                {level}
-              </span>
+
+              {/* Level Selector with dropdown */}
+              {availableLevels && onLevelChange ? (
+                <LevelSelector
+                  currentLevel={level}
+                  availableLevels={availableLevels}
+                  onLevelChange={onLevelChange}
+                />
+              ) : (
+                <span className="flex items-center gap-2 bg-white/50 backdrop-blur-sm border border-white/60 text-stone-600 px-3 py-1 rounded-lg shadow-sm ring-1 ring-black/[0.04] text-xs font-medium uppercase tracking-wide">
+                  <span className="w-1.5 h-1.5 rounded-full bg-stone-400"></span>
+                  {level}
+                </span>
+              )}
 
               {/* Translator language selector */}
               {translatorLang && onTranslatorLangChange && (
