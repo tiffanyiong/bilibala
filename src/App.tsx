@@ -17,6 +17,7 @@ import TranslationPopup from './features/translation/components/TranslationPopup
 import VideoPlayer, { VideoPlayerRef } from './features/video/components/VideoPlayer';
 import { extractVideoId, fetchVideoMetadata } from './features/video/services/youtubeService';
 import Layout from './shared/components/Layout';
+import LevelSelector from './shared/components/LevelSelector';
 import UsageLimitModal from './shared/components/UsageLimitModal';
 import { DEEPL_SUPPORTED_LANGUAGES, UI_TRANSLATIONS } from './shared/constants';
 import { useAuth } from './shared/context/AuthContext';
@@ -209,6 +210,10 @@ const App: React.FC = () => {
   const [targetLang, setTargetLang] = useState('English');
   const [level, setLevel] = useState('Easy');
 
+  // Multi-level analysis state
+  const [availableLevels, setAvailableLevels] = useState<Set<string>>(new Set(['Easy'])); // Tracks which levels have been analyzed
+  const [levelAnalysisIds, setLevelAnalysisIds] = useState<Map<string, string>>(new Map()); // Maps level -> analysisId
+
   // Translator setting: null = use video's native language, string = always translate to this
   const [translatorTargetLang, setTranslatorTargetLang] = useState<string | null>(null);
 
@@ -313,10 +318,14 @@ const App: React.FC = () => {
   }, [discussionTopics, level]);
 
   // --- History / Navigation Logic ---
-  // Helper to parse path-based routes
-  const parsePathRoute = (pathname: string) => {
+  // Helper to parse path-based routes and extract level from query params
+  const parsePathRoute = (pathname: string, search?: string) => {
     // Remove leading slash and split
     const parts = pathname.slice(1).split('/').filter(Boolean);
+
+    // Extract level from query params if present
+    const searchParams = new URLSearchParams(search || window.location.search);
+    const levelParam = searchParams.get('level');
 
     if (parts.length === 0) {
       return { type: 'landing' as const };
@@ -348,7 +357,7 @@ const App: React.FC = () => {
     // Assume first part is video ID (which is actually analysisId for reports)
     const videoId = parts[0];
     if (parts[1] === 'practice') {
-      return { type: 'practice' as const, videoId };
+      return { type: 'practice' as const, videoId, level: levelParam };
     }
     if (parts[1] === 'reports') {
       if (parts[2]) {
@@ -356,7 +365,7 @@ const App: React.FC = () => {
       }
       return { type: 'reports' as const, videoId };
     }
-    return { type: 'dashboard' as const, videoId };
+    return { type: 'dashboard' as const, videoId, level: levelParam };
   };
 
   // Handle browser back/forward navigation
@@ -425,43 +434,48 @@ const App: React.FC = () => {
   // Track if app has been initialized (to prevent URL sync on first render)
   const isInitializedRef = useRef(false);
 
-  // Sync State -> URL path
+  // Sync State -> URL path (with level query param)
   useEffect(() => {
     // Skip on initial render - let the initialization effect handle routing first
     if (!isInitializedRef.current) return;
     if (appState === AppState.LOADING) return;
 
     const currentPath = window.location.pathname;
+    const currentSearch = window.location.search;
     let targetPath = '/';
+    let targetUrl = '/';
 
     if (appState === AppState.DASHBOARD && videoData) {
       targetPath = `/${videoData.id}`;
+      targetUrl = `${targetPath}?level=${level}`;
     } else if (appState === AppState.PRACTICE_SESSION && videoData) {
       targetPath = `/${videoData.id}/practice`;
+      targetUrl = `${targetPath}?level=${level}`;
     } else if (appState === AppState.SUBSCRIPTION) {
-      targetPath = '/subscription';
+      targetUrl = '/subscription';
     } else if (appState === AppState.PROFILE) {
-      targetPath = '/profile';
+      targetUrl = '/profile';
     } else if (appState === AppState.SETTINGS) {
-      targetPath = '/settings';
+      targetUrl = '/settings';
     } else if (appState === AppState.PRIVACY) {
-      targetPath = '/privacy';
+      targetUrl = '/privacy';
     } else if (appState === AppState.TERMS) {
-      targetPath = '/terms';
+      targetUrl = '/terms';
     } else if (appState === AppState.RESET_PASSWORD) {
-      targetPath = '/reset-password';
+      targetUrl = '/reset-password';
     } else if (appState === AppState.VIDEO_LIBRARY) {
-      targetPath = '/library';
+      targetUrl = '/library';
     } else if (appState === AppState.REPORTS_DASHBOARD) {
-      targetPath = '/reports';
+      targetUrl = '/reports';
     } else if (appState === AppState.PRACTICE_REPORT_DETAIL && currentReportsVideo && currentReportSessionId) {
-      targetPath = `/${currentReportsVideo.analysisId}/reports/${currentReportSessionId}`;
+      targetUrl = `/${currentReportsVideo.analysisId}/reports/${currentReportSessionId}`;
     }
 
-    if (currentPath !== targetPath) {
-      window.history.pushState(null, '', targetPath);
+    const currentFullUrl = currentPath + currentSearch;
+    if (currentFullUrl !== targetUrl) {
+      window.history.pushState(null, '', targetUrl);
     }
-  }, [appState, videoData, currentReportsVideo, currentReportSessionId]);
+  }, [appState, videoData, currentReportsVideo, currentReportSessionId, level]);
 
   // --- Persistence Logic ---
   const STORAGE_KEY = 'bilibala_state_v1';
@@ -614,6 +628,10 @@ const App: React.FC = () => {
     if (authLoading) return;
 
     const loadVideoFromUrl = async () => {
+      // Check if URL has a level parameter
+      const urlParams = new URLSearchParams(window.location.search);
+      const levelFromUrl = urlParams.get('level');
+
       // If user is logged in, try to find video in their library
       if (user) {
         try {
@@ -621,30 +639,50 @@ const App: React.FC = () => {
           const videoInLibrary = library.find(v => v.youtubeId === pendingVideoIdFromUrl);
 
           if (videoInLibrary) {
-            // Found in library - load it
+            // Found in library - determine which level to load
+            const levelToLoad = levelFromUrl || videoInLibrary.level;
+
             const videoUrl = `https://www.youtube.com/watch?v=${videoInLibrary.youtubeId}`;
             setVideoUrl(videoUrl);
             setNativeLang(videoInLibrary.nativeLang);
             setTargetLang(videoInLibrary.targetLang);
-            setLevel(videoInLibrary.level);
+            setLevel(levelToLoad);
             setVideoData({
               id: videoInLibrary.youtubeId,
               url: videoUrl,
               title: videoInLibrary.title,
             });
 
-            const cachedAnalysis = await getCachedAnalysisById(videoInLibrary.analysisId);
-            if (cachedAnalysis) {
-              const analysis = dbAnalysisToContentAnalysis(cachedAnalysis);
+            // If URL specifies a different level, try to load that level's analysis
+            let analysisToLoad = await getCachedAnalysisById(videoInLibrary.analysisId);
+            if (levelFromUrl && levelFromUrl !== videoInLibrary.level) {
+              // URL wants a different level - check if it exists
+              const existingVideo = await getVideoByYoutubeId(videoInLibrary.youtubeId);
+              if (existingVideo) {
+                const differentLevelAnalysis = await getCachedAnalysis(
+                  existingVideo.id,
+                  levelFromUrl,
+                  videoInLibrary.targetLang,
+                  videoInLibrary.nativeLang
+                );
+                if (differentLevelAnalysis) {
+                  analysisToLoad = differentLevelAnalysis;
+                  console.log(`[URL Load] Loaded ${levelFromUrl} analysis from URL parameter`);
+                }
+              }
+            }
+
+            if (analysisToLoad) {
+              const analysis = dbAnalysisToContentAnalysis(analysisToLoad);
               setSummary(analysis.summary);
               setTranslatedSummary(analysis.translatedSummary || '');
               setTopics(analysis.topics);
               setVocabulary(analysis.vocabulary);
               setTranscript(analysis.transcript || []);
               setTranscriptLangMismatch(analysis.transcriptLangMismatch || false);
-              setCurrentAnalysisId(videoInLibrary.analysisId);
+              setCurrentAnalysisId(analysisToLoad.id);
 
-              const dbTopics = await getPracticeTopicsForAnalysis(videoInLibrary.analysisId);
+              const dbTopics = await getPracticeTopicsForAnalysis(analysisToLoad.id);
               if (dbTopics.length > 0 && analysis.discussionTopics) {
                 const topicsWithIds = analysis.discussionTopics.map(topic => {
                   // Match by question text (more reliable) or topic name as fallback
@@ -679,7 +717,26 @@ const App: React.FC = () => {
 
       // Not found in user's library - check if video exists globally (analyzed by anyone)
       try {
-        const globalAnalysis = await getAnyCachedAnalysisForYoutubeId(pendingVideoIdFromUrl);
+        let globalAnalysis = await getAnyCachedAnalysisForYoutubeId(pendingVideoIdFromUrl);
+
+        // If URL specifies a level, try to find that specific level
+        if (levelFromUrl && globalAnalysis) {
+          const existingVideo = await getVideoByYoutubeId(pendingVideoIdFromUrl);
+          if (existingVideo) {
+            const specificLevelAnalysis = await getCachedAnalysis(
+              existingVideo.id,
+              levelFromUrl,
+              globalAnalysis.target_lang,
+              globalAnalysis.native_lang
+            );
+            if (specificLevelAnalysis) {
+              // Preserve video_title from original globalAnalysis
+              globalAnalysis = { ...specificLevelAnalysis, video_title: globalAnalysis.video_title };
+              console.log(`[URL Load] Loaded ${levelFromUrl} analysis from URL parameter (global)`);
+            }
+          }
+        }
+
         if (globalAnalysis) {
           // Found a cached analysis - load it
           const videoUrl = `https://www.youtube.com/watch?v=${pendingVideoIdFromUrl}`;
@@ -961,6 +1018,195 @@ const App: React.FC = () => {
     }
   };
 
+  // Handle switching between difficulty levels
+  const handleLevelChange = async (newLevel: string) => {
+    if (!videoData || newLevel === level) return;
+
+    console.log(`[handleLevelChange] Switching from ${level} to ${newLevel}`);
+
+    // Check if we have the analysis for this level
+    const analysisId = levelAnalysisIds.get(newLevel);
+    if (!analysisId) {
+      console.warn(`[handleLevelChange] No analysis found for level ${newLevel}`);
+      return;
+    }
+
+    try {
+      // Load the cached analysis for the new level
+      const cachedAnalysis = await getCachedAnalysisById(analysisId);
+      if (!cachedAnalysis) {
+        console.error(`[handleLevelChange] Failed to load analysis ${analysisId}`);
+        return;
+      }
+
+      const analysis = dbAnalysisToContentAnalysis(cachedAnalysis);
+
+      // Update all content state with the new level's analysis
+      setLevel(newLevel);
+      setSummary(analysis.summary);
+      setTranslatedSummary(analysis.translatedSummary);
+      setTopics(analysis.topics);
+      setVocabulary(analysis.vocabulary);
+      setCurrentAnalysisId(analysisId);
+
+      // Fetch practice topics for the new level
+      const dbTopics = await getPracticeTopicsForAnalysis(analysisId);
+      let topicsWithIds: PracticeTopic[] = [];
+
+      if (dbTopics.length > 0 && analysis.discussionTopics) {
+        topicsWithIds = analysis.discussionTopics.map(topic => {
+          const dbTopic = dbTopics.find(dt => dt.question === topic.question) ||
+                          dbTopics.find(dt => dt.topic === topic.topic);
+          if (dbTopic) {
+            return { ...topic, topicId: dbTopic.id, questionId: dbTopic.questionId };
+          }
+          return topic;
+        });
+        setDiscussionTopics(topicsWithIds);
+      } else {
+        topicsWithIds = analysis.discussionTopics || [];
+        setDiscussionTopics(topicsWithIds);
+      }
+
+      // Clear selected topics and practice state when switching levels
+      setSelectedTopics([]);
+
+      // If in practice session, load all topics from new level
+      if (appState === AppState.PRACTICE_SESSION && topicsWithIds.length > 0) {
+        // Show all topics from the new level
+        setAllSelectedPracticeTopics(topicsWithIds);
+
+        // Set first topic as active
+        const firstTopic = topicsWithIds[0];
+        setActivePracticeTopic(firstTopic);
+
+        // Load questions for first topic
+        if (firstTopic.topicId) {
+          const newQuestions = filterQuestionsByLang(
+            await getQuestionsForTopic(firstTopic.topicId, newLevel),
+            targetLang
+          );
+          setAllQuestionsForTopic(newQuestions);
+
+          const aiCount = await countAiGeneratedQuestions(
+            firstTopic.topicId,
+            user?.id
+          );
+          setAiGeneratedQuestionCount(aiCount);
+        } else {
+          setAllQuestionsForTopic([]);
+          setAiGeneratedQuestionCount(0);
+        }
+      } else {
+        // Not in practice session or no topics available
+        setAllSelectedPracticeTopics([]);
+        setAllQuestionsForTopic([]);
+        setActivePracticeTopic(null);
+        setAiGeneratedQuestionCount(0);
+      }
+
+      // Update URL with new level parameter
+      const currentPath = window.location.pathname;
+      const newUrl = `${currentPath}?level=${newLevel}`;
+      window.history.replaceState(null, '', newUrl);
+
+      console.log(`[handleLevelChange] Successfully switched to ${newLevel}`);
+    } catch (err) {
+      console.error('[handleLevelChange] Failed to switch level:', err);
+    }
+  };
+
+  // Analyze remaining difficulty levels in the background
+  const analyzeRemainingLevels = async (
+    videoId: string,
+    videoTitle: string,
+    primaryLevel: string,
+    transcriptData: { transcript: { text: string; offset: number; duration: number }[]; transcriptLang: string | null; transcriptLangMismatch: boolean; duration: number }
+  ) => {
+    const LEVELS_TO_ANALYZE = ['Easy', 'Medium', 'Hard'];
+    const remainingLevels = LEVELS_TO_ANALYZE.filter(l => l !== primaryLevel);
+
+    console.log(`[Background Analysis] Starting background analysis for levels: ${remainingLevels.join(', ')}`);
+
+    for (const levelToAnalyze of remainingLevels) {
+      try {
+        // Check if this level is already cached
+        const existingVideo = await getVideoByYoutubeId(videoId);
+        if (existingVideo) {
+          const existingAnalysis = await getCachedAnalysis(
+            existingVideo.id,
+            levelToAnalyze,
+            targetLang,
+            nativeLang
+          );
+
+          if (existingAnalysis) {
+            console.log(`[Background Analysis] ${levelToAnalyze} already cached, skipping`);
+            // Mark as available
+            setAvailableLevels(prev => new Set([...prev, levelToAnalyze]));
+            setLevelAnalysisIds(prev => new Map(prev).set(levelToAnalyze, existingAnalysis.id));
+            continue;
+          }
+        }
+
+        console.log(`[Background Analysis] Analyzing ${levelToAnalyze}...`);
+
+        // Run AI analysis for this level
+        const analysis = await analyzeVideoContent(
+          videoTitle,
+          `https://www.youtube.com/watch?v=${videoId}`,
+          nativeLang,
+          targetLang,
+          levelToAnalyze,
+          transcriptData,
+          session?.access_token
+        );
+
+        // Save to cache
+        const dbVideo = await getOrCreateVideo(videoId, videoTitle);
+        if (dbVideo) {
+          const savedAnalysis = await saveCachedAnalysis(
+            dbVideo.id,
+            levelToAnalyze,
+            targetLang,
+            nativeLang,
+            analysis,
+            user?.id
+          );
+
+          if (savedAnalysis) {
+            // Save practice topics
+            if (analysis.discussionTopics) {
+              await savePracticeTopicsFromAnalysis(
+                savedAnalysis.id,
+                analysis.discussionTopics,
+                targetLang,
+                levelToAnalyze,
+                session?.access_token
+              );
+            }
+
+            // Save video category
+            if (analysis.videoCategory && dbVideo) {
+              updateVideoCategory(dbVideo.id, analysis.videoCategory);
+            }
+
+            // Mark level as available
+            setAvailableLevels(prev => new Set([...prev, levelToAnalyze]));
+            setLevelAnalysisIds(prev => new Map(prev).set(levelToAnalyze, savedAnalysis.id));
+
+            console.log(`[Background Analysis] ${levelToAnalyze} analysis complete and cached`);
+          }
+        }
+      } catch (err) {
+        console.error(`[Background Analysis] Failed to analyze ${levelToAnalyze}:`, err);
+        // Continue with next level even if this one fails
+      }
+    }
+
+    console.log('[Background Analysis] All background analyses complete');
+  };
+
   const handleStart = async () => {
     const videoId = extractVideoId(videoUrl);
     if (!videoId) {
@@ -1083,6 +1329,37 @@ const App: React.FC = () => {
           setLibraryEntry(null);
         }
 
+        // Check which other levels are already cached
+        const LEVELS_TO_CHECK = ['Easy', 'Medium', 'Hard'];
+        const levelMap = new Map<string, string>([[level, cachedAnalysis.id]]);
+        const availableSet = new Set([level]);
+
+        for (const levelToCheck of LEVELS_TO_CHECK) {
+          if (levelToCheck === level) continue;
+
+          try {
+            const otherLevelAnalysis = await getCachedAnalysis(
+              existingVideo!.id,
+              levelToCheck,
+              targetLang,
+              nativeLang
+            );
+
+            if (otherLevelAnalysis) {
+              console.log(`[Cache Check] ${levelToCheck} is also cached`);
+              availableSet.add(levelToCheck);
+              levelMap.set(levelToCheck, otherLevelAnalysis.id);
+            }
+          } catch (err) {
+            console.error(`[Cache Check] Error checking ${levelToCheck}:`, err);
+          }
+        }
+
+        setAvailableLevels(availableSet);
+        setLevelAnalysisIds(levelMap);
+
+        console.log(`[Cache Check] Available levels: ${Array.from(availableSet).join(', ')}`);
+
         // Note: No usage recorded for cached results - Free for anonymous!
         return;
       }
@@ -1174,6 +1451,10 @@ const App: React.FC = () => {
             if (savedAnalysis) {
               setCurrentAnalysisId(savedAnalysis.id);
 
+              // Initialize level tracking for the primary level
+              setAvailableLevels(new Set([level]));
+              setLevelAnalysisIds(new Map([[level, savedAnalysis.id]]));
+
               // Add to user's library (for logged-in users)
               if (user) {
                 const libraryLimit = TIER_LIMITS[tier].videoLibraryMax;
@@ -1231,6 +1512,9 @@ const App: React.FC = () => {
             // Record usage for logged-in user
             recordAction('video_analysis');
           }
+
+          // Trigger background analysis for remaining levels (non-blocking)
+          analyzeRemainingLevels(videoId, metadata.title, level, transcriptData);
         })
         .catch(err => {
             // Analysis failed (transcript or AI analysis error)
@@ -1349,7 +1633,59 @@ const App: React.FC = () => {
           isFavorite: video.isFavorite,
         });
 
+        // Check which other levels are already cached
+        const LEVELS_TO_CHECK = ['Easy', 'Medium', 'Hard'];
+        const levelMap = new Map<string, string>([[video.level, video.analysisId]]);
+        const availableSet = new Set([video.level]);
+
+        const existingVideo = await getVideoByYoutubeId(video.youtubeId);
+        if (existingVideo) {
+          for (const levelToCheck of LEVELS_TO_CHECK) {
+            if (levelToCheck === video.level) continue;
+
+            try {
+              const otherLevelAnalysis = await getCachedAnalysis(
+                existingVideo.id,
+                levelToCheck,
+                video.targetLang,
+                video.nativeLang
+              );
+
+              if (otherLevelAnalysis) {
+                console.log(`[Library] ${levelToCheck} is also cached`);
+                availableSet.add(levelToCheck);
+                levelMap.set(levelToCheck, otherLevelAnalysis.id);
+              }
+            } catch (err) {
+              console.error(`[Library] Error checking ${levelToCheck}:`, err);
+            }
+          }
+        }
+
+        setAvailableLevels(availableSet);
+        setLevelAnalysisIds(levelMap);
+
+        console.log(`[Library] Available levels: ${Array.from(availableSet).join(', ')}`);
+
         setAppState(AppState.DASHBOARD);
+
+        // Trigger background analysis for missing levels if any
+        if (availableSet.size < 3) {
+          console.log(`[Library] Triggering background analysis for missing levels`);
+          // Fetch transcript for background analysis
+          fetchTranscript(videoUrl, video.targetLang, session?.access_token)
+            .then((transcriptData) => {
+              analyzeRemainingLevels(
+                video.youtubeId,
+                video.title,
+                video.level,
+                transcriptData
+              );
+            })
+            .catch((err) => {
+              console.error('[Library] Failed to fetch transcript for background analysis:', err);
+            });
+        }
       } else {
         throw new Error('Failed to load analysis');
       }
@@ -1437,6 +1773,37 @@ const App: React.FC = () => {
         setLibraryEntry(null);
       }
 
+      // Check which other levels are already cached
+      const LEVELS_TO_CHECK = ['Easy', 'Medium', 'Hard'];
+      const levelMap = new Map<string, string>([[cachedAnalysis.level, analysisId]]);
+      const availableSet = new Set([cachedAnalysis.level]);
+
+      for (const levelToCheck of LEVELS_TO_CHECK) {
+        if (levelToCheck === cachedAnalysis.level) continue;
+
+        try {
+          const otherLevelAnalysis = await getCachedAnalysis(
+            cachedAnalysis.video_id,
+            levelToCheck,
+            cachedAnalysis.target_lang,
+            cachedAnalysis.native_lang
+          );
+
+          if (otherLevelAnalysis) {
+            console.log(`[Explore] ${levelToCheck} is also cached`);
+            availableSet.add(levelToCheck);
+            levelMap.set(levelToCheck, otherLevelAnalysis.id);
+          }
+        } catch (err) {
+          console.error(`[Explore] Error checking ${levelToCheck}:`, err);
+        }
+      }
+
+      setAvailableLevels(availableSet);
+      setLevelAnalysisIds(levelMap);
+
+      console.log(`[Explore] Available levels: ${Array.from(availableSet).join(', ')}`);
+
       // Increment view count for popularity tracking
       if (cachedAnalysis.video_id) {
         incrementVideoView(cachedAnalysis.video_id).catch((err) => {
@@ -1444,10 +1811,28 @@ const App: React.FC = () => {
         });
       }
 
-      // Update URL for shareability
-      window.history.pushState({}, '', `/${analysisId}`);
+      // Update URL for shareability with level parameter
+      window.history.pushState({}, '', `/${analysisId}?level=${cachedAnalysis.level}`);
 
       setAppState(AppState.DASHBOARD);
+
+      // Trigger background analysis for missing levels if any
+      if (availableSet.size < 3) {
+        console.log(`[Explore] Triggering background analysis for missing levels`);
+        // Fetch transcript for background analysis
+        fetchTranscript(videoUrl, cachedAnalysis.target_lang, session?.access_token)
+          .then((transcriptData) => {
+            analyzeRemainingLevels(
+              youtubeId,
+              cachedAnalysis.global_videos.title || 'Untitled Video',
+              cachedAnalysis.level,
+              transcriptData
+            );
+          })
+          .catch((err) => {
+            console.error('[Explore] Failed to fetch transcript for background analysis:', err);
+          });
+      }
     } catch (error) {
       console.error('Error loading explore video:', error);
       setErrorMsg('Failed to load video. Please try again.');
@@ -1625,6 +2010,8 @@ const App: React.FC = () => {
         onLogoClick={handleLogoClick}
         targetLang={shouldShowHeader ? targetLang : undefined}
         level={shouldShowHeader ? level : undefined}
+        availableLevels={shouldShowHeader ? availableLevels : undefined}
+        onLevelChange={shouldShowHeader ? handleLevelChange : undefined}
         isScrollable={isScrollable}
         authModalOpen={showAuthModal}
         onAuthModalClose={() => setShowAuthModal(false)}
@@ -1700,10 +2087,14 @@ const App: React.FC = () => {
                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 border border-amber-500"></span>
                    {targetLang}
                  </span>
-                 <span className="flex items-center gap-1.5 bg-white/50 backdrop-blur-sm border border-white/60 text-stone-600 px-2.5 py-1 rounded-lg shadow-sm ring-1 ring-black/[0.04] text-[11px] font-medium uppercase tracking-wide">
-                   <span className="w-1.5 h-1.5 rounded-full bg-stone-400"></span>
-                   {level}
-                 </span>
+
+                 {/* Mobile Level Selector */}
+                 <LevelSelector
+                   currentLevel={level}
+                   availableLevels={availableLevels}
+                   onLevelChange={handleLevelChange}
+                   className="text-[11px]"
+                 />
                  {tier === 'pro' && (
                    <MobileTranslatorSelector
                      translatorLang={translationPopupTargetLang}

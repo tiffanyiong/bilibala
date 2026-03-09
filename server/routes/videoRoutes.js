@@ -5,6 +5,14 @@ import { createAi } from '../services/geminiService.js';
 import { getUserFromToken } from '../services/supabaseAdmin.js';
 import { fetchVideoContext } from '../services/videoService.js';
 import { extractVideoId, safeJsonParse } from '../utils/helpers.js';
+import { checkSubscriptionLimit } from '../middleware/subscriptionCheck.js';
+import {
+  videoAnalysisLimiter,
+  transcriptLimiter,
+  matchTopicsLimiter,
+  questionGenLimiter,
+  searchLimiter
+} from '../middleware/rateLimiters.js';
 
 
 /**
@@ -41,9 +49,9 @@ const PRO_MODEL = 'gemini-3-flash-preview';
  * POST /api/fetch-transcript
  * Fetches ONLY the transcript (fast, ~10-20s) - no AI analysis
  * Used for progressive loading: show transcript immediately while AI analysis runs in background
- * ✅ ALLOWS ANONYMOUS (frontend enforces 2/month limit via browser fingerprint)
+ * ✅ ALLOWS ANONYMOUS (rate limited: 5 requests per 5 minutes)
  */
-router.post('/fetch-transcript', async (req, res) => {
+router.post('/fetch-transcript', transcriptLimiter, async (req, res) => {
   try {
     // No authentication required - anonymous users allowed (frontend enforces usage limits)
     const { videoUrl, targetLang } = req.body || {};
@@ -77,9 +85,9 @@ router.post('/fetch-transcript', async (req, res) => {
  * POST /api/analyze-video-content
  * Analyzes video content and generates learning materials
  * Now accepts optional preloaded transcript to avoid re-fetching
- * ✅ ALLOWS ANONYMOUS (frontend enforces 2/month limit via browser fingerprint)
+ * 🔒 PROTECTED: Subscription check + rate limit (3 requests per 5 minutes)
  */
-router.post('/analyze-video-content', async (req, res) => {
+router.post('/analyze-video-content', checkSubscriptionLimit('video_analysis'), videoAnalysisLimiter, async (req, res) => {
   try {
     // No authentication required - anonymous users allowed (frontend enforces usage limits)
     if (!config.gemini.apiKey) return res.status(500).json({ error: 'Server missing GEMINI_API_KEY' });
@@ -399,9 +407,9 @@ router.post('/analyze-video-content', async (req, res) => {
 /**
  * POST /api/search-videos
  * AI-powered semantic search for user's video library
- * 🔒 REQUIRES AUTHENTICATION
+ * 🔒 REQUIRES AUTHENTICATION + rate limit (10 requests per minute)
  */
-router.post('/search-videos', async (req, res) => {
+router.post('/search-videos', searchLimiter, async (req, res) => {
   try {
     // Authentication check
     const user = await getUserFromToken(req);
@@ -511,9 +519,9 @@ router.post('/search-videos', async (req, res) => {
  * POST /api/match-topics
  * AI-powered semantic matching of new topics against existing canonical topics.
  * Used during video analysis to deduplicate similar topics (e.g., "jobs" ≈ "work & career").
- * ✅ ALLOWS ANONYMOUS (called automatically after analyze-video-content)
+ * ✅ ALLOWS ANONYMOUS (rate limited: 10 requests per 5 minutes)
  */
-router.post('/match-topics', async (req, res) => {
+router.post('/match-topics', matchTopicsLimiter, async (req, res) => {
   try {
     // No authentication required - called as part of video analysis flow
     const { newTopics, existingTopics, targetLang } = req.body || {};
@@ -612,10 +620,9 @@ router.post('/match-topics', async (req, res) => {
 /**
  * POST /api/generate-question
  * AI-generates a new practice question for a given topic based on video content + user level.
- * Limited to 3 AI-generated questions per topic (enforced by frontend).
- * ✅ ALLOWS ANONYMOUS (users who analyzed videos can generate questions)
+ * ✅ ALLOWS ANONYMOUS (rate limited: 5 requests per minute)
  */
-router.post('/generate-question', async (req, res) => {
+router.post('/generate-question', questionGenLimiter, async (req, res) => {
   try {
     // No authentication required - anonymous users with analyzed videos can use this
     // Frontend limits to 3 AI-generated questions per topic
