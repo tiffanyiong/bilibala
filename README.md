@@ -3,46 +3,52 @@
 
 > Turn any YouTube video into an interactive language learning experience with AI-powered conversation practice and real-time tutoring.
 
-**Live App:** [bilibala.com](https://bilibala.com) | **Demo:** [AI Studio](https://ai.studio/apps/drive/13lr0mWX_h8UJHtvB60R2XZ4_HGqeCyPt)
-
+**Live App:** [bilibala.com](https://mybilibala.com)
 ---
 
 ## 🌟 What is Bilibala?
 
-Bilibala is a language learning platform that transforms YouTube videos into interactive lessons. Whether you're learning English, Spanish, Japanese, or any of 15+ languages, Bilibala helps you:
+Bilibala is an **English speaking practice platform** that acts as your personal IELTS coach. It transforms YouTube videos into interactive speaking lessons, helping you improve your English fluency through structured practice and detailed feedback.
 
-- **Learn from any YouTube video** — Paste a link and get instant AI-generated summaries, vocabulary lists, and topic breakdowns
+Using any English YouTube video as learning material, Bilibala helps you:
+
+- **Learn from authentic content** — Paste a YouTube link and get AI-generated summaries, vocabulary lists, and topic breakdowns
 - **Practice speaking with an AI tutor** — Have real-time voice conversations about the video content with Google's Gemini Live AI
-- **Track your progress** — Get detailed performance reports with pronunciation, fluency, and comprehension scores
-- **Build your library** — Save videos, review practice sessions, and monitor your improvement over time
+- **Get IELTS-style feedback** — Receive detailed performance reports with scores on pronunciation, fluency, grammar, vocabulary, and comprehension
+- **Track your improvement** — Save videos, review practice sessions, and monitor your speaking progress over time
 
 ### Who is it for?
 
-- **Language learners** who want to practice speaking and comprehension with authentic content
-- **Students** looking for interactive study materials from YouTube
-- **Teachers** who want to assign video-based practice to students
-- **Anyone** interested in immersive, AI-assisted language learning
+- **IELTS test takers** preparing for the speaking section
+- **English learners** who want to improve their speaking skills with authentic materials
+- **Students** looking to practice English conversation in a low-pressure environment
+- **Anyone** wanting structured feedback on their English speaking ability
 
 ---
 
 ## ✨ Key Features
 
 ### 📺 Smart Video Analysis
-- Paste any YouTube link to automatically extract transcripts
-- AI-generated summaries, topics, and vocabulary with translations
-- Timeline highlights for quick navigation
-- Support for 15+ languages
+- Paste any English YouTube video link to automatically extract transcripts
+- AI-generated summaries, topics, and vocabulary explanations
+- Timeline highlights for quick navigation to key moments
+- Works with any English content (documentaries, talks, podcasts, etc.)
 
 ### 🎙️ Live AI Tutor (Voice Conversation)
-- Real-time voice chat powered by Google Gemini Live API
+- Real-time English voice chat powered by Google Gemini Live API
 - Adaptive tutoring based on proficiency level (beginner/intermediate/advanced)
 - 4 tutor roles: Video Expert, Vocabulary Teacher, Grammar Coach, Conversation Partner
-- Contextual hints and explanations in your native language
+- Helps you practice speaking about the video content in natural English
 
-### 🎯 Interactive Practice Sessions
+### 🎯 IELTS-Style Speaking Practice
 - Topic-based speaking exercises with AI-generated questions
-- Real-time speech analysis (pronunciation, fluency, grammar, vocabulary)
-- Instant feedback with detailed scoring pyramids
+- Real-time speech analysis across 5 criteria:
+  - **Pronunciation** — Clarity and accent
+  - **Fluency** — Speaking pace and hesitation
+  - **Grammar** — Sentence structure and accuracy
+  - **Vocabulary** — Word choice and range
+  - **Comprehension** — Understanding of video content
+- Instant feedback with detailed scoring pyramids (IELTS band scale)
 - Practice reports with downloadable PDFs
 
 ### 📊 Progress Tracking & Analytics
@@ -77,12 +83,14 @@ Bilibala is a language learning platform that transforms YouTube videos into int
 - **Runtime:** Node.js 20+
 - **Framework:** Express.js
 - **WebSocket:** `ws` library for real-time AI tutor connections
-- **API Integration:**
-  - Google Gemini API (Flash & Live models)
-  - YouTube Transcript API (`youtube-transcript`, `youtubei.js`)
-  - Supadata Transcript API
-  - Stripe API for payments
-- **Security:** CORS, rate limiting, WebSocket authentication
+- **External API Integrations:**
+  - **Google Gemini API** — AI content analysis, speech feedback, question generation (`gemini-2.5-flash`, `gemini-3-flash-preview`, Gemini Live for voice)
+  - **Supadata API** — YouTube transcript extraction (native caption mode)
+  - **YouTube.js (Innertube)** — Video metadata and duration fetching
+  - **Google Cloud Text-to-Speech API** — AI voice generation for questions
+  - **Stripe API** — Payment processing and subscription management
+  - **DeepL API** — Translation service (optional, for vocabulary translation)
+- **Security:** CORS, express-rate-limit, WebSocket authentication, Stripe webhook verification
 
 ### Database & Auth
 - **Database:** Supabase (PostgreSQL)
@@ -268,6 +276,535 @@ The app is configured for deployment on Railway:
 - **Analytics Queries:** [docs/ANALYTICS_QUERIES.md](docs/ANALYTICS_QUERIES.md)
 - **Migration History:** [docs/migrations/](docs/migrations/)
 - **Memory/Context:** [~/.claude/projects/.../memory/](~/.claude/projects/.../memory/)
+
+---
+
+## 📡 API Documentation
+
+### Base URL
+- **Development:** `http://localhost:3001/api`
+- **Production:** `https://mybilibala.com/api`
+
+### Authentication
+Most endpoints support **anonymous access** with usage limits enforced via browser fingerprinting. Premium features require authentication via **Supabase JWT** passed in the `Authorization` header:
+
+```
+Authorization: Bearer <supabase_access_token>
+```
+
+---
+
+### Video Analysis Endpoints
+
+#### `POST /api/fetch-transcript`
+Fetches transcript for a YouTube video (fast, no AI processing).
+
+**Request Body:**
+```json
+{
+  "videoUrl": "https://www.youtube.com/watch?v=VIDEO_ID",
+  "targetLang": "English"
+}
+```
+
+**Response:**
+```json
+{
+  "transcript": [
+    { "text": "Hello everyone", "offset": 0, "duration": 2000 }
+  ],
+  "transcriptLang": "en",
+  "transcriptLangMismatch": false,
+  "duration": 600
+}
+```
+
+**Rate Limit:** 5 requests per 5 minutes
+**Auth Required:** No
+
+---
+
+#### `POST /api/analyze-video-content`
+Analyzes video and generates learning materials (summary, topics, vocabulary).
+
+**Request Body:**
+```json
+{
+  "videoTitle": "Video Title",
+  "videoUrl": "https://www.youtube.com/watch?v=VIDEO_ID",
+  "nativeLang": "Chinese (Mandarin - 中文)",
+  "targetLang": "English",
+  "level": "Medium",
+  "preloadedTranscript": [] // Optional: pass transcript from /fetch-transcript
+}
+```
+
+**Response:**
+```json
+{
+  "summary": "AI-generated summary...",
+  "topics": [
+    {
+      "id": "topic-1",
+      "title": "Introduction",
+      "startTime": 0,
+      "endTime": 120,
+      "summary": "...",
+      "keyPoints": ["..."]
+    }
+  ],
+  "vocabulary": [
+    {
+      "word": "resilience",
+      "context": "original sentence",
+      "translation": "韧性",
+      "explanation": "...",
+      "example": "..."
+    }
+  ],
+  "transcript": [...],
+  "duration": 600
+}
+```
+
+**Rate Limit:** 3 requests per 5 minutes
+**Usage Limit:** Free tier: 3/month, Pro: 100/month
+**Auth Required:** No (limits enforced via fingerprint/subscription)
+
+---
+
+#### `POST /api/match-topics`
+Matches transcript segments to AI-generated topics (used for timeline highlighting).
+
+**Request Body:**
+```json
+{
+  "topics": [...],
+  "transcript": [...]
+}
+```
+
+**Response:**
+```json
+{
+  "topics": [
+    {
+      "id": "topic-1",
+      "startTime": 5,
+      "endTime": 125,
+      "confidence": 0.95
+    }
+  ]
+}
+```
+
+**Rate Limit:** 5 requests per minute
+**Auth Required:** No
+
+---
+
+#### `POST /api/generate-question`
+Generates a practice question based on video topic.
+
+**Request Body:**
+```json
+{
+  "topic": "Introduction to AI",
+  "level": "Easy",
+  "targetLang": "English",
+  "videoContext": "Brief video summary..."
+}
+```
+
+**Response:**
+```json
+{
+  "question": "What is artificial intelligence?",
+  "expectedKeyPoints": ["definition", "examples"],
+  "difficulty": "Easy"
+}
+```
+
+**Rate Limit:** 5 requests per minute
+**Auth Required:** No
+
+---
+
+### Speech Analysis Endpoints
+
+#### `POST /api/analyze-speech`
+Analyzes recorded speech and provides IELTS-style feedback.
+
+**Request Body:**
+```json
+{
+  "audioData": "base64_encoded_audio",
+  "topic": "Technology",
+  "question": "What do you think about AI?",
+  "level": "Medium",
+  "targetLang": "English",
+  "nativeLang": "Chinese (Mandarin - 中文)",
+  "referenceTranscript": null // Optional: for retake mode
+}
+```
+
+**Response:**
+```json
+{
+  "scores": {
+    "pronunciation": 7.5,
+    "fluency": 7.0,
+    "grammar": 8.0,
+    "vocabulary": 7.5,
+    "comprehension": 8.5,
+    "overall": 7.7
+  },
+  "transcription": "User's spoken text...",
+  "feedback": {
+    "strengths": ["..."],
+    "improvements": ["..."],
+    "tips": ["..."]
+  },
+  "communicationLogic": {
+    "detected": [...],
+    "improved": [...]
+  },
+  "languagePolish": [
+    {
+      "original": "...",
+      "improved": "...",
+      "explanation": "..."
+    }
+  ]
+}
+```
+
+**Rate Limit:** 5 requests per 10 minutes
+**Usage Limit:** Free tier: 5 sessions/month, Pro: unlimited
+**Auth Required:** No
+
+---
+
+#### `POST /api/tts`
+Converts text to speech using Google Cloud TTS.
+
+**Request Body:**
+```json
+{
+  "text": "What is your favorite hobby?",
+  "language": "English"
+}
+```
+
+**Response:**
+```json
+{
+  "audioUrl": "https://supabase-storage-url/...",
+  "cached": true
+}
+```
+
+**Rate Limit:** 30 requests per minute
+**Auth Required:** No
+
+---
+
+### Translation Endpoints
+
+#### `POST /api/translate-ui-labels`
+Translates UI labels for internationalization.
+
+**Request Body:**
+```json
+{
+  "language": "Chinese (Mandarin - 中文)",
+  "sourceLabels": {
+    "pronunciation": "Pronunciation",
+    "fluency": "Fluency",
+    ...
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "labels": {
+    "pronunciation": "发音",
+    "fluency": "流利度",
+    ...
+  },
+  "cached": true
+}
+```
+
+**Rate Limit:** 10 requests per minute
+**Auth Required:** No
+
+---
+
+#### `POST /api/translate/deepl`
+Translates text using DeepL API (higher quality than Gemini for certain languages).
+
+**Request Body:**
+```json
+{
+  "text": "resilience",
+  "sourceLang": "English",
+  "targetLang": "Chinese (Mandarin - 中文)"
+}
+```
+
+**Response:**
+```json
+{
+  "translation": "韧性",
+  "cached": false
+}
+```
+
+**Rate Limit:** 30 requests per minute
+**Auth Required:** No
+**Note:** Not all languages supported on DeepL free tier
+
+---
+
+### AI Tutor (WebSocket)
+
+#### `WebSocket /live`
+Real-time voice conversation with Gemini Live API.
+
+**Connection:**
+```javascript
+const ws = new WebSocket('wss://mybilibala.com/live');
+```
+
+**Authentication:**
+```json
+{
+  "type": "auth",
+  "token": "supabase_access_token",
+  "config": {
+    "targetLang": "English",
+    "nativeLang": "Chinese (Mandarin - 中文)",
+    "level": "Medium",
+    "transcript": "Video transcript..."
+  }
+}
+```
+
+**Audio Streaming:**
+```json
+{
+  "type": "audio",
+  "audio": "base64_pcm16_audio_chunk"
+}
+```
+
+**Server Events:**
+- `sessionStart` — Session initialized
+- `audio` — AI voice response (base64 PCM16)
+- `transcript` — AI text response
+- `limitReached` — Time limit reached
+- `error` — Error message
+
+**Usage Limit:** Free tier: 0 min/month, Pro: 60 min/month + purchased credits
+**Auth Required:** Yes
+
+---
+
+### Subscription & Payment Endpoints
+
+#### `POST /api/subscriptions/create-checkout`
+Creates Stripe checkout session for Pro subscription.
+
+**Request Body:**
+```json
+{
+  "priceType": "monthly" // or "annual"
+}
+```
+
+**Response:**
+```json
+{
+  "url": "https://checkout.stripe.com/..."
+}
+```
+
+**Auth Required:** Yes
+
+---
+
+#### `POST /api/subscriptions/create-credit-checkout`
+Creates Stripe checkout for credit pack purchase.
+
+**Request Body:**
+```json
+{
+  "packType": "starter" // or "topup"
+}
+```
+
+**Response:**
+```json
+{
+  "url": "https://checkout.stripe.com/..."
+}
+```
+
+**Auth Required:** Yes
+
+---
+
+#### `POST /api/subscriptions/create-portal`
+Creates Stripe customer portal session (manage subscription, cancel, etc.).
+
+**Response:**
+```json
+{
+  "url": "https://billing.stripe.com/..."
+}
+```
+
+**Auth Required:** Yes
+
+---
+
+### Session Management Endpoints
+
+#### `POST /api/sessions/register`
+Registers a new device session (for concurrent device limit enforcement).
+
+**Request Body:**
+```json
+{
+  "sessionId": "uuid",
+  "deviceFingerprint": "fingerprint_hash",
+  "userAgent": "Mozilla/5.0...",
+  "deviceInfo": { "browser": "Chrome", "os": "macOS" },
+  "expiresAt": "2026-03-18T12:00:00Z"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "sessionLimit": 3,
+  "loggedOutSessions": [],
+  "loggedOutCount": 0
+}
+```
+
+**Auth Required:** Yes
+**Note:** Pro users have 3 concurrent device limit
+
+---
+
+#### `POST /api/sessions/heartbeat`
+Updates session activity timestamp (keeps session alive).
+
+**Request Body:**
+```json
+{
+  "sessionId": "uuid"
+}
+```
+
+**Auth Required:** Yes
+
+---
+
+### Video Library Endpoints
+
+#### `POST /api/search-videos`
+Searches user's saved video history.
+
+**Request Body:**
+```json
+{
+  "searchQuery": "technology",
+  "sortBy": "recent",
+  "targetLang": "English",
+  "level": "Medium"
+}
+```
+
+**Response:**
+```json
+{
+  "videos": [
+    {
+      "id": "uuid",
+      "video_id": "dQw4w9WgXcQ",
+      "title": "...",
+      "created_at": "2026-03-17T...",
+      "analysis_data": {...}
+    }
+  ]
+}
+```
+
+**Auth Required:** Yes
+
+---
+
+### Analytics Endpoints
+
+#### `POST /api/analytics/page-visit`
+Tracks landing page visits for analytics.
+
+**Request Body:**
+```json
+{
+  "fingerprint": "device_fingerprint_hash"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true
+}
+```
+
+**Auth Required:** No
+
+---
+
+### Health Check
+
+#### `GET /healthz`
+Server health check endpoint.
+
+**Response:**
+```json
+{
+  "ok": true
+}
+```
+
+---
+
+### Rate Limiting
+
+All endpoints are rate-limited to prevent abuse:
+
+| Endpoint | Limit |
+|----------|-------|
+| `/api/fetch-transcript` | 5 req / 5 min |
+| `/api/analyze-video-content` | 3 req / 5 min |
+| `/api/analyze-speech` | 5 req / 10 min |
+| `/api/tts` | 30 req / min |
+| `/api/translate/*` | 30 req / min |
+| `/api/conversation-hints` | 5 req / min |
+| `/api/search-videos` | 20 req / min |
+
+Rate limit headers are returned in responses:
+- `X-RateLimit-Limit` — Total requests allowed
+- `X-RateLimit-Remaining` — Requests remaining
+- `X-RateLimit-Reset` — Time when limit resets (Unix timestamp)
 
 ---
 
