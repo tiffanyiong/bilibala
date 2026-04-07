@@ -48,6 +48,7 @@ import {
   updateVideoCategory,
 } from './shared/services/database';
 import { analyzeVideoContent, fetchTranscript } from './shared/services/geminiService';
+import { getFingerprint } from './shared/services/fingerprint';
 import { getDailyPracticeUsage } from './shared/services/subscriptionDatabase';
 import {
   checkAnonymousPracticeLimit,
@@ -1374,6 +1375,8 @@ const App: React.FC = () => {
       // Step 2: Run AI analysis in background (~20-30s) → Update summary/vocab when ready
       // This makes the app feel 2-3x faster!
 
+      const anonFingerprint = !session?.access_token ? await getFingerprint() : undefined;
+
       let isDashboardShown = false;
       const showDashboard = () => {
           if (!isDashboardShown) {
@@ -1393,7 +1396,7 @@ const App: React.FC = () => {
       }, 12000);
 
       // Step 1: Fetch transcript FIRST (faster!)
-      fetchTranscript(videoUrl, targetLang, session?.access_token)
+      fetchTranscript(videoUrl, targetLang, session?.access_token, anonFingerprint)
         .then(async (transcriptData) => {
           // Show transcript immediately
           setTranscript(transcriptData.transcript || []);
@@ -1416,7 +1419,8 @@ const App: React.FC = () => {
             targetLang,
             level,
             transcriptData, // Pass preloaded transcript to skip re-fetching
-            session?.access_token
+            session?.access_token,
+            anonFingerprint
           );
 
           // AI analysis complete - update summary, vocab, outline
