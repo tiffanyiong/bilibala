@@ -11,8 +11,8 @@ const exploreCache = new LRUCache({
 /**
  * Generate cache key for explore query
  */
-function getCacheKey(targetLang, level) {
-  return `explore:${targetLang}:${level}`;
+function getCacheKey(targetLang, nativeLang, level) {
+  return `explore:${targetLang}:${nativeLang}:${level}`;
 }
 
 /**
@@ -61,30 +61,31 @@ function transformToExploreVideos(data) {
 
 /**
  * Get explore videos with personalization + popular backfill
- * Results are cached for 5 minutes per language/level combination
+ * Results are cached for 5 minutes per language/level/nativeLang combination
  *
  * @param {string} targetLang - Target language (e.g., 'English')
+ * @param {string} nativeLang - User's native language (e.g., 'Korean')
  * @param {string} level - Difficulty level ('Easy', 'Medium', 'Hard')
  * @param {number} limit - Max videos to return (default 8)
  * @returns {Promise<{videos: ExploreVideo[], cached: boolean}>}
  */
-export async function getExploreVideos(targetLang, level, limit = 8) {
+export async function getExploreVideos(targetLang, nativeLang, level, limit = 8) {
   if (!supabaseAdmin) {
     throw new Error('Supabase admin client not configured');
   }
 
   // Check cache first
-  const cacheKey = getCacheKey(targetLang, level);
+  const cacheKey = getCacheKey(targetLang, nativeLang, level);
   const cachedResult = exploreCache.get(cacheKey);
 
   if (cachedResult) {
-    console.log(`[Explore] Cache hit for: ${targetLang} / ${level}`);
+    console.log(`[Explore] Cache hit for: ${targetLang} / ${nativeLang} / ${level}`);
     return { videos: cachedResult, cached: true };
   }
 
-  console.log(`[Explore] Cache miss, querying DB for: ${targetLang} / ${level}`);
+  console.log(`[Explore] Cache miss, querying DB for: ${targetLang} / ${nativeLang} / ${level}`);
 
-  // Step 1: Get personalized matches (same target_lang AND level)
+  // Step 1: Get personalized matches (same target_lang, native_lang AND level)
   // Use !inner join to only get records with valid global_videos
   const { data: personalized, error: pError } = await supabaseAdmin
     .from('cached_analyses')
@@ -104,6 +105,7 @@ export async function getExploreVideos(targetLang, level, limit = 8) {
       )
     `)
     .eq('target_lang', targetLang)
+    .eq('native_lang', nativeLang)
     .eq('level', level)
     .not('global_videos.title', 'is', null)
     .neq('global_videos.title', '')
@@ -127,53 +129,10 @@ export async function getExploreVideos(targetLang, level, limit = 8) {
 
   let result = uniquePersonalized.slice(0, limit);
 
-  // Step 2: If not enough, backfill with popular videos (any language/level)
-  if (result.length < limit) {
-    const needed = limit - result.length;
-
-    // Query more popular videos, excluding ones we already have by youtube_id
-    const existingYoutubeIds = Array.from(seenYoutubeIds);
-
-    // Query popular videos by view_count, excluding ones we already have
-    let query = supabaseAdmin
-      .from('cached_analyses')
-      .select(`
-        id,
-        level,
-        target_lang,
-        native_lang,
-        created_at,
-        global_videos!inner (
-          id,
-          youtube_id,
-          title,
-          thumbnail_url,
-          view_count,
-          channel_name
-        )
-      `)
-      .order('created_at', { ascending: false })
-      .limit(needed * 5); // Fetch extra to account for duplicates after filtering
-
-    const { data: popular, error: popError } = await query;
-
-    if (!popError && popular) {
-      const backfillVideos = transformToExploreVideos(popular)
-        .filter((v) => !seenYoutubeIds.has(v.youtubeId));
-
-      // Deduplicate backfill results as well
-      const uniqueBackfill = [];
-      for (const v of backfillVideos) {
-        if (!seenYoutubeIds.has(v.youtubeId)) {
-          seenYoutubeIds.add(v.youtubeId);
-          uniqueBackfill.push(v);
-          if (uniqueBackfill.length >= needed) break;
-        }
-      }
-
-      result = [...result, ...uniqueBackfill];
-    }
-  }
+  // No backfill with other native languages — showing videos in the wrong native language
+  // would give users translated content they can't read. If there are no cached analyses
+  // for this nativeLang/targetLang/level combination, return empty so the explore section
+  // is hidden on the frontend.
 
   // Final safety check: ensure no duplicate youtubeIds in result
   const finalSeenIds = new Set();
@@ -185,7 +144,7 @@ export async function getExploreVideos(targetLang, level, limit = 8) {
 
   // Store in cache
   exploreCache.set(cacheKey, result);
-  console.log(`[Explore] Cached ${result.length} videos. Cache size: ${exploreCache.size}`);
+  console.log(`[Explore] Cached ${result.length} videos for ${nativeLang}/${targetLang}/${level}. Cache size: ${exploreCache.size}`);
 
   return { videos: result, cached: false };
 }
