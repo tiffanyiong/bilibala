@@ -117,7 +117,7 @@ export async function checkAnonymousPracticeLimit(): Promise<UsageStatus> {
 
   const { data, error } = await supabase
     .from('browser_fingerprints')
-    .select('monthly_usage_count, usage_reset_month')
+    .select('monthly_practice_count, usage_reset_month')
     .eq('fingerprint_hash', fingerprint)
     .single();
 
@@ -128,7 +128,7 @@ export async function checkAnonymousPracticeLimit(): Promise<UsageStatus> {
   let used = 0;
   if (data) {
     if (data.usage_reset_month === currentMonth) {
-      used = data.monthly_usage_count || 0;
+      used = data.monthly_practice_count || 0;
     }
   }
 
@@ -149,7 +149,7 @@ export async function recordAnonymousPractice(): Promise<void> {
 
   const { data: existing, error: fetchError } = await supabase
     .from('browser_fingerprints')
-    .select('id, monthly_usage_count, usage_reset_month')
+    .select('id, monthly_practice_count, usage_reset_month')
     .eq('fingerprint_hash', fingerprint)
     .single();
 
@@ -160,13 +160,13 @@ export async function recordAnonymousPractice(): Promise<void> {
   if (existing) {
     let newCount = 1;
     if (existing.usage_reset_month === currentMonth) {
-      newCount = (existing.monthly_usage_count || 0) + 1;
+      newCount = (existing.monthly_practice_count || 0) + 1;
     }
 
     const { error } = await supabase
       .from('browser_fingerprints')
       .update({
-        monthly_usage_count: newCount,
+        monthly_practice_count: newCount,
         usage_reset_month: currentMonth,
         last_seen_at: new Date().toISOString()
       })
@@ -180,7 +180,7 @@ export async function recordAnonymousPractice(): Promise<void> {
       .from('browser_fingerprints')
       .insert({
         fingerprint_hash: fingerprint,
-        monthly_usage_count: 1,
+        monthly_practice_count: 1,
         usage_reset_month: currentMonth,
         last_seen_at: new Date().toISOString()
       });
@@ -238,21 +238,27 @@ export async function trackPageVisit(): Promise<void> {
 }
 
 /**
- * Get usage info formatted for UI display
+ * Get usage info formatted for UI display (video analyses)
  */
 export async function getUsageDisplayInfo(): Promise<UsageDisplayInfo> {
   const status = await checkAnonymousUsageLimit();
 
-  // Calculate reset date (one month from today)
   const now = new Date();
   const resetDateObj = new Date(now.getFullYear(), now.getMonth() + 1, now.getDate());
-  const resetDate = resetDateObj.toLocaleDateString('en-US', {
-    month: 'long',
-    day: 'numeric'
-  });
+  const resetDate = resetDateObj.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
 
-  return {
-    ...status,
-    resetDate
-  };
+  return { ...status, resetDate };
+}
+
+/**
+ * Get practice session usage info formatted for UI display
+ */
+export async function getPracticeUsageDisplayInfo(): Promise<UsageDisplayInfo> {
+  const status = await checkAnonymousPracticeLimit();
+
+  const now = new Date();
+  const resetDateObj = new Date(now.getFullYear(), now.getMonth() + 1, now.getDate());
+  const resetDate = resetDateObj.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+
+  return { ...status, resetDate };
 }
