@@ -411,6 +411,61 @@ create table user_vocabulary (
 
 ---
 
+### 9. `browser_fingerprints`
+
+Tracks anonymous (non-logged-in) user activity for usage limiting and analytics. One row per device/browser.
+
+```sql
+create table browser_fingerprints (
+  id uuid primary key,
+  fingerprint_hash text not null unique,  -- Browser fingerprint (FingerprintJS visitorId)
+  user_id uuid references auth.users(id), -- Set when anonymous user signs up/logs in
+
+  -- Video analysis usage (anonymous users)
+  monthly_usage_count integer default 0,  -- # of video analyses this month
+  usage_reset_month text,                 -- YYYY-MM of last reset (shared by both counters below)
+
+  -- Practice session usage (anonymous users)
+  -- NOTE: Two columns exist for historical reasons:
+  --   practice_session_count  → used by authenticated user queries (via get_all_monthly_usage())
+  --   monthly_practice_count  → used by anonymous user limit checks (checkSubscriptionLimit middleware)
+  -- Anonymous limit checks use monthly_practice_count (separate from video analysis count).
+  practice_session_count integer default 0,   -- For authenticated user monthly usage queries
+  practice_reset_month text,                   -- Reset month for practice_session_count
+  monthly_practice_count integer default 0,    -- For anonymous user practice limit checks (checkSubscriptionLimit)
+
+  -- Page visit analytics
+  page_visit_count integer default 0,
+  first_page_visit_at timestamptz,
+  last_page_visit_at timestamptz,
+
+  -- Network info
+  ip_address inet,
+  last_ip_at timestamptz,
+
+  first_seen_at timestamptz,
+  last_seen_at timestamptz
+);
+```
+
+**Column clarification — practice counts:**
+
+| Column | Used by | Purpose |
+|--------|---------|---------|
+| `monthly_usage_count` | Server middleware + client `checkAnonymousUsageLimit()` | Anonymous video analysis limit (2/month) |
+| `monthly_practice_count` | Server middleware + client `checkAnonymousPracticeLimit()` | Anonymous practice session limit (2/month) |
+| `practice_session_count` | `get_all_monthly_usage()` DB function | Authenticated user monthly practice count |
+| `practice_reset_month` | `get_all_monthly_usage()` DB function | Reset tracking for `practice_session_count` |
+| `usage_reset_month` | Server middleware + client code | Reset tracking for `monthly_usage_count` and `monthly_practice_count` |
+
+**Key rules:**
+- Anonymous video analyses increment `monthly_usage_count`
+- Anonymous practice sessions increment `monthly_practice_count`
+- Both share `usage_reset_month` for monthly reset tracking
+- `practice_session_count` is only for authenticated users and is managed separately
+
+---
+
 ## User Flows
 
 ### Flow 1: Video Analysis (Existing User Journey)
