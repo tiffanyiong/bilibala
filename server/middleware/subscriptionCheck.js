@@ -102,7 +102,7 @@ export const checkSubscriptionLimit = (actionType) => {
         // Get anonymous usage from browser_fingerprints table
         const { data: fingerprint, error: fpError } = await supabaseAdmin
           .from('browser_fingerprints')
-          .select('monthly_usage_count, usage_reset_month')
+          .select('monthly_usage_count, monthly_practice_count, usage_reset_month')
           .eq('fingerprint_hash', fingerprintHash)
           .single();
 
@@ -120,7 +120,10 @@ export const checkSubscriptionLimit = (actionType) => {
           // New user or new month - reset to 0
           currentUsage = 0;
         } else {
-          currentUsage = fingerprint.monthly_usage_count || 0;
+          // Use separate counters: practice_session uses monthly_practice_count, others use monthly_usage_count
+          currentUsage = actionType === 'practice_session'
+            ? (fingerprint.monthly_practice_count || 0)
+            : (fingerprint.monthly_usage_count || 0);
         }
 
         // Anonymous limits (hardcoded for now, could move to app_config)

@@ -56,6 +56,7 @@ import {
   checkAnonymousPracticeLimit,
   checkAnonymousUsageLimit,
   getUsageDisplayInfo,
+  getPracticeUsageDisplayInfo,
   recordAnonymousUsage,
   trackPageVisit,
   UsageDisplayInfo
@@ -266,6 +267,7 @@ const App: React.FC = () => {
 
   // Usage limit modal state
   const [showUsageLimitModal, setShowUsageLimitModal] = useState(false);
+  const [usageLimitType, setUsageLimitType] = useState<'video' | 'practice'>('video');
   const [usageInfo, setUsageInfo] = useState<UsageDisplayInfo | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
 
@@ -876,7 +878,10 @@ const App: React.FC = () => {
       // Check anonymous practice limit (2 sessions)
       const practiceStatus = await checkAnonymousPracticeLimit();
       if (!practiceStatus.allowed) {
-        setShowAuthModal(true);
+        const info = await getPracticeUsageDisplayInfo();
+        setUsageInfo(info);
+        setUsageLimitType('practice');
+        setShowUsageLimitModal(true);
         return;
       }
     } else {
@@ -1270,6 +1275,7 @@ const App: React.FC = () => {
         // Show modal immediately, user stays on landing page
         const info = await getUsageDisplayInfo();
         setUsageInfo(info);
+        setUsageLimitType('video');
         setShowUsageLimitModal(true);
         return; // Don't proceed, don't change app state
       }
@@ -1864,8 +1870,8 @@ const App: React.FC = () => {
 
       setAppState(AppState.DASHBOARD);
 
-      // Trigger background analysis for missing levels if any
-      if (availableSet.size < 3) {
+      // Trigger background analysis for missing levels if any (authenticated users only)
+      if (availableSet.size < 3 && user) {
         console.log(`[Explore] Triggering background analysis for missing levels`);
         // Fetch transcript for background analysis
         fetchTranscript(videoUrl, cachedAnalysis.target_lang, session?.access_token)
@@ -2288,7 +2294,12 @@ const App: React.FC = () => {
             analysisId={currentAnalysisId}
             videoTitle={videoData.title}
             videoId={videoData.id}
-            onRequireAuth={() => setShowAuthModal(true)}
+            onRequireAuth={async () => {
+              const info = await getPracticeUsageDisplayInfo();
+              setUsageInfo(info);
+              setUsageLimitType('practice');
+              setShowUsageLimitModal(true);
+            }}
           />
       )}
 
@@ -2394,6 +2405,7 @@ const App: React.FC = () => {
           setShowAuthModal(true);
         }}
         usageInfo={usageInfo}
+        type={usageLimitType}
       />
 
       </Layout>

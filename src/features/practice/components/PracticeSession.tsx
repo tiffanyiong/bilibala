@@ -6,6 +6,7 @@ import { getBackendOrigin } from '../../../shared/services/backend';
 import { getUserVideoLibrary, incrementQuestionUseCount, incrementTopicPracticeCount, savePracticeSession, updateLibraryPracticeStats, uploadPracticeAudio } from '../../../shared/services/database';
 import { getDailyPracticeUsage } from '../../../shared/services/subscriptionDatabase';
 import { checkAnonymousPracticeLimit, recordAnonymousPractice } from '../../../shared/services/usageTracking';
+import { getFingerprint } from '../../../shared/services/fingerprint';
 import { PracticeTopic, SpeechAnalysisResult, TopicQuestion } from '../../../shared/types';
 import UpgradeModal from '../../subscription/components/UpgradeModal';
 import DinoGame from '../../content/components/DinoGame';
@@ -254,11 +255,12 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
       const isEnglish = languageToUse && languageToUse.toLowerCase().includes('english');
 
       // Include referenceTranscript for retake mode (practicing improved version)
+      const fingerprintHash = !session?.access_token ? await getFingerprint() : undefined;
       const analysisPromise = fetch(`${getBackendOrigin()}/api/analyze-speech`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token}`,
+          ...(session?.access_token && { 'Authorization': `Bearer ${session.access_token}` }),
         },
         body: JSON.stringify({
           audioData,
@@ -267,7 +269,8 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
           level,
           targetLang,
           nativeLang,
-          ...(referenceTranscript && { referenceTranscript }) // Only include if it's a retake
+          ...(referenceTranscript && { referenceTranscript }),
+          ...(fingerprintHash && { fingerprintHash }),
         }),
       }).then(res => res.json());
 
