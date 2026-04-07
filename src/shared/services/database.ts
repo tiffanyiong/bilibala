@@ -1489,3 +1489,48 @@ export async function getAllAppConfig(): Promise<Record<string, any>> {
   }, {} as Record<string, any>);
 }
 
+
+// ============================================
+// USER PREFERENCES
+// ============================================
+
+export interface UserPreferences {
+  nativeLang: string;
+  targetLang: string;
+  level: string;
+}
+
+export async function loadUserPreferences(userId: string): Promise<UserPreferences | null> {
+  const { data, error } = await supabase
+    .from('user_preferences')
+    .select('native_lang, target_lang, default_level')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) {
+    console.error('Error loading user preferences:', error);
+    return null;
+  }
+  if (!data) return null;
+
+  return {
+    nativeLang: data.native_lang,
+    targetLang: data.target_lang,
+    level: data.default_level,
+  };
+}
+
+export async function saveUserPreferences(userId: string, prefs: Partial<UserPreferences>): Promise<void> {
+  const row: Record<string, string> = { user_id: userId };
+  if (prefs.nativeLang !== undefined) row.native_lang = prefs.nativeLang;
+  if (prefs.targetLang !== undefined) row.target_lang = prefs.targetLang;
+  if (prefs.level !== undefined) row.default_level = prefs.level;
+
+  const { error } = await supabase
+    .from('user_preferences')
+    .upsert(row, { onConflict: 'user_id' });
+
+  if (error) {
+    console.error('Error saving user preferences:', error);
+  }
+}
