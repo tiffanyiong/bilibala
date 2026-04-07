@@ -3,6 +3,7 @@ name: Auto Release
 on:
   push:
     branches:
+      - main
       - beta
       - production
 
@@ -109,88 +110,58 @@ jobs:
           BRANCH="${{ github.ref_name }}"
           BUMP_TYPE="${{ steps.bump_type.outputs.bump }}"
 
-          # Get latest production tag (v*.*.* without -beta)
-          LATEST_TAG=$(git tag -l "v[0-9]*.[0-9]*.[0-9]*" --sort=-v:refname | grep -v beta | head -n1)
+          if [[ "$BRANCH" == "main" ]]; then
+            # For main: bump version in package.json, no tag/release
+            CURRENT_VERSION=$(node -p "require('./package.json').version")
+            MAJOR=$(echo $CURRENT_VERSION | cut -d. -f1)
+            MINOR=$(echo $CURRENT_VERSION | cut -d. -f2)
+            PATCH=$(echo $CURRENT_VERSION | cut -d. -f3)
 
-          if [[ -z "$LATEST_TAG" ]]; then
-            MAJOR=1
-            MINOR=0
-            PATCH=0
-          else
-            VERSION=${LATEST_TAG#v}
-            MAJOR=$(echo $VERSION | cut -d. -f1)
-            MINOR=$(echo $VERSION | cut -d. -f2)
-            PATCH=$(echo $VERSION | cut -d. -f3)
-          fi
+            echo "Current version: ${CURRENT_VERSION}"
 
-          echo "Current version: v${MAJOR}.${MINOR}.${PATCH}"
-
-          if [[ "$BRANCH" == "production" ]]; then
-            # For production, promote latest beta to stable (remove -beta suffix)
-            LATEST_BETA=$(git tag -l "v[0-9]*.[0-9]*.[0-9]*-beta.*" --sort=-v:refname | head -n1)
-
-            if [[ -n "$LATEST_BETA" ]]; then
-              # Strip -beta.X suffix from latest beta tag
-              NEW_TAG=${LATEST_BETA%%-beta.*}
-              echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
-              echo "prerelease=false" >> $GITHUB_OUTPUT
-              echo "name=Release $NEW_TAG" >> $GITHUB_OUTPUT
-              echo "Promoting beta $LATEST_BETA to production $NEW_TAG"
-            else
-              # No beta tag found, apply version bump based on commit message
-              if [[ "$BUMP_TYPE" == "major" ]]; then
-                MAJOR=$((MAJOR + 1))
-                MINOR=0
-                PATCH=0
-              elif [[ "$BUMP_TYPE" == "minor" ]]; then
-                MINOR=$((MINOR + 1))
-                PATCH=0
-              else
-                PATCH=$((PATCH + 1))
-              fi
-
-              NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
-              echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
-              echo "prerelease=false" >> $GITHUB_OUTPUT
-              echo "name=Release $NEW_TAG" >> $GITHUB_OUTPUT
-            fi
-
-          elif [[ "$BRANCH" == "beta" ]]; then
-            # For beta, use next minor version as base
             if [[ "$BUMP_TYPE" == "major" ]]; then
               MAJOR=$((MAJOR + 1))
               MINOR=0
-              BASE_VERSION="${MAJOR}.${MINOR}.0"
+              PATCH=0
             elif [[ "$BUMP_TYPE" == "minor" ]]; then
               MINOR=$((MINOR + 1))
-              BASE_VERSION="${MAJOR}.${MINOR}.0"
+              PATCH=0
             else
-              # Default: increment minor for beta
-              MINOR=$((MINOR + 1))
-              BASE_VERSION="${MAJOR}.${MINOR}.0"
+              PATCH=$((PATCH + 1))
             fi
 
-            # Get latest beta tag for this version
-            LATEST_BETA=$(git tag -l "v${BASE_VERSION}-beta.*" --sort=-v:refname | head -n1)
+            NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+            echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+            echo "tag=" >> $GITHUB_OUTPUT
+            echo "New version: ${NEW_VERSION}"
 
-            if [[ -z "$LATEST_BETA" ]]; then
-              NEW_TAG="v${BASE_VERSION}-beta.1"
-            else
-              # Extract beta number and increment
-              BETA_NUM=$(echo $LATEST_BETA | sed 's/.*-beta\.//')
-              BETA_NUM=$((BETA_NUM + 1))
-              NEW_TAG="v${BASE_VERSION}-beta.${BETA_NUM}"
-            fi
+          elif [[ "$BRANCH" == "beta" ]]; then
+            # For beta: read version from main's package.json, create prerelease tag
+            MAIN_VERSION=$(git show origin/main:package.json | node -p "JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).version" 2>/dev/null || node -p "require('./package.json').version")
+            echo "Base version from main: ${MAIN_VERSION}"
 
+            NEW_TAG="v${MAIN_VERSION}"
+            echo "new_version=$MAIN_VERSION" >> $GITHUB_OUTPUT
             echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
             echo "prerelease=true" >> $GITHUB_OUTPUT
             echo "name=Beta $NEW_TAG" >> $GITHUB_OUTPUT
-          fi
+            echo "New tag: $NEW_TAG"
 
-          echo "New tag: $NEW_TAG"
+          elif [[ "$BRANCH" == "production" ]]; then
+            # For production: read version from package.json, create stable release tag
+            NEW_VERSION=$(node -p "require('./package.json').version")
+            NEW_TAG="v${NEW_VERSION}"
+
+            echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+            echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
+            echo "prerelease=false" >> $GITHUB_OUTPUT
+            echo "name=Release $NEW_TAG" >> $GITHUB_OUTPUT
+            echo "New tag: $NEW_TAG"
+          fi
 
       - name: Generate release notes
         id: release_notes
+        if: github.ref_name != 'main'
         run: |
           BRANCH="${{ github.ref_name }}"
           BUMP_TYPE="${{ steps.bump_type.outputs.bump }}"
@@ -198,11 +169,7 @@ jobs:
           PR_TITLE="${{ steps.pr_details.outputs.pr_title }}"
 
           # Get commits since last tag
-          if [[ "$BRANCH" == "production" ]]; then
-            PREV_TAG=$(git tag -l "v[0-9]*.[0-9]*.[0-9]*" --sort=-v:refname | grep -v beta | head -n1)
-          else
-            PREV_TAG=$(git tag -l "v*-beta.*" --sort=-v:refname | head -n1)
-          fi
+          PREV_TAG=$(git tag -l "v[0-9]*.[0-9]*.[0-9]*" --sort=-v:refname | grep -v beta | head -n1)
 
           if [[ -z "$PREV_TAG" ]]; then
             COMMITS=$(git log --oneline -10)
@@ -244,28 +211,22 @@ jobs:
 
       - name: Update package.json version
         run: |
-          # Extract version number without 'v' prefix and '-beta.X' suffix
-          VERSION="${{ steps.get_tag.outputs.tag }}"
-          VERSION=${VERSION#v}  # Remove 'v' prefix
+          NEW_VERSION="${{ steps.get_tag.outputs.new_version }}"
+          echo "Updating package.json to version: $NEW_VERSION"
 
-          # Remove beta suffix for package.json (e.g., 1.2.0-beta.1 -> 1.2.0)
-          PACKAGE_VERSION=${VERSION%%-beta.*}
-
-          echo "Updating package.json to version: $PACKAGE_VERSION (from tag: ${{ steps.get_tag.outputs.tag }})"
-
-          # Update package.json
-          npm version "$PACKAGE_VERSION" --no-git-tag-version --allow-same-version
+          npm version "$NEW_VERSION" --no-git-tag-version --allow-same-version
 
           # Commit if there are changes
           if [[ -n $(git status --porcelain package.json package-lock.json) ]]; then
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add package.json package-lock.json
-            git commit -m "chore: bump version to $PACKAGE_VERSION [skip ci]"
+            git commit -m "chore: bump version to $NEW_VERSION [skip ci]"
             git push origin ${{ github.ref_name }}
           fi
 
       - name: Create tag
+        if: github.ref_name != 'main'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -273,6 +234,7 @@ jobs:
           git push origin "${{ steps.get_tag.outputs.tag }}"
 
       - name: Create GitHub Release
+        if: github.ref_name != 'main'
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.get_tag.outputs.tag }}
