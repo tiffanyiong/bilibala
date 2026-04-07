@@ -15,7 +15,8 @@ export interface TranscriptData {
 export const fetchTranscript = async (
   videoUrl: string,
   targetLang: string,
-  accessToken?: string
+  accessToken?: string,
+  fingerprintHash?: string
 ): Promise<TranscriptData> => {
   const resp = await fetch(`${getBackendOrigin()}/api/fetch-transcript`, {
     method: 'POST',
@@ -23,7 +24,7 @@ export const fetchTranscript = async (
       'Content-Type': 'application/json',
       ...(accessToken && { 'Authorization': `Bearer ${accessToken}` }),
     },
-    body: JSON.stringify({ videoUrl, targetLang }),
+    body: JSON.stringify({ videoUrl, targetLang, ...(!accessToken && fingerprintHash && { fingerprintHash }) }),
   });
 
   if (!resp.ok) {
@@ -46,7 +47,8 @@ export const analyzeVideoContent = async (
   targetLang: string,
   level: string,
   preloadedTranscript?: TranscriptData,
-  accessToken?: string
+  accessToken?: string,
+  fingerprintHash?: string
 ): Promise<ContentAnalysis> => {
   const resp = await fetch(`${getBackendOrigin()}/api/analyze-video-content`, {
     method: 'POST',
@@ -60,7 +62,8 @@ export const analyzeVideoContent = async (
       nativeLang,
       targetLang,
       level,
-      preloadedTranscript
+      preloadedTranscript,
+      ...(!accessToken && fingerprintHash && { fingerprintHash })
     }),
   });
 
