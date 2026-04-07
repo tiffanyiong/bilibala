@@ -190,6 +190,13 @@ export function setupLiveWebSocket(wss) {
             return closeWith(1011, 'server missing api key');
           }
 
+          // --- Auth check: AI tutor requires a logged-in user ---
+          if (!sessionUserId) {
+            send({ type: 'error', error: 'AI tutor requires sign in. Please log in to continue.' });
+            isStarting = false;
+            return closeWith(1008, 'authentication required');
+          }
+
           // --- Server-side limit enforcement ---
           const sessionMaxMinutes = getConfigNumber('ai_tutor_session_max_minutes', 40);
           const monthlyMaxMinutes = getConfigNumber('ai_tutor_monthly_max_minutes', 60);
