@@ -10,6 +10,7 @@ interface UsageLimitModalProps {
     remaining: number;
     resetDate: string;
   } | null;
+  type?: 'video' | 'practice';
 }
 
 const UsageLimitModal: React.FC<UsageLimitModalProps> = ({
@@ -17,6 +18,7 @@ const UsageLimitModal: React.FC<UsageLimitModalProps> = ({
   onClose,
   onLogin,
   usageInfo,
+  type = 'video',
 }) => {
   // Close on escape key
   useEffect(() => {
@@ -70,14 +72,16 @@ const UsageLimitModal: React.FC<UsageLimitModalProps> = ({
           </h2>
 
           <p className="text-stone-600">
-            You've used all {usageInfo.limit} free analyses this month.
-            Sign in for more access!
+            {type === 'practice'
+              ? `You've used all ${usageInfo.limit} free practice sessions this month. Sign in for more access!`
+              : `You've used all ${usageInfo.limit} free analyses this month. Sign in for more access!`
+            }
           </p>
 
           {/* Usage indicator */}
           <div className="bg-stone-100 rounded-lg p-4">
             <div className="flex justify-between text-sm text-stone-600 mb-2">
-              <span>Monthly usage</span>
+              <span>{type === 'practice' ? 'Practice sessions' : 'Monthly usage'}</span>
               <span>{usageInfo.used}/{usageInfo.limit}</span>
             </div>
             <div className="w-full bg-stone-200 rounded-full h-2">

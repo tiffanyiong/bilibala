@@ -317,7 +317,7 @@ const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ onOpenAuthModal }) 
               </li>
               <li className="flex items-center gap-3 text-sm text-stone-600">
                 <span className="text-stone-400"><WaveformIcon /></span>
-                <span>{freeLimits.practiceSessionsPerMonth} AI Reports / month</span>
+                <span>{freeLimits.practiceSessionsPerDay} AI Reports / day</span>
               </li>
               <li className="flex items-center gap-3 text-sm text-stone-600">
                 <span className="text-stone-400"><LayersIcon /></span>

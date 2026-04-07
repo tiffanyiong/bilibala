@@ -387,7 +387,7 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
       canUseAiTutor,
       canExportPdf,
       videosLimit: limits.videosPerMonth,
-      practiceSessionsLimit: tier === 'free' ? limits.practiceSessionsPerDay : limits.practiceSessionsPerMonth,
+      practiceSessionsLimit: limits.practiceSessionsPerDay,
       aiTutorMinutesLimit: limits.aiTutorMinutesPerMonth,
       aiTutorRemainingMinutes,
       aiTutorMonthlyRemaining,
