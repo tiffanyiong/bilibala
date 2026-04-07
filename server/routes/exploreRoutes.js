@@ -9,6 +9,7 @@ const router = express.Router();
  *
  * Query params:
  * - targetLang: string (required) - Target language e.g., 'English'
+ * - nativeLang: string (required) - User's native language e.g., 'Korean'
  * - level: string (required) - Difficulty level ('Easy', 'Medium', 'Hard')
  * - limit: number (optional) - Max videos to return (default 8, max 20)
  *
@@ -18,12 +19,12 @@ const router = express.Router();
  */
 router.get('/explore', async (req, res) => {
   try {
-    const { targetLang, level, limit: limitParam } = req.query;
+    const { targetLang, nativeLang, level, limit: limitParam } = req.query;
 
     // Validate required params
-    if (!targetLang || !level) {
+    if (!targetLang || !nativeLang || !level) {
       return res.status(400).json({
-        error: 'Missing required parameters: targetLang and level',
+        error: 'Missing required parameters: targetLang, nativeLang and level',
       });
     }
 
@@ -43,7 +44,7 @@ router.get('/explore', async (req, res) => {
       if (limit > 30) limit = 30;
     }
 
-    const result = await getExploreVideos(targetLang, level, limit);
+    const result = await getExploreVideos(targetLang, nativeLang, level, limit);
 
     res.json({
       videos: result.videos,
