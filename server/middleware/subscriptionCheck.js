@@ -4,11 +4,11 @@ import { supabaseAdmin, getUserFromToken } from '../services/supabaseAdmin.js';
 const TIER_LIMITS = {
   free: {
     videosPerMonth: 3,
-    practiceSessionsPerMonth: 5
+    practiceSessionsPerDay: 5   // free tier uses daily limit for practice
   },
   pro: {
     videosPerMonth: 100,
-    practiceSessionsPerMonth: Infinity
+    practiceSessionsPerDay: Infinity
   }
 };
 
@@ -33,7 +33,7 @@ export const checkSubscriptionLimit = (actionType) => {
         // Get user's subscription info
         const { data: sub, error: subError } = await supabaseAdmin
           .from('user_subscriptions')
-          .select('tier')
+          .select('tier, video_credits, practice_session_credits')
           .eq('user_id', user.id)
           .single();
 
@@ -43,31 +43,46 @@ export const checkSubscriptionLimit = (actionType) => {
         }
 
         const tier = sub.tier || 'free';
+        const videoCredits = sub.video_credits || 0;
+        const practiceCredits = sub.practice_session_credits || 0;
 
-        // Get user's current monthly usage
-        const { data: usageData, error: usageError } = await supabaseAdmin
-          .rpc('get_current_monthly_usage', { p_user_id: user.id });
-
-        if (usageError) {
-          console.error(`[checkSubscriptionLimit] Failed to get usage for user ${user.id}:`, usageError);
-          return res.status(500).json({ error: 'Failed to check usage' });
-        }
-
-        const usage = usageData?.[0] || {};
         let currentUsage = 0;
         let limit = 0;
 
         if (actionType === 'video_analysis') {
-          currentUsage = usage.video_analysis_count || 0;
+          // Video analysis uses monthly usage
+          const { data: usageData, error: usageError } = await supabaseAdmin
+            .rpc('get_current_monthly_usage', { p_user_id: user.id });
+
+          if (usageError) {
+            console.error(`[checkSubscriptionLimit] Failed to get usage for user ${user.id}:`, usageError);
+            return res.status(500).json({ error: 'Failed to check usage' });
+          }
+
+          const usage = usageData?.[0] || {};
+          currentUsage = usage.videos_used || 0;
           limit = TIER_LIMITS[tier]?.videosPerMonth || 0;
+
         } else if (actionType === 'practice_session') {
-          currentUsage = usage.practice_session_count || 0;
-          limit = TIER_LIMITS[tier]?.practiceSessionsPerMonth || 0;
+          // Practice sessions use daily limit for all authenticated users (pro = Infinity)
+          const { data: dailyUsage, error: dailyError } = await supabaseAdmin
+            .rpc('get_current_daily_practice_usage', { p_user_id: user.id });
+
+          if (dailyError) {
+            console.error(`[checkSubscriptionLimit] Failed to get daily practice usage for user ${user.id}:`, dailyError);
+            return res.status(500).json({ error: 'Failed to check usage' });
+          }
+
+          currentUsage = dailyUsage || 0;
+          limit = TIER_LIMITS[tier]?.practiceSessionsPerDay ?? Infinity;
         }
 
-        // Check if limit exceeded (Infinity = unlimited)
-        if (limit !== Infinity && currentUsage >= limit) {
-          console.warn(`[checkSubscriptionLimit] LIMIT EXCEEDED | user: ${user.id} | tier: ${tier} | action: ${actionType} | usage: ${currentUsage}/${limit}`);
+        // Determine relevant credits for this action
+        const relevantCredits = actionType === 'video_analysis' ? videoCredits : practiceCredits;
+
+        // Check if limit exceeded (Infinity = unlimited). Credits allow exceeding the monthly/daily limit.
+        if (limit !== Infinity && currentUsage >= limit && relevantCredits <= 0) {
+          console.warn(`[checkSubscriptionLimit] LIMIT EXCEEDED | user: ${user.id} | tier: ${tier} | action: ${actionType} | usage: ${currentUsage}/${limit} | credits: ${relevantCredits}`);
           return res.status(429).json({
             error: 'SUBSCRIPTION_LIMIT_EXCEEDED',
             message: `Monthly ${actionType.replace('_', ' ')} limit reached (${limit}/${limit}).`,
@@ -78,11 +93,11 @@ export const checkSubscriptionLimit = (actionType) => {
           });
         }
 
-        console.log(`[checkSubscriptionLimit] ALLOWED | user: ${user.id} | tier: ${tier} | action: ${actionType} | usage: ${currentUsage}/${limit}`);
+        console.log(`[checkSubscriptionLimit] ALLOWED | user: ${user.id} | tier: ${tier} | action: ${actionType} | usage: ${currentUsage}/${limit} | credits: ${relevantCredits}`);
 
         // Store user info for later use
         req.user = user;
-        req.subscription = { tier, usage: currentUsage, limit };
+        req.subscription = { tier, usage: currentUsage, limit, credits: relevantCredits };
 
       } else {
         // ==========================================
