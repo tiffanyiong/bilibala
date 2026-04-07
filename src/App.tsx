@@ -46,6 +46,8 @@ import {
   updateCachedAnalysisContent,
   updateLibraryAccess,
   updateVideoCategory,
+  loadUserPreferences,
+  saveUserPreferences,
 } from './shared/services/database';
 import { analyzeVideoContent, fetchTranscript } from './shared/services/geminiService';
 import { getFingerprint } from './shared/services/fingerprint';
@@ -199,6 +201,18 @@ const App: React.FC = () => {
       setAppState(AppState.LANDING);
       setShowTutorWindow(false);
     }
+    // Load preferences from profile when user signs in
+    if (!prevUserRef.current && user) {
+      loadUserPreferences(user.id).then((prefs) => {
+        if (!prefs) return;
+        setNativeLangState(prefs.nativeLang);
+        setTargetLangState(prefs.targetLang);
+        setLevelState(prefs.level);
+        localStorage.setItem('bilibala_nativeLang', prefs.nativeLang);
+        localStorage.setItem('bilibala_targetLang', prefs.targetLang);
+        localStorage.setItem('bilibala_level', prefs.level);
+      });
+    }
     prevUserRef.current = user;
   }, [user]);
 
@@ -206,10 +220,40 @@ const App: React.FC = () => {
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [upgradeFeature, setUpgradeFeature] = useState('');
 
-  // Language & Level State
-  const [nativeLang, setNativeLang] = useState('Chinese (Mandarin - 中文)');
-  const [targetLang, setTargetLang] = useState('English');
-  const [level, setLevel] = useState('Easy');
+  // Language & Level State — persisted to localStorage so settings survive page refresh
+  const [nativeLang, setNativeLangState] = useState(
+    () => localStorage.getItem('bilibala_nativeLang') || 'Chinese (Mandarin - 中文)'
+  );
+  const [targetLang, setTargetLangState] = useState(
+    () => localStorage.getItem('bilibala_targetLang') || 'English'
+  );
+  const [level, setLevelState] = useState(
+    () => localStorage.getItem('bilibala_level') || 'Easy'
+  );
+
+  // Use these when the user explicitly changes their preference (LandingFormCard).
+  // Persists to localStorage and Supabase profile.
+  const setNativeLang = (lang: string) => {
+    localStorage.setItem('bilibala_nativeLang', lang);
+    setNativeLangState(lang);
+    if (user) saveUserPreferences(user.id, { nativeLang: lang });
+  };
+  const setTargetLang = (lang: string) => {
+    localStorage.setItem('bilibala_targetLang', lang);
+    setTargetLangState(lang);
+    if (user) saveUserPreferences(user.id, { targetLang: lang });
+  };
+  const setLevel = (l: string) => {
+    localStorage.setItem('bilibala_level', l);
+    setLevelState(l);
+    if (user) saveUserPreferences(user.id, { level: l });
+  };
+
+  // Use these when loading a video (library, explore, deep-link, session restore).
+  // Updates UI context only — does NOT touch localStorage or Supabase preferences.
+  const setNativeLangForVideo = setNativeLangState;
+  const setTargetLangForVideo = setTargetLangState;
+  const setLevelForVideo = setLevelState;
 
   // Multi-level analysis state
   const [availableLevels, setAvailableLevels] = useState<Set<string>>(new Set(['Easy'])); // Tracks which levels have been analyzed
@@ -269,7 +313,7 @@ const App: React.FC = () => {
     if (appState !== AppState.LANDING) return;
     const fetchVideos = async () => {
       try {
-        const params = new URLSearchParams({ targetLang, level, limit: String(EXPLORE_VIDEOS_LIMIT) });
+        const params = new URLSearchParams({ targetLang, nativeLang, level, limit: String(EXPLORE_VIDEOS_LIMIT) });
         const response = await fetch(`${getBackendOrigin()}/api/explore?${params}`);
         if (response.ok) {
           const data = await response.json();
@@ -282,7 +326,7 @@ const App: React.FC = () => {
     };
     const timeoutId = setTimeout(fetchVideos, 300);
     return () => clearTimeout(timeoutId);
-  }, [appState, targetLang, level]);
+  }, [appState, targetLang, nativeLang, level]);
 
   // Filter discussion topics to only show those with questions at the user's level
   useEffect(() => {
@@ -563,9 +607,9 @@ const App: React.FC = () => {
             if (shouldRestoreSavedState) {
               // URL matches saved data OR no video in URL - restore state
               setVideoUrl(p.videoUrl || '');
-              setNativeLang(p.nativeLang || 'Chinese (Mandarin - 中文)');
-              setTargetLang(p.targetLang || 'English');
-              setLevel(p.level || 'Easy');
+              setNativeLangForVideo(p.nativeLang || 'Chinese (Mandarin - 中文)');
+              setTargetLangForVideo(p.targetLang || 'English');
+              setLevelForVideo(p.level || 'Easy');
               setVideoData(p.videoData);
               setSummary(p.summary || '');
               setTranslatedSummary(p.translatedSummary || '');
@@ -645,9 +689,9 @@ const App: React.FC = () => {
 
             const videoUrl = `https://www.youtube.com/watch?v=${videoInLibrary.youtubeId}`;
             setVideoUrl(videoUrl);
-            setNativeLang(videoInLibrary.nativeLang);
-            setTargetLang(videoInLibrary.targetLang);
-            setLevel(levelToLoad);
+            setNativeLangForVideo(videoInLibrary.nativeLang);
+            setTargetLangForVideo(videoInLibrary.targetLang);
+            setLevelForVideo(levelToLoad);
             setVideoData({
               id: videoInLibrary.youtubeId,
               url: videoUrl,
@@ -742,9 +786,9 @@ const App: React.FC = () => {
           // Found a cached analysis - load it
           const videoUrl = `https://www.youtube.com/watch?v=${pendingVideoIdFromUrl}`;
           setVideoUrl(videoUrl);
-          setNativeLang(globalAnalysis.native_lang);
-          setTargetLang(globalAnalysis.target_lang);
-          setLevel(globalAnalysis.level);
+          setNativeLangForVideo(globalAnalysis.native_lang);
+          setTargetLangForVideo(globalAnalysis.target_lang);
+          setLevelForVideo(globalAnalysis.level);
           setVideoData({
             id: pendingVideoIdFromUrl,
             url: videoUrl,
@@ -1043,7 +1087,7 @@ const App: React.FC = () => {
       const analysis = dbAnalysisToContentAnalysis(cachedAnalysis);
 
       // Update all content state with the new level's analysis
-      setLevel(newLevel);
+      setLevelForVideo(newLevel);
       setSummary(analysis.summary);
       setTranslatedSummary(analysis.translatedSummary);
       setTopics(analysis.topics);
@@ -1574,9 +1618,9 @@ const App: React.FC = () => {
       setVideoUrl(videoUrl);
 
       // Set language/level from the stored analysis
-      setNativeLang(video.nativeLang);
-      setTargetLang(video.targetLang);
-      setLevel(video.level);
+      setNativeLangForVideo(video.nativeLang);
+      setTargetLangForVideo(video.targetLang);
+      setLevelForVideo(video.level);
 
       // Set video data
       setVideoData({
@@ -1723,9 +1767,9 @@ const App: React.FC = () => {
       setVideoUrl(videoUrl);
 
       // Set language/level from the stored analysis
-      setNativeLang(cachedAnalysis.native_lang);
-      setTargetLang(cachedAnalysis.target_lang);
-      setLevel(cachedAnalysis.level);
+      setNativeLangForVideo(cachedAnalysis.native_lang);
+      setTargetLangForVideo(cachedAnalysis.target_lang);
+      setLevelForVideo(cachedAnalysis.level);
 
       // Set video data
       setVideoData({
