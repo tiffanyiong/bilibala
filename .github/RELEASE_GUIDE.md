@@ -70,59 +70,70 @@ Result: `v1.0.0` → `v1.0.1`
 ## Branch Workflow
 
 ```
-main (develop) → beta → production
+feature branch → PR → main → PR → beta → PR → production
 ```
 
-1. **Develop** on `main` branch (or feature branches)
-2. **Create PR to beta** for testing: creates `v1.1.0-beta.1`, `v1.1.0-beta.2`, etc.
-3. **Create PR to production** for release: creates `v1.1.0`, `v1.1.1`, etc.
+**Never commit directly to `main`, `beta`, or `production`.** Always work on a feature branch and open a PR.
+
+1. **Develop** on a feature branch (e.g. `feat/my-feature`, `fix/my-bug`)
+2. **PR to `main`**: merging bumps `package.json` version automatically — no tag or release created
+3. **PR to `beta`**: creates `v1.1.0-beta.1`, `v1.1.0-beta.2`, etc. — GitHub prerelease
+4. **PR to `production`**: promotes latest beta tag to stable `v1.1.0` — GitHub release
 
 ## Examples
 
 ### Adding a New Feature (Minor Version)
 
-**Step 1: PR to Beta**
-1. Create PR: `main` → `beta`
-2. Set PR title: `✨ Add video export feature` or `[minor] Add video export feature`
-3. OR add label: `minor` or `feature`
-4. Merge PR → Creates: `v1.1.0-beta.1`
+**Step 1: Feature branch → main**
+1. Create branch: `feat/video-export`
+2. Open PR to `main` with title: `feat: Add video export feature`
+3. Merge PR → `package.json` bumped to `v1.1.0` (no tag created)
 
-**Step 2: PR to Production (after testing)**
+**Step 2: main → beta (for testing)**
+1. Create PR: `main` → `beta`
+2. Add label: `minor` or `feature`
+3. Merge PR → Creates: `v1.1.0-beta.1`
+
+**Step 3: beta → production (after testing)**
 1. Create PR: `beta` → `production`
-2. Set PR title: `✨ Add video export feature`
-3. OR add label: `minor`
-4. Merge PR → Creates: `v1.1.0`
+2. Merge PR → Promotes beta, creates: `v1.1.0`
 
 ---
 
 ### Fixing a Bug (Patch Version)
 
-**Step 1: PR to Beta**
-1. Create PR: `main` → `beta`
-2. Set PR title: `🐛 Fix audio sync issue` or `Fix audio sync issue`
-3. OR add label: `patch` or `bugfix` (or no label at all)
-4. Merge PR → Creates: `v1.1.1-beta.1`
+**Step 1: Feature branch → main**
+1. Create branch: `fix/audio-sync`
+2. Open PR to `main` with title: `fix: Fix audio sync issue`
+3. Merge PR → `package.json` bumped to `v1.0.1`
 
-**Step 2: PR to Production**
+**Step 2: main → beta**
+1. Create PR: `main` → `beta`
+2. No label needed (patch is default), or add `patch`/`bugfix`
+3. Merge PR → Creates: `v1.0.1-beta.1`
+
+**Step 3: beta → production**
 1. Create PR: `beta` → `production`
-2. Set PR title: `🐛 Fix audio sync issue`
-3. Merge PR → Creates: `v1.1.1`
+2. Merge PR → Creates: `v1.0.1`
 
 ---
 
 ### Breaking Changes (Major Version)
 
-**Step 1: PR to Beta**
-1. Create PR: `main` → `beta`
-2. Set PR title: `[major] Complete UI redesign with new navigation`
-3. OR add label: `major` or `breaking`
-4. Merge PR → Creates: `v2.0.0-beta.1`
+**Step 1: Feature branch → main**
+1. Create branch: `feat/new-navigation`
+2. Open PR to `main` with title: `feat: Complete UI redesign with new navigation`
+3. Add label: `major` or `breaking`
+4. Merge PR → `package.json` bumped to `v2.0.0`
 
-**Step 2: PR to Production**
+**Step 2: main → beta**
+1. Create PR: `main` → `beta`
+2. Add label: `major` or `breaking`
+3. Merge PR → Creates: `v2.0.0-beta.1`
+
+**Step 3: beta → production**
 1. Create PR: `beta` → `production`
-2. Set PR title: `[major] Complete UI redesign with new navigation`
-3. OR add label: `major`
-4. Merge PR → Creates: `v2.0.0`
+2. Merge PR → Creates: `v2.0.0`
 
 ---
 
@@ -189,6 +200,13 @@ Result: v1.2.2
 - **Priority**: Labels > PR Title > Commit Messages
 - **Beta releases** are marked as "pre-release" on GitHub
 - **Each PR merge** triggers a new release automatically
+- **`package.json` is the version source of truth for `main`** — beta and production derive their version from it, not from git tags
+
+## Gotchas
+
+- **Never resolve `main → beta` conflicts via the GitHub UI** — doing so creates a merge commit on `main`, which re-triggers the main workflow and causes an unintended version bump. Always resolve conflicts locally.
+- **`[skip ci]`** in the automated bot commit prevents an infinite loop (the bot bumps `package.json` then pushes back to the branch, which would otherwise re-trigger the workflow).
+- **Production skips gracefully** if the stable tag already exists — no crash on duplicate tags.
 
 ## Notes
 
