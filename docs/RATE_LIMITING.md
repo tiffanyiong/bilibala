@@ -179,19 +179,6 @@ Rate limits on sub-APIs are intentionally **more lenient** than main APIs to all
 
 ## Testing
 
-### Manual Testing
-
-Use the provided test script:
-
-```bash
-node test-rate-limit.js
-```
-
-This will:
-1. Test TTS endpoint (30 requests per minute limit)
-2. Test Generate Question endpoint (5 requests per minute limit)
-3. Report success/failure rates
-
 ### Expected Behavior
 
 **For authenticated users:**
@@ -290,5 +277,5 @@ curl -X POST http://localhost:3000/api/analyze-video-content -d '{"fingerprintHa
 ## References
 
 - [express-rate-limit Documentation](https://github.com/express-rate-limit/express-rate-limit)
-- [Subscription Plan Documentation](./SUBSCRIPTION_PLAN.md)
+- [Archived subscription planning notes](./archive/SUBSCRIPTION_PLAN.md)
 - [Usage Tracking Documentation](../memory/subscription-and-usage.md)
