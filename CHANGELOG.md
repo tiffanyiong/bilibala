@@ -96,7 +96,7 @@
   - **Translation logs** (backend):
     - `[translate-ui-labels] Translation completed in ${duration}ms | cache key: ${key}`
   - Files changed: `server/routes/videoRoutes.js`, `server/routes/speechRoutes.js`, `server/routes/translationRoutes.js`
-  - Documentation: `docs/SESSION_LOGGING.md`, `docs/LOGGING_STRATEGY.md`
+  - Documentation: `docs/SESSION_LOGGING.md`, `docs/archive/LOGGING_STRATEGY.md`
 
 ### Fixed
 
@@ -186,7 +186,7 @@
 ### Documentation
 
 - Added `docs/SESSION_LIMITS.md` - Complete guide for session management feature
-- Added `docs/USER_DELETION_STRATEGY.md` - Hard delete vs soft delete comparison
+- Added `docs/archive/USER_DELETION_STRATEGY.md` - Hard delete vs soft delete comparison
 - Added `docs/STRIPE_SUBSCRIPTION_CLEANUP.md` - Stripe cancellation system explanation
 
 ---
