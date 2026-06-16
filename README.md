@@ -818,4 +818,10 @@ This is a personal project, but if you'd like to contribute or report issues, pl
 
 © 2026 Bilibala. All rights reserved.
 
+This source code is provided for portfolio and review purposes only. No permission
+is granted to copy, modify, distribute, sublicense, deploy, or use this software
+commercially without explicit written permission.
+
+The Bilibala name, logo, and branding assets are not licensed for reuse.
+
 ---
