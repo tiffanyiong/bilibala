@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../../shared/context/AuthContext';
 import { useSubscription } from '../../../shared/context/SubscriptionContext';
+import { getMonthlyResetInfo } from '../../../shared/utils/subscriptionReset';
 
 interface ProfilePageProps {
   onOpenSubscription: () => void;
@@ -235,6 +236,17 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenSubscription }) => {
                 {/* Monthly usage rows */}
                 {profileUsageTab === 'monthly' && (
                   <>
+                    <div className="px-4 pt-3 pb-1">
+                      <p className="text-[11px] text-stone-400">
+                        Monthly allowance {getMonthlyResetInfo(
+                          tier,
+                          billingInterval,
+                          subscription?.current_period_start,
+                          subscription?.current_period_end,
+                          subscription?.created_at
+                        ).toLowerCase()}
+                      </p>
+                    </div>
                     <UsageRow
                       label="Videos"
                       used={usage.videosUsed}

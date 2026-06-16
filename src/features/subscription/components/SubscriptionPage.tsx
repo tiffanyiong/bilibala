@@ -14,6 +14,7 @@ import {
 import { useAuth } from '../../../shared/context/AuthContext';
 import { useSubscription } from '../../../shared/context/SubscriptionContext';
 import { TIER_LIMITS } from '../../../shared/types/database';
+import { getMonthlyResetInfo } from '../../../shared/utils/subscriptionReset';
 
 interface SubscriptionPageProps {
   onOpenAuthModal: () => void;
@@ -259,7 +260,13 @@ const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ onOpenAuthModal }) 
                   label="Video Analysis"
                   used={usage.videosUsed}
                   limit={videosLimit}
-                  resetInfo={getMonthlyResetInfo(tier, subscription?.current_period_end)}
+                  resetInfo={getMonthlyResetInfo(
+                    tier,
+                    billingInterval,
+                    subscription?.current_period_start,
+                    subscription?.current_period_end,
+                    subscription?.created_at
+                  )}
                 />
                 <UsageMeter
                   label="AI Report"
@@ -272,7 +279,15 @@ const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ onOpenAuthModal }) 
                   used={usage.aiTutorMinutesUsed}
                   limit={aiTutorMinutesLimit}
                   unit="min"
-                  resetInfo={tier === 'pro' ? getMonthlyResetInfo(tier, subscription?.current_period_end) : undefined}
+                  resetInfo={tier === 'pro'
+                    ? getMonthlyResetInfo(
+                        tier,
+                        billingInterval,
+                        subscription?.current_period_start,
+                        subscription?.current_period_end,
+                        subscription?.created_at
+                      )
+                    : undefined}
                 />
                 <UsageMeter
                   label="PDF Export"
@@ -551,49 +566,6 @@ const getPracticeResetInfo = (tier: 'free' | 'pro'): string | undefined => {
     .pop() || '';
 
   return `Resets daily at ${timeString} ${tzString}`;
-};
-
-/**
- * Get reset time info for monthly limits (videos, AI tutor)
- * Free users: Resets first day of next month at UTC midnight
- * Pro users: Resets based on billing period (current_period_end)
- */
-const getMonthlyResetInfo = (tier: 'free' | 'pro', periodEnd?: string | null): string => {
-  let resetDate: Date;
-
-  if (tier === 'pro' && periodEnd) {
-    // Pro users: use billing period end date
-    resetDate = new Date(periodEnd);
-  } else {
-    // Free users: use next month at UTC midnight
-    const now = new Date();
-    resetDate = new Date(Date.UTC(
-      now.getUTCFullYear(),
-      now.getUTCMonth() + 1,
-      1,
-      0, 0, 0, 0
-    ));
-  }
-
-  // Format date
-  const dateString = resetDate.toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric'
-  });
-
-  // Format time in user's local timezone
-  const timeString = resetDate.toLocaleTimeString(undefined, {
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  });
-
-  // Get timezone abbreviation (e.g., "PST", "EST", "CET")
-  const tzString = resetDate.toLocaleTimeString(undefined, { timeZoneName: 'short' })
-    .split(' ')
-    .pop() || '';
-
-  return `Resets ${dateString} at ${timeString} ${tzString}`;
 };
 
 // ============================================
