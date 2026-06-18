@@ -29,17 +29,27 @@ export const ExploreCardSkeleton: React.FC = () => (
 const ExploreCard: React.FC<ExploreCardProps> = ({ video, onClick }) => {
   const thumbnailUrl =
     video.thumbnailUrl || `https://img.youtube.com/vi/${video.youtubeId}/mqdefault.jpg`;
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    onClick();
+  };
 
   return (
     <div
+      role="button"
+      tabIndex={0}
+      aria-label={`Open lesson: ${video.title}. ${video.level}, ${video.targetLang}`}
       onClick={onClick}
+      onKeyDown={handleKeyDown}
       className="w-60 flex-shrink-0 bg-white rounded-xl border border-stone-200 overflow-hidden shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer group"
     >
       {/* Thumbnail */}
       <div className="aspect-video bg-stone-100 overflow-hidden relative">
         <img
           src={thumbnailUrl}
-          alt={video.title}
+          alt=""
+          aria-hidden="true"
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
         />
         {/* View count badge */}
