@@ -320,6 +320,7 @@ const App: React.FC = () => {
   const exploreLoadMoreRef = useRef<HTMLDivElement>(null);
   const gridAnimStyle = 'stagger';
   const [gridKey, setGridKey] = useState(0);
+  const isLoadingMoreExploreVideos = isExploreLoading && exploreVideos.length > 0 && exploreVideosLimit > exploreVideos.length;
 
   useEffect(() => {
     if (appState !== AppState.LANDING) return;
@@ -341,7 +342,9 @@ const App: React.FC = () => {
           const videos = data.videos || [];
           setExploreVideos(videos);
           setHasMoreExploreVideos(videos.length >= exploreVideosLimit && exploreVideosLimit < EXPLORE_VIDEOS_MAX_LIMIT);
-          setGridKey((k) => k + 1);
+          if (exploreVideosLimit === EXPLORE_VIDEOS_BATCH_SIZE) {
+            setGridKey((k) => k + 1);
+          }
         }
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return;
@@ -2170,15 +2173,34 @@ const App: React.FC = () => {
                     onSelect={() => handleExploreVideoSelect(video.analysisId)}
                   />
                 ))}
+                {isLoadingMoreExploreVideos &&
+                  Array.from({ length: EXPLORE_VIDEOS_BATCH_SIZE }).map((_, index) => (
+                    <div
+                      key={`explore-loading-${index}`}
+                      className="min-h-[260px] overflow-hidden rounded-lg bg-white animate-pulse"
+                      aria-hidden="true"
+                    >
+                      <div className="aspect-video bg-stone-200" />
+                      <div className="space-y-3 p-4">
+                        <div className="h-4 w-4/5 rounded bg-stone-200" />
+                        <div className="flex gap-2 pt-2">
+                          <div className="h-6 w-16 rounded-full bg-stone-100" />
+                          <div className="h-6 w-14 rounded-full bg-stone-100" />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
               </div>
 
               <div ref={exploreLoadMoreRef} className="flex h-16 items-center justify-center">
-                {isExploreLoading && exploreVideos.length > 0 && (
-                  <div
-                    className="h-6 w-6 rounded-full border-2 border-stone-200 border-t-stone-500 animate-spin"
-                    role="status"
-                    aria-label="Loading more explore videos"
-                  />
+                {isLoadingMoreExploreVideos && (
+                  <div className="flex items-center gap-3 text-sm font-medium text-stone-400" role="status">
+                    <div
+                      className="h-5 w-5 rounded-full border-2 border-stone-200 border-t-stone-500 animate-spin"
+                      aria-hidden="true"
+                    />
+                    Loading more videos
+                  </div>
                 )}
               </div>
             </div>
