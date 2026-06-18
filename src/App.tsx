@@ -39,24 +39,24 @@ import {
   getUserVideoLibrary,
   getVideoByYoutubeId,
   incrementVideoView,
+  loadUserPreferences,
   saveCachedAnalysis,
   saveGeneratedQuestion,
   savePracticeTopicsFromAnalysis,
+  saveUserPreferences,
   toggleLibraryFavorite,
   updateCachedAnalysisContent,
   updateLibraryAccess,
   updateVideoCategory,
-  loadUserPreferences,
-  saveUserPreferences,
 } from './shared/services/database';
-import { analyzeVideoContent, fetchTranscript } from './shared/services/geminiService';
 import { getFingerprint } from './shared/services/fingerprint';
+import { analyzeVideoContent, fetchTranscript } from './shared/services/geminiService';
 import { getDailyPracticeUsage } from './shared/services/subscriptionDatabase';
 import {
   checkAnonymousPracticeLimit,
   checkAnonymousUsageLimit,
-  getUsageDisplayInfo,
   getPracticeUsageDisplayInfo,
+  getUsageDisplayInfo,
   recordAnonymousUsage,
   trackPageVisit,
   UsageDisplayInfo
@@ -65,7 +65,13 @@ import { AppState, PracticeTopic, TopicPoint, TopicQuestion, VideoData, Vocabula
 import { ExploreVideo, TIER_LIMITS, VideoHistoryItem } from './shared/types/database';
 
 // Explore videos configuration
-const EXPLORE_VIDEOS_LIMIT = 21;
+const EXPLORE_VIDEOS_LIMIT = 6;
+const EXPLORE_ROTATION_INTERVAL_MS = 30 * 60 * 1000;
+
+const getMsUntilNextExploreRotation = () => {
+  const msIntoCurrentWindow = Date.now() % EXPLORE_ROTATION_INTERVAL_MS;
+  return EXPLORE_ROTATION_INTERVAL_MS - msIntoCurrentWindow + 1000;
+};
 
 // Mobile-only translator selector component
 const MobileTranslatorSelector: React.FC<{
@@ -310,7 +316,7 @@ const App: React.FC = () => {
   const gridAnimStyle = 'stagger';
   const [gridKey, setGridKey] = useState(0);
 
-  // Fetch explore videos for landing page
+  // Fetch explore videos for landing page and refresh on the showcase rotation cadence.
   useEffect(() => {
     if (appState !== AppState.LANDING) return;
     const fetchVideos = async () => {
@@ -327,7 +333,21 @@ const App: React.FC = () => {
       }
     };
     const timeoutId = setTimeout(fetchVideos, 300);
-    return () => clearTimeout(timeoutId);
+    let rotationTimeoutId: number | undefined;
+    const scheduleNextRotationRefresh = () => {
+      rotationTimeoutId = window.setTimeout(() => {
+        fetchVideos();
+        scheduleNextRotationRefresh();
+      }, getMsUntilNextExploreRotation());
+    };
+    scheduleNextRotationRefresh();
+
+    return () => {
+      clearTimeout(timeoutId);
+      if (rotationTimeoutId) {
+        window.clearTimeout(rotationTimeoutId);
+      }
+    };
   }, [appState, targetLang, nativeLang, level]);
 
   // Filter discussion topics to only show those with questions at the user's level

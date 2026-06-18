@@ -1,6 +1,8 @@
 import { LRUCache } from 'lru-cache';
 import { supabaseAdmin } from './supabaseAdmin.js';
 
+const EXPLORE_ROTATION_INTERVAL_MS = 30 * 60 * 1000;
+
 // LRU Cache configuration for explore videos
 // Max 100 entries (language × level combinations), 5 minute TTL
 const exploreCache = new LRUCache({
@@ -11,8 +13,41 @@ const exploreCache = new LRUCache({
 /**
  * Generate cache key for explore query
  */
-function getCacheKey(targetLang, nativeLang, level) {
-  return `explore:${targetLang}:${nativeLang}:${level}`;
+function getCacheKey(targetLang, nativeLang, level, limit, rotationBucket) {
+  return `explore:${targetLang}:${nativeLang}:${level}:${limit}:${rotationBucket}`;
+}
+
+/**
+ * Get the current rotation bucket. All visitors get the same shuffle order
+ * within the same 30-minute window, then the showcase rotates.
+ */
+function getRotationBucket(now = Date.now()) {
+  return Math.floor(now / EXPLORE_ROTATION_INTERVAL_MS);
+}
+
+/**
+ * Stable 32-bit hash for deterministic "random" ordering.
+ */
+function hashStringToNumber(value) {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+/**
+ * Shuffle videos deterministically for the active rotation bucket.
+ */
+function rotateExploreVideos(videos, seed) {
+  return [...videos].sort((a, b) => {
+    const aScore = hashStringToNumber(`${seed}:${a.youtubeId}:${a.analysisId}`);
+    const bScore = hashStringToNumber(`${seed}:${b.youtubeId}:${b.analysisId}`);
+
+    if (aScore !== bScore) return aScore - bScore;
+    return a.youtubeId.localeCompare(b.youtubeId);
+  });
 }
 
 /**
@@ -75,18 +110,23 @@ export async function getExploreVideos(targetLang, nativeLang, level, limit = 8)
   }
 
   // Check cache first
-  const cacheKey = getCacheKey(targetLang, nativeLang, level);
+  const rotationBucket = getRotationBucket();
+  const cacheKey = getCacheKey(targetLang, nativeLang, level, limit, rotationBucket);
   const cachedResult = exploreCache.get(cacheKey);
 
   if (cachedResult) {
-    console.log(`[Explore] Cache hit for: ${targetLang} / ${nativeLang} / ${level}`);
-    return { videos: cachedResult, cached: true };
+    console.log(`[Explore] Cache hit for: ${targetLang} / ${nativeLang} / ${level} / bucket ${rotationBucket}`);
+    if (Array.isArray(cachedResult)) {
+      return { videos: cachedResult, cached: true };
+    }
+    return { videos: cachedResult.videos, cached: true };
   }
 
-  console.log(`[Explore] Cache miss, querying DB for: ${targetLang} / ${nativeLang} / ${level}`);
+  console.log(`[Explore] Cache miss, querying DB for: ${targetLang} / ${nativeLang} / ${level} / bucket ${rotationBucket}`);
 
   // Step 1: Get personalized matches (same target_lang, native_lang AND level)
   // Use !inner join to only get records with valid global_videos
+  const candidateLimit = Math.min(Math.max(limit * 4, 60), 150);
   const { data: personalized, error: pError } = await supabaseAdmin
     .from('cached_analyses')
     .select(`
@@ -110,7 +150,7 @@ export async function getExploreVideos(targetLang, nativeLang, level, limit = 8)
     .not('global_videos.title', 'is', null)
     .neq('global_videos.title', '')
     .order('created_at', { ascending: false })
-    .limit(limit * 2);
+    .limit(candidateLimit);
 
   if (pError) {
     console.error('[Explore] Error fetching personalized videos:', pError);
@@ -127,7 +167,8 @@ export async function getExploreVideos(targetLang, nativeLang, level, limit = 8)
     return true;
   });
 
-  let result = uniquePersonalized.slice(0, limit);
+  const rotationSeed = `${targetLang}:${nativeLang}:${level}:${rotationBucket}`;
+  let result = rotateExploreVideos(uniquePersonalized, rotationSeed).slice(0, limit);
 
   // No backfill with other native languages — showing videos in the wrong native language
   // would give users translated content they can't read. If there are no cached analyses
@@ -143,8 +184,8 @@ export async function getExploreVideos(targetLang, nativeLang, level, limit = 8)
   });
 
   // Store in cache
-  exploreCache.set(cacheKey, result);
-  console.log(`[Explore] Cached ${result.length} videos for ${nativeLang}/${targetLang}/${level}. Cache size: ${exploreCache.size}`);
+  exploreCache.set(cacheKey, { videos: result });
+  console.log(`[Explore] Cached ${result.length}/${uniquePersonalized.length} videos for ${nativeLang}/${targetLang}/${level} bucket ${rotationBucket}. Cache size: ${exploreCache.size}`);
 
   return { videos: result, cached: false };
 }
@@ -157,6 +198,8 @@ export function getCacheStats() {
     size: exploreCache.size,
     max: exploreCache.max,
     ttl: exploreCache.ttl,
+    rotationIntervalMs: EXPLORE_ROTATION_INTERVAL_MS,
+    rotationBucket: getRotationBucket(),
   };
 }
 
