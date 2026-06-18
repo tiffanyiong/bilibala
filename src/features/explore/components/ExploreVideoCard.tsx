@@ -44,6 +44,7 @@ const ExploreVideoCard: React.FC<ExploreVideoCardProps> = ({ video, onSelect }) 
   return (
     <button
       onClick={onSelect}
+      aria-label={`Open lesson: ${video.title}. ${level.text}, ${video.targetLang}`}
       style={{
         '--card-hover-bg': accent.hover,
         '--card-hover-shadow': accent.shadow,
@@ -60,7 +61,8 @@ const ExploreVideoCard: React.FC<ExploreVideoCardProps> = ({ video, onSelect }) 
       <div className="relative aspect-video overflow-hidden">
         <img
           src={thumbnailUrl}
-          alt={video.title}
+          alt=""
+          aria-hidden="true"
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
         />
 
