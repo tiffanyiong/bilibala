@@ -2,6 +2,7 @@ import { LRUCache } from 'lru-cache';
 import { supabaseAdmin } from './supabaseAdmin.js';
 
 const EXPLORE_ROTATION_INTERVAL_MS = 30 * 60 * 1000;
+const EXPLORE_CANDIDATE_LIMIT = 150;
 
 // LRU Cache configuration for explore videos
 // Max 100 entries (language × level combinations), 5 minute TTL
@@ -126,7 +127,6 @@ export async function getExploreVideos(targetLang, nativeLang, level, limit = 8)
 
   // Step 1: Get personalized matches (same target_lang, native_lang AND level)
   // Use !inner join to only get records with valid global_videos
-  const candidateLimit = Math.min(Math.max(limit * 4, 60), 150);
   const { data: personalized, error: pError } = await supabaseAdmin
     .from('cached_analyses')
     .select(`
@@ -150,7 +150,7 @@ export async function getExploreVideos(targetLang, nativeLang, level, limit = 8)
     .not('global_videos.title', 'is', null)
     .neq('global_videos.title', '')
     .order('created_at', { ascending: false })
-    .limit(candidateLimit);
+    .limit(EXPLORE_CANDIDATE_LIMIT);
 
   if (pError) {
     console.error('[Explore] Error fetching personalized videos:', pError);
