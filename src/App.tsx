@@ -65,7 +65,8 @@ import { AppState, PracticeTopic, TopicPoint, TopicQuestion, VideoData, Vocabula
 import { ExploreVideo, TIER_LIMITS, VideoHistoryItem } from './shared/types/database';
 
 // Explore videos configuration
-const EXPLORE_VIDEOS_LIMIT = 6;
+const EXPLORE_VIDEOS_BATCH_SIZE = 6;
+const EXPLORE_VIDEOS_MAX_LIMIT = 30;
 const EXPLORE_ROTATION_INTERVAL_MS = 30 * 60 * 1000;
 
 const getMsUntilNextExploreRotation = () => {
@@ -313,23 +314,40 @@ const App: React.FC = () => {
 
   const [errorMsg, setErrorMsg] = useState('');
   const [exploreVideos, setExploreVideos] = useState<ExploreVideo[]>([]);
+  const [exploreVideosLimit, setExploreVideosLimit] = useState(EXPLORE_VIDEOS_BATCH_SIZE);
+  const [hasMoreExploreVideos, setHasMoreExploreVideos] = useState(false);
+  const [isExploreLoading, setIsExploreLoading] = useState(false);
+  const exploreLoadMoreRef = useRef<HTMLDivElement>(null);
   const gridAnimStyle = 'stagger';
   const [gridKey, setGridKey] = useState(0);
+
+  useEffect(() => {
+    if (appState !== AppState.LANDING) return;
+    setExploreVideosLimit(EXPLORE_VIDEOS_BATCH_SIZE);
+  }, [appState, targetLang, nativeLang, level]);
 
   // Fetch explore videos for landing page and refresh on the showcase rotation cadence.
   useEffect(() => {
     if (appState !== AppState.LANDING) return;
+    const controller = new AbortController();
+
     const fetchVideos = async () => {
       try {
-        const params = new URLSearchParams({ targetLang, nativeLang, level, limit: String(EXPLORE_VIDEOS_LIMIT) });
-        const response = await fetch(`${getBackendOrigin()}/api/explore?${params}`);
+        setIsExploreLoading(true);
+        const params = new URLSearchParams({ targetLang, nativeLang, level, limit: String(exploreVideosLimit) });
+        const response = await fetch(`${getBackendOrigin()}/api/explore?${params}`, { signal: controller.signal });
         if (response.ok) {
           const data = await response.json();
-          setExploreVideos(data.videos || []);
+          const videos = data.videos || [];
+          setExploreVideos(videos);
+          setHasMoreExploreVideos(videos.length >= exploreVideosLimit && exploreVideosLimit < EXPLORE_VIDEOS_MAX_LIMIT);
           setGridKey((k) => k + 1);
         }
       } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
         console.error('[App] Error fetching explore videos:', err);
+      } finally {
+        setIsExploreLoading(false);
       }
     };
     const timeoutId = setTimeout(fetchVideos, 300);
@@ -343,12 +361,30 @@ const App: React.FC = () => {
     scheduleNextRotationRefresh();
 
     return () => {
+      controller.abort();
       clearTimeout(timeoutId);
       if (rotationTimeoutId) {
         window.clearTimeout(rotationTimeoutId);
       }
     };
-  }, [appState, targetLang, nativeLang, level]);
+  }, [appState, targetLang, nativeLang, level, exploreVideosLimit]);
+
+  useEffect(() => {
+    if (appState !== AppState.LANDING || !hasMoreExploreVideos || isExploreLoading) return;
+    const loadMoreTarget = exploreLoadMoreRef.current;
+    if (!loadMoreTarget) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return;
+        setExploreVideosLimit((currentLimit) => Math.min(currentLimit + EXPLORE_VIDEOS_BATCH_SIZE, EXPLORE_VIDEOS_MAX_LIMIT));
+      },
+      { rootMargin: '360px 0px' }
+    );
+
+    observer.observe(loadMoreTarget);
+    return () => observer.disconnect();
+  }, [appState, hasMoreExploreVideos, isExploreLoading]);
 
   // Filter discussion topics to only show those with questions at the user's level
   useEffect(() => {
@@ -2134,6 +2170,16 @@ const App: React.FC = () => {
                     onSelect={() => handleExploreVideoSelect(video.analysisId)}
                   />
                 ))}
+              </div>
+
+              <div ref={exploreLoadMoreRef} className="flex h-16 items-center justify-center">
+                {isExploreLoading && exploreVideos.length > 0 && (
+                  <div
+                    className="h-6 w-6 rounded-full border-2 border-stone-200 border-t-stone-500 animate-spin"
+                    role="status"
+                    aria-label="Loading more explore videos"
+                  />
+                )}
               </div>
             </div>
           )}
