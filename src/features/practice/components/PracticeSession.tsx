@@ -395,10 +395,6 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
 
   const handleTopicSwitch = async (newTopic: PracticeTopic) => {
     if (newTopic.topic === topic.topic) return;
-    if (!user && onRequireAuth) {
-      const practiceStatus = await checkAnonymousPracticeLimit();
-      if (!practiceStatus.allowed) { onRequireAuth(); return; }
-    }
     setState(SessionState.PREP);
     setAnalysisResult(null);
     setUserNote('');

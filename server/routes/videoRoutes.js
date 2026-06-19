@@ -88,13 +88,14 @@ router.post('/fetch-transcript', transcriptLimiter, async (req, res) => {
  * 🔒 PROTECTED: Subscription check + rate limit (3 requests per 5 minutes)
  */
 router.post('/analyze-video-content', checkSubscriptionLimit('video_analysis'), videoAnalysisLimiter, async (req, res) => {
+  const { videoTitle, videoUrl, nativeLang, targetLang, level, preloadedTranscript } = req.body || {};
+  const videoId = videoUrl ? extractVideoId(videoUrl) : null;
+
   try {
     // No authentication required - anonymous users allowed (frontend enforces usage limits)
     if (!config.gemini.apiKey) return res.status(500).json({ error: 'Server missing GEMINI_API_KEY' });
-    const { videoTitle, videoUrl, nativeLang, targetLang, level, preloadedTranscript } = req.body || {};
     const ai = createAi();
 
-    const videoId = videoUrl ? extractVideoId(videoUrl) : null;
     console.log(`[server] Analyzing video content for: ${videoTitle} (${videoId}) using Gemini 3`);
 
     let contextData = { duration: 0, transcriptText: '', transcriptSegments: [], transcriptLang: null, transcriptLangMismatch: false };
@@ -155,12 +156,14 @@ router.post('/analyze-video-content', checkSubscriptionLimit('video_analysis'), 
     const minTopics = Math.max(5, Math.ceil(durationMin / 10));
     const maxTopics = Math.max(9, Math.ceil(durationMin / 3));
 
-    // Calculate vocabulary target based on duration and level
-    // Easy: ~0.8 words/min, Medium: ~1.0 words/min, Hard: ~1.2 words/min
-    const vocabMultiplier = level.toLowerCase() === 'easy' ? 0.8 : level.toLowerCase() === 'hard' ? 1.2 : 1.0;
-    const targetVocabCount = Math.max(10, Math.min(40, Math.round(durationMin * vocabMultiplier)));
-    const minVocab = Math.max(8, Math.floor(targetVocabCount * 0.7));
-    const maxVocab = Math.max(12, Math.ceil(targetVocabCount * 1.3));
+    // Calculate vocabulary target based on duration and level.
+    // Keep this to a single Gemini pass: enough words for long videos without
+    // making users wait on a second generation request.
+    const levelVocabBonus = level.toLowerCase() === 'easy' ? -4 : level.toLowerCase() === 'hard' ? 4 : 0;
+    const durationVocabTarget = Math.ceil(durationMin / 4) + levelVocabBonus;
+    const targetVocabCount = Math.max(10, Math.min(40, durationVocabTarget));
+    const minVocab = Math.max(8, Math.floor(targetVocabCount * 0.8));
+    const maxVocab = Math.max(12, Math.ceil(targetVocabCount * 1.25));
 
 
     const prompt = `
@@ -225,8 +228,11 @@ router.post('/analyze-video-content', checkSubscriptionLimit('video_analysis'), 
           - **CRITICAL:** Use **natural, conversational, and spoken-style language** (e.g., if ${nativeLang} is Chinese, use "口語化、通順的中文", avoid "翻譯腔" or overly academic terms).
           - **For EASY Level:** The translation MUST be simple and direct, as if explaining to a friend.
     2.  **Vocabulary:** Generate between ${minVocab} and ${maxVocab} vocabulary items based on the level rules and video content.
-        - **Target:** Aim for approximately ${targetVocabCount} words that best represent the video's key concepts.
-        - **Quality over Quantity:** Prioritize the most useful and relevant words, but ensure comprehensive coverage of the video's main topics.
+        - **Target:** Return approximately ${targetVocabCount} vocabulary items that best represent the video's key concepts.
+        - **Count requirement:** Do NOT default to 10 items for long videos. If the transcript has enough useful candidates, return at least ${minVocab} items and no more than ${maxVocab}.
+        - **Self-check before responding:** Count the final vocabulary array. If it has fewer than ${minVocab} items, add more valid transcript-based items before returning JSON.
+        - **Coverage:** Spread vocabulary across the full video, not only the opening section. Include useful words/phrases from different major outline topics.
+        - **Quality over Quantity:** Prioritize useful and relevant words, but ensure comprehensive coverage of the video's main topics.
         For each vocabulary item, provide:
         - Definition (in ${targetLang})
         - Context Sentence (Direct quote or adapted from video)
@@ -362,6 +368,24 @@ router.post('/analyze-video-content', checkSubscriptionLimit('video_analysis'), 
     }
 
     const json = safeJsonParse(candidates[0].content.parts[0].text);
+    json.vocabulary = Array.isArray(json.vocabulary) ? json.vocabulary : [];
+    const dedupeVocabulary = (items) => {
+      const seen = new Set();
+      return (items || []).filter((item) => {
+        const key = String(item?.word || '').trim().toLowerCase();
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    };
+    json.vocabulary = dedupeVocabulary(json.vocabulary).slice(0, maxVocab);
+
+    if (json.vocabulary.length < minVocab) {
+      console.warn(
+        `[analyze-video-content] Gemini returned fewer vocabulary items than requested | ` +
+        `video: ${videoId || videoTitle}, returned=${json.vocabulary.length}, min=${minVocab}, target=${targetVocabCount}, max=${maxVocab}`
+      );
+    }
 
     // Map new structure to old frontend structure to avoid breaking changes
     const mappedResponse = {
