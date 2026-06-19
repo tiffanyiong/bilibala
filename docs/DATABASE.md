@@ -423,7 +423,7 @@ create table browser_fingerprints (
 
   -- Video analysis usage (anonymous users)
   monthly_usage_count integer default 0,  -- # of video analyses this month
-  usage_reset_month text,                 -- YYYY-MM of last reset (shared by both counters below)
+  usage_reset_month text,                 -- YYYY-MM of last video usage reset
 
   -- Practice session usage (anonymous users)
   -- NOTE: Two columns exist for historical reasons:
@@ -431,7 +431,7 @@ create table browser_fingerprints (
   --   monthly_practice_count  → used by anonymous user limit checks (checkSubscriptionLimit middleware)
   -- Anonymous limit checks use monthly_practice_count (separate from video analysis count).
   practice_session_count integer default 0,   -- For authenticated user monthly usage queries
-  practice_reset_month text,                   -- Reset month for practice_session_count
+  practice_reset_month text,                   -- YYYY-MM of last anonymous practice usage reset
   monthly_practice_count integer default 0,    -- For anonymous user practice limit checks (checkSubscriptionLimit)
 
   -- Page visit analytics
@@ -455,13 +455,13 @@ create table browser_fingerprints (
 | `monthly_usage_count` | Server middleware + client `checkAnonymousUsageLimit()` | Anonymous video analysis limit (2/month) |
 | `monthly_practice_count` | Server middleware + client `checkAnonymousPracticeLimit()` | Anonymous practice session limit (2/month) |
 | `practice_session_count` | `get_all_monthly_usage()` DB function | Authenticated user monthly practice count |
-| `practice_reset_month` | `get_all_monthly_usage()` DB function | Reset tracking for `practice_session_count` |
-| `usage_reset_month` | Server middleware + client code | Reset tracking for `monthly_usage_count` and `monthly_practice_count` |
+| `practice_reset_month` | Server middleware + client `checkAnonymousPracticeLimit()` | Reset tracking for `monthly_practice_count` |
+| `usage_reset_month` | Server middleware + client `checkAnonymousUsageLimit()` | Reset tracking for `monthly_usage_count` |
 
 **Key rules:**
 - Anonymous video analyses increment `monthly_usage_count`
 - Anonymous practice sessions increment `monthly_practice_count`
-- Both share `usage_reset_month` for monthly reset tracking
+- Video and practice limits use separate reset-month markers
 - `practice_session_count` is only for authenticated users and is managed separately
 
 ---

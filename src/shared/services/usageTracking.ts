@@ -18,6 +18,12 @@ export interface UsageDisplayInfo extends UsageStatus {
   resetDate: string;
 }
 
+export function getNextCalendarMonthResetDate(): string {
+  const now = new Date();
+  const resetDateObj = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  return resetDateObj.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+}
+
 /**
  * Check anonymous usage limit against browser_fingerprints table
  */
@@ -117,7 +123,7 @@ export async function checkAnonymousPracticeLimit(): Promise<UsageStatus> {
 
   const { data, error } = await supabase
     .from('browser_fingerprints')
-    .select('monthly_practice_count, usage_reset_month')
+    .select('monthly_practice_count, practice_reset_month')
     .eq('fingerprint_hash', fingerprint)
     .single();
 
@@ -127,7 +133,7 @@ export async function checkAnonymousPracticeLimit(): Promise<UsageStatus> {
 
   let used = 0;
   if (data) {
-    if (data.usage_reset_month === currentMonth) {
+    if (data.practice_reset_month === currentMonth) {
       used = data.monthly_practice_count || 0;
     }
   }
@@ -138,57 +144,6 @@ export async function checkAnonymousPracticeLimit(): Promise<UsageStatus> {
     limit: FREE_PRACTICE_LIMIT,
     remaining: Math.max(0, FREE_PRACTICE_LIMIT - used)
   };
-}
-
-/**
- * Record anonymous practice session usage in browser_fingerprints table
- */
-export async function recordAnonymousPractice(): Promise<void> {
-  const fingerprint = await getFingerprint();
-  const currentMonth = getCurrentMonth();
-
-  const { data: existing, error: fetchError } = await supabase
-    .from('browser_fingerprints')
-    .select('id, monthly_practice_count, usage_reset_month')
-    .eq('fingerprint_hash', fingerprint)
-    .single();
-
-  if (fetchError && fetchError.code !== 'PGRST116') {
-    console.error('[UsageTracking] Error fetching fingerprint for practice:', fetchError);
-  }
-
-  if (existing) {
-    let newCount = 1;
-    if (existing.usage_reset_month === currentMonth) {
-      newCount = (existing.monthly_practice_count || 0) + 1;
-    }
-
-    const { error } = await supabase
-      .from('browser_fingerprints')
-      .update({
-        monthly_practice_count: newCount,
-        usage_reset_month: currentMonth,
-        last_seen_at: new Date().toISOString()
-      })
-      .eq('id', existing.id);
-
-    if (error) {
-      console.error('[UsageTracking] Error updating practice usage:', error);
-    }
-  } else {
-    const { error } = await supabase
-      .from('browser_fingerprints')
-      .insert({
-        fingerprint_hash: fingerprint,
-        monthly_practice_count: 1,
-        usage_reset_month: currentMonth,
-        last_seen_at: new Date().toISOString()
-      });
-
-    if (error) {
-      console.error('[UsageTracking] Error inserting practice usage:', error);
-    }
-  }
 }
 
 /**
@@ -242,12 +197,7 @@ export async function trackPageVisit(): Promise<void> {
  */
 export async function getUsageDisplayInfo(): Promise<UsageDisplayInfo> {
   const status = await checkAnonymousUsageLimit();
-
-  const now = new Date();
-  const resetDateObj = new Date(now.getFullYear(), now.getMonth() + 1, now.getDate());
-  const resetDate = resetDateObj.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
-
-  return { ...status, resetDate };
+  return { ...status, resetDate: getNextCalendarMonthResetDate() };
 }
 
 /**
@@ -255,10 +205,5 @@ export async function getUsageDisplayInfo(): Promise<UsageDisplayInfo> {
  */
 export async function getPracticeUsageDisplayInfo(): Promise<UsageDisplayInfo> {
   const status = await checkAnonymousPracticeLimit();
-
-  const now = new Date();
-  const resetDateObj = new Date(now.getFullYear(), now.getMonth() + 1, now.getDate());
-  const resetDate = resetDateObj.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
-
-  return { ...status, resetDate };
+  return { ...status, resetDate: getNextCalendarMonthResetDate() };
 }
