@@ -169,6 +169,8 @@ CREATE TABLE IF NOT EXISTS public.browser_fingerprints (
   fingerprint_hash TEXT UNIQUE NOT NULL,
   monthly_usage_count INTEGER DEFAULT 0,
   usage_reset_month TEXT,
+  monthly_practice_count INTEGER DEFAULT 0,
+  practice_reset_month TEXT,
   first_seen_at TIMESTAMPTZ DEFAULT timezone('utc', now()),
   last_seen_at TIMESTAMPTZ DEFAULT timezone('utc', now())
 );
