@@ -76,6 +76,19 @@ const parseTimestamp = (ts: string): number => {
   return 0;
 };
 
+const formatDurationTimestamp = (milliseconds: number): string => {
+  const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  }
+
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+};
+
 const ContentTabs: React.FC<ContentTabsProps> = ({
   summary,
   translatedSummary,
@@ -525,8 +538,8 @@ const ContentTabs: React.FC<ContentTabsProps> = ({
                                     `}
                                     onClick={() => onTimestampClick && onTimestampClick(seg.offset)}
                                 >
-                                    <span className={`text-[11px] font-mono pt-0.5 shrink-0 w-10 ${isActive ? 'text-amber-700 font-bold' : 'text-stone-400'}`}>
-                                        {new Date(seg.offset).toISOString().substr(14, 5)}
+                                    <span className={`text-[11px] font-mono pt-0.5 shrink-0 w-14 tabular-nums ${isActive ? 'text-amber-700 font-bold' : 'text-stone-400'}`}>
+                                        {formatDurationTimestamp(seg.offset)}
                                     </span>
                                     <p className={`text-[14px] leading-relaxed ${isActive ? 'text-stone-800 font-medium' : 'text-stone-600'}`}>
                                         {seg.text}
