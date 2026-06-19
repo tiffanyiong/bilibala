@@ -118,6 +118,7 @@ describe('server/middleware/subscriptionCheck', () => {
           monthly_usage_count: 0,
           monthly_practice_count: 2,
           usage_reset_month: currentMonth,
+          practice_reset_month: currentMonth,
         },
       }),
     });
@@ -135,6 +136,32 @@ describe('server/middleware/subscriptionCheck', () => {
       signInRequired: true,
     });
     expect(next).not.toHaveBeenCalled();
+  });
+
+  it('allows anonymous practice when only the video usage month is current', async () => {
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    const { checkSubscriptionLimit } = await loadMiddleware({
+      supabaseAdmin: createSupabaseMock({
+        fingerprint: {
+          monthly_usage_count: 1,
+          monthly_practice_count: 2,
+          usage_reset_month: currentMonth,
+          practice_reset_month: '2026-05',
+        },
+      }),
+    });
+    const req = { body: { fingerprintHash: 'anon-fingerprint' }, headers: {} };
+    const res = createResponse();
+    const next = vi.fn();
+
+    await checkSubscriptionLimit('practice_session')(req, res, next);
+
+    expect(next).toHaveBeenCalledOnce();
+    expect(req.anonymous).toEqual({
+      fingerprintHash: 'anon-fingerprint',
+      usage: 0,
+      limit: 2,
+    });
   });
 
   it('blocks a free authenticated user after the monthly video limit is reached', async () => {

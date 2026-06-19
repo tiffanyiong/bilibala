@@ -11,6 +11,61 @@ import { practiceLimiter, ttsLimiter } from '../middleware/rateLimiters.js';
 
 const router = Router();
 
+async function recordAnonymousPracticeReport(fingerprintHash) {
+  if (!fingerprintHash || !supabaseAdmin) return;
+
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const { data: existing, error: fetchError } = await supabaseAdmin
+    .from('browser_fingerprints')
+    .select('id, monthly_practice_count, practice_reset_month')
+    .eq('fingerprint_hash', fingerprintHash)
+    .single();
+
+  if (fetchError && fetchError.code !== 'PGRST116') {
+    console.error('[analyze-speech] Failed to fetch anonymous practice usage:', fetchError);
+    return;
+  }
+
+  if (existing) {
+    const newCount = existing.practice_reset_month === currentMonth
+      ? (existing.monthly_practice_count || 0) + 1
+      : 1;
+
+    const { error } = await supabaseAdmin
+      .from('browser_fingerprints')
+      .update({
+        monthly_practice_count: newCount,
+        practice_reset_month: currentMonth,
+        last_seen_at: new Date().toISOString(),
+      })
+      .eq('id', existing.id);
+
+    if (error) {
+      console.error('[analyze-speech] Failed to record anonymous practice usage:', error);
+      return;
+    }
+
+    console.log(`[analyze-speech] Anonymous practice report recorded | usage after report: ${newCount}/2`);
+    return;
+  }
+
+  const { error } = await supabaseAdmin
+    .from('browser_fingerprints')
+    .insert({
+      fingerprint_hash: fingerprintHash,
+      monthly_practice_count: 1,
+      practice_reset_month: currentMonth,
+      last_seen_at: new Date().toISOString(),
+    });
+
+  if (error) {
+    console.error('[analyze-speech] Failed to insert anonymous practice usage:', error);
+    return;
+  }
+
+  console.log('[analyze-speech] Anonymous practice report recorded | usage after report: 1/2');
+}
+
 /**
  * POST /api/analyze-speech
  * Analyzes user speech audio and provides structured feedback
@@ -1229,6 +1284,9 @@ router.post('/analyze-speech', checkSubscriptionLimit('practice_session'), pract
     }
 
     console.log(`[analyze-speech] Successfully parsed response, score: ${json.feedback?.score}, framework: ${json.detected_framework}${json.detected_framework === 'PRACTICE_DELIVERY' ? ' (retake/delivery mode)' : ''}${json.feedback?.breakdown ? `, breakdown: ${json.feedback.breakdown.framework}` : ''}`);
+    if (!req.user && req.anonymous?.fingerprintHash) {
+      await recordAnonymousPracticeReport(req.anonymous.fingerprintHash);
+    }
     res.json(json);
 
   } catch (err) {
@@ -1275,8 +1333,8 @@ function getTTSCacheKey(text, language) {
  */
 router.post('/tts', ttsLimiter, async (req, res) => {
   try {
-    // No authentication required - used by anonymous users in practice sessions
-    // Frontend enforces practice session limits (2/month for anonymous)
+    // No authentication required - used by anonymous users in practice sessions.
+    // Practice report quota is enforced by /api/analyze-speech.
 
     // Use dedicated TTS API key if available, otherwise fall back to Gemini key
     const apiKey = config.google?.ttsApiKey || config.gemini.apiKey;
