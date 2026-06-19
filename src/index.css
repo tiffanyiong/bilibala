@@ -58,6 +58,28 @@
   }
 }
 
+@keyframes luckyTextRoll {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes luckyTextSettle {
+  0% {
+    opacity: 0.75;
+    transform: translateY(3px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* ── Staggered grid animation (desktop only) ── */
 
 @keyframes gridFadeSlideUp {

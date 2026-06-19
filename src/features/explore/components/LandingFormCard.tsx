@@ -13,8 +13,21 @@ interface LandingFormCardProps {
   level: string;
   setLevel: (level: string) => void;
   onStart: () => void;
+  onRandomPractice: () => void;
+  randomPracticeDisabled?: boolean;
+  randomPracticeLoading?: boolean;
   errorMsg: string;
 }
+
+const RANDOM_PRACTICE_PROMPTS = [
+  'No thoughts, just talk',
+  'I just wanna speak',
+  'Pick for me',
+  'Spin a topic',
+];
+
+const ROLLING_PROMPT_STEP_MS = 180;
+const ROLLING_PROMPT_STEPS = 3;
 
 const LandingFormCard: React.FC<LandingFormCardProps> = ({
   videoUrl,
@@ -26,11 +39,18 @@ const LandingFormCard: React.FC<LandingFormCardProps> = ({
   level,
   setLevel,
   onStart,
+  onRandomPractice,
+  randomPracticeDisabled = false,
+  randomPracticeLoading = false,
   errorMsg,
 }) => {
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [randomPromptIndex, setRandomPromptIndex] = useState(0);
+  const [isPromptRolling, setIsPromptRolling] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
+  const promptRollTimeoutRefs = useRef<number[]>([]);
   const { enabledNativeLanguages, enabledTargetLanguages } = useAppConfig();
+  const randomPracticeLabel = RANDOM_PRACTICE_PROMPTS[randomPromptIndex];
 
   // Map to dropdown options
   // Filter out the selected target language from native language options
@@ -55,6 +75,31 @@ const LandingFormCard: React.FC<LandingFormCardProps> = ({
     }
     return () => document.removeEventListener('mousedown', handleClick);
   }, [settingsOpen]);
+
+  const clearPromptRollTimers = () => {
+    promptRollTimeoutRefs.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
+    promptRollTimeoutRefs.current = [];
+  };
+
+  useEffect(() => clearPromptRollTimers, []);
+
+  const rollRandomPracticePrompt = () => {
+    if (randomPracticeDisabled || randomPracticeLoading || isPromptRolling) return;
+
+    clearPromptRollTimers();
+    setIsPromptRolling(true);
+
+    for (let step = 1; step <= ROLLING_PROMPT_STEPS; step += 1) {
+      const timeoutId = window.setTimeout(() => {
+        setRandomPromptIndex((current) => (current + 1) % RANDOM_PRACTICE_PROMPTS.length);
+        if (step === ROLLING_PROMPT_STEPS) {
+          promptRollTimeoutRefs.current = [];
+          setIsPromptRolling(false);
+        }
+      }, ROLLING_PROMPT_STEP_MS * step);
+      promptRollTimeoutRefs.current.push(timeoutId);
+    }
+  };
 
   return (
     <div className="w-full flex flex-col items-center justify-center space-y-2 sm:space-y-8 text-center">
@@ -100,7 +145,7 @@ const LandingFormCard: React.FC<LandingFormCardProps> = ({
           />
 
           {/* Row 2: Action buttons */}
-          <div className="flex items-center justify-between pt-1.5">
+          <div className="flex items-center justify-between gap-2 pt-1.5">
             {/* Settings Icon Button */}
             <button
               type="button"
@@ -208,14 +253,57 @@ const LandingFormCard: React.FC<LandingFormCardProps> = ({
         )}
 
         {/* Error Message */}
-        <div className="min-h-[20px] mt-2">
+        <div className={errorMsg ? 'mt-2 min-h-[20px]' : 'min-h-0'}>
           {errorMsg && (
             <span className="text-red-500 text-xs font-medium leading-tight">
               {errorMsg}
             </span>
           )}
         </div>
+
+        <div className="mt-4 flex justify-center">
+          <button
+            type="button"
+            onClick={onRandomPractice}
+            onMouseEnter={rollRandomPracticePrompt}
+            onFocus={rollRandomPracticePrompt}
+            disabled={randomPracticeDisabled}
+            className="
+              group inline-flex h-8 max-w-full items-center justify-center gap-1.5
+              rounded-full border border-stone-200/70 bg-stone-50/80 px-3
+              text-xs font-semibold text-stone-400 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_1px_8px_rgba(0,0,0,0.03)]
+              transition-all duration-200
+              hover:border-stone-300 hover:bg-white hover:text-stone-500 hover:shadow-[0_4px_14px_rgba(0,0,0,0.05)]
+              active:scale-[0.98]
+              disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:border-stone-200/70 disabled:hover:bg-stone-50/80 disabled:hover:text-stone-400 disabled:hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_1px_8px_rgba(0,0,0,0.03)]
+              focus:outline-none focus-visible:ring-2 focus-visible:ring-stone-300 focus-visible:ring-offset-2
+            "
+            aria-label="Start a random practice session"
+            title="Start a random practice session"
+          >
+            {randomPracticeLoading ? (
+              <span
+                className="h-3.5 w-3.5 shrink-0 rounded-full border-2 border-stone-300 border-t-stone-500 animate-spin"
+                aria-hidden="true"
+              />
+            ) : (
+              <svg className="h-4 w-4 shrink-0 transition-transform duration-200 group-hover:-translate-y-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="1.9">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 3a3 3 0 00-3 3v6a3 3 0 006 0V6a3 3 0 00-3-3z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-14 0" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 18v3" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 21h8" />
+              </svg>
+            )}
+            <span
+              key={randomPracticeLoading ? 'loading' : randomPracticeLabel}
+              className={`truncate ${isPromptRolling ? 'animate-[luckyTextRoll_150ms_ease-out]' : 'animate-[luckyTextSettle_180ms_ease-out]'}`}
+            >
+              {randomPracticeLoading ? 'Finding...' : randomPracticeLabel}
+            </span>
+          </button>
+        </div>
       </div>
+
     </div>
   );
 };
