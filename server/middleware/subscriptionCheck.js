@@ -117,7 +117,7 @@ export const checkSubscriptionLimit = (actionType) => {
         // Get anonymous usage from browser_fingerprints table
         const { data: fingerprint, error: fpError } = await supabaseAdmin
           .from('browser_fingerprints')
-          .select('monthly_usage_count, monthly_practice_count, usage_reset_month')
+          .select('monthly_usage_count, monthly_practice_count, usage_reset_month, practice_reset_month')
           .eq('fingerprint_hash', fingerprintHash)
           .single();
 
@@ -128,10 +128,12 @@ export const checkSubscriptionLimit = (actionType) => {
 
         // Check if usage needs reset (new month)
         const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
-        const usageResetMonth = fingerprint?.usage_reset_month;
+        const resetMonth = actionType === 'practice_session'
+          ? fingerprint?.practice_reset_month
+          : fingerprint?.usage_reset_month;
         let currentUsage = 0;
 
-        if (!fingerprint || usageResetMonth !== currentMonth) {
+        if (!fingerprint || resetMonth !== currentMonth) {
           // New user or new month - reset to 0
           currentUsage = 0;
         } else {
@@ -160,7 +162,7 @@ export const checkSubscriptionLimit = (actionType) => {
           });
         }
 
-        console.log(`[checkSubscriptionLimit] ALLOWED | anonymous fingerprint: ${fingerprintHash.slice(0, 8)}... | action: ${actionType} | usage: ${currentUsage}/${limit}`);
+        console.log(`[checkSubscriptionLimit] ALLOWED | anonymous fingerprint: ${fingerprintHash.slice(0, 8)}... | action: ${actionType} | usage before report: ${currentUsage}/${limit}`);
 
         // Store anonymous info for later use
         req.anonymous = { fingerprintHash, usage: currentUsage, limit };

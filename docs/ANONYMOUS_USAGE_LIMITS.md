@@ -17,6 +17,8 @@ Anonymous users are identified by a **browser fingerprint** (via FingerprintJS).
 | Video analysis | 2/month | `monthly_usage_count` |
 | Practice session | 2/month | `monthly_practice_count` |
 
+Video usage resets by `usage_reset_month`; practice usage resets by `practice_reset_month`.
+
 Limits are configured in `app_config` table:
 - `anonymous_video_limit` = 2
 - `anonymous_practice_limit` = 2
@@ -76,9 +78,9 @@ Anonymous requests must include `fingerprintHash` in the request body. Missing f
 | Counter | Incremented by | Where |
 |---------|---------------|-------|
 | `monthly_usage_count` | `recordAnonymousUsage()` | Client, after successful video analysis |
-| `monthly_practice_count` | `recordAnonymousPractice()` | Client, after speech analysis result received |
+| `monthly_practice_count` | `recordAnonymousPracticeReport()` | Server, after `/api/analyze-speech` successfully generates a report |
 
-Both functions in `usageTracking.ts` share `usage_reset_month` (format: `YYYY-MM`) for monthly reset tracking. When the current month doesn't match `usage_reset_month`, the counter resets to 0.
+Both counters use monthly reset tracking (format: `YYYY-MM`). Video analysis checks `usage_reset_month`; practice checks `practice_reset_month`. When the current month doesn't match the relevant reset month, that counter resets to 0.
 
 ---
 

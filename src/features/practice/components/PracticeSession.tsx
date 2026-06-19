@@ -5,7 +5,7 @@ import { useSubscription } from '../../../shared/context/SubscriptionContext';
 import { getBackendOrigin } from '../../../shared/services/backend';
 import { getUserVideoLibrary, incrementQuestionUseCount, incrementTopicPracticeCount, savePracticeSession, updateLibraryPracticeStats, uploadPracticeAudio } from '../../../shared/services/database';
 import { getDailyPracticeUsage } from '../../../shared/services/subscriptionDatabase';
-import { checkAnonymousPracticeLimit, recordAnonymousPractice } from '../../../shared/services/usageTracking';
+import { checkAnonymousPracticeLimit } from '../../../shared/services/usageTracking';
 import { getFingerprint } from '../../../shared/services/fingerprint';
 import { PracticeTopic, SpeechAnalysisResult, TopicQuestion } from '../../../shared/types';
 import UpgradeModal from '../../subscription/components/UpgradeModal';
@@ -349,8 +349,6 @@ const PracticeSession: React.FC<PracticeSessionProps> = ({
             if (topic.questionId) await incrementQuestionUseCount(topic.questionId);
           } catch (err) { console.error('Save failed', err); }
         })();
-      } else {
-        recordAnonymousPractice();
       }
 
       // CACHE UPDATING
