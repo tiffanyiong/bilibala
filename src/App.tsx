@@ -1953,6 +1953,167 @@ const App: React.FC = () => {
     }
   };
 
+  const handleRandomPractice = async () => {
+    if (exploreVideos.length === 0) {
+      setErrorMsg(isExploreLoading ? 'Finding practice videos...' : 'No practice videos are ready yet. Please try again soon.');
+      return;
+    }
+
+    setErrorMsg('');
+    const randomIndex = Math.floor(Math.random() * exploreVideos.length);
+    const randomVideo = exploreVideos[randomIndex];
+
+    setAppState(AppState.LOADING);
+    setLoadingText('Finding a practice session...');
+    setTranscriptLangMismatch(false);
+
+    try {
+      const cachedAnalysis = await getCachedAnalysisWithVideoById(randomVideo.analysisId);
+
+      if (!cachedAnalysis) {
+        throw new Error('Video not found');
+      }
+
+      const youtubeId = cachedAnalysis.global_videos.youtube_id;
+      if (!youtubeId) {
+        throw new Error('Invalid video data');
+      }
+
+      const videoUrl = `https://www.youtube.com/watch?v=${youtubeId}`;
+      setVideoUrl(videoUrl);
+      setNativeLangForVideo(cachedAnalysis.native_lang);
+      setTargetLangForVideo(cachedAnalysis.target_lang);
+      setLevelForVideo(cachedAnalysis.level);
+      setVideoData({
+        id: youtubeId,
+        url: videoUrl,
+        title: cachedAnalysis.global_videos.title || 'Untitled Video',
+      });
+
+      const analysis = dbAnalysisToContentAnalysis(cachedAnalysis);
+      setSummary(analysis.summary);
+      setTranslatedSummary(analysis.translatedSummary || '');
+      setTopics(analysis.topics);
+      setVocabulary(analysis.vocabulary);
+      setTranscript(analysis.transcript || []);
+      setTranscriptLangMismatch(analysis.transcriptLangMismatch || false);
+      setCurrentAnalysisId(randomVideo.analysisId);
+
+      const dbTopics = await getPracticeTopicsForAnalysis(randomVideo.analysisId);
+      const topicsWithIds = analysis.discussionTopics?.map(topic => {
+        const dbTopic = dbTopics.find(dt => dt.question === topic.question) ||
+                        dbTopics.find(dt => dt.topic === topic.topic);
+        if (dbTopic) {
+          return { ...topic, topicId: dbTopic.id, questionId: dbTopic.questionId };
+        }
+        return topic;
+      }) || [];
+
+      if (topicsWithIds.length === 0) {
+        throw new Error('No practice topics found');
+      }
+
+      const topicIds = topicsWithIds
+        .map(t => t.topicId)
+        .filter((id): id is string => !!id);
+      const topicsWithQuestions = topicIds.length > 0
+        ? await getTopicIdsWithQuestionsAtLevel(topicIds, cachedAnalysis.level)
+        : new Set<string>();
+      const availablePracticeTopics = topicIds.length > 0
+        ? topicsWithIds.filter(t => !t.topicId || topicsWithQuestions.has(t.topicId))
+        : topicsWithIds;
+
+      const practiceTopics = availablePracticeTopics.length > 0 ? availablePracticeTopics : topicsWithIds;
+      const randomTopic = practiceTopics[Math.floor(Math.random() * practiceTopics.length)];
+
+      let questionsForTopic: TopicQuestion[] = [];
+      let selectedQuestion: TopicQuestion = {
+        questionId: randomTopic.questionId || '',
+        question: randomTopic.question,
+        sourceType: 'video_generated',
+        useCount: 0,
+        videoTitle: cachedAnalysis.global_videos.title || null,
+        analysisId: randomVideo.analysisId,
+        youtubeId,
+      };
+
+      if (randomTopic.topicId) {
+        questionsForTopic = filterQuestionsByLang(
+          await getQuestionsForTopic(randomTopic.topicId, cachedAnalysis.level),
+          cachedAnalysis.target_lang
+        );
+
+        if (questionsForTopic.length > 0) {
+          selectedQuestion = questionsForTopic[Math.floor(Math.random() * questionsForTopic.length)];
+        }
+
+        const aiCount = await countAiGeneratedQuestions(randomTopic.topicId, user?.id);
+        setAiGeneratedQuestionCount(aiCount);
+      } else {
+        setAiGeneratedQuestionCount(0);
+      }
+
+      const topicWithQuestion: PracticeTopic = {
+        ...randomTopic,
+        question: selectedQuestion.question,
+        questionId: selectedQuestion.questionId,
+      };
+
+      setDiscussionTopics(topicsWithIds);
+      setSelectedTopics([randomTopic.topic]);
+      setAllSelectedPracticeTopics(practiceTopics);
+      setAllQuestionsForTopic(questionsForTopic);
+      setActivePracticeTopic(topicWithQuestion);
+
+      if (user) {
+        const existingEntry = await getLibraryEntry(user.id, randomVideo.analysisId);
+        setLibraryEntry(existingEntry);
+      } else {
+        setLibraryEntry(null);
+      }
+
+      const LEVELS_TO_CHECK = ['Easy', 'Medium', 'Hard'];
+      const levelMap = new Map<string, string>([[cachedAnalysis.level, randomVideo.analysisId]]);
+      const availableSet = new Set([cachedAnalysis.level]);
+
+      for (const levelToCheck of LEVELS_TO_CHECK) {
+        if (levelToCheck === cachedAnalysis.level) continue;
+
+        try {
+          const otherLevelAnalysis = await getCachedAnalysis(
+            cachedAnalysis.video_id,
+            levelToCheck,
+            cachedAnalysis.target_lang,
+            cachedAnalysis.native_lang
+          );
+
+          if (otherLevelAnalysis) {
+            availableSet.add(levelToCheck);
+            levelMap.set(levelToCheck, otherLevelAnalysis.id);
+          }
+        } catch (err) {
+          console.error(`[Random Practice] Error checking ${levelToCheck}:`, err);
+        }
+      }
+
+      setAvailableLevels(availableSet);
+      setLevelAnalysisIds(levelMap);
+
+      if (cachedAnalysis.video_id) {
+        incrementVideoView(cachedAnalysis.video_id).catch((err) => {
+          console.error('Failed to increment view count:', err);
+        });
+      }
+
+      window.history.pushState({}, '', `/${youtubeId}/practice?level=${cachedAnalysis.level}`);
+      setAppState(AppState.PRACTICE_SESSION);
+    } catch (error) {
+      console.error('Error starting random practice:', error);
+      setErrorMsg('Failed to start a random practice. Please try again.');
+      setAppState(AppState.LANDING);
+    }
+  };
+
   // Handle saving current video to library (for users viewing someone else's analysis)
   const handleSaveToLibrary = async () => {
     if (!user || !currentAnalysisId) {
@@ -2152,6 +2313,9 @@ const App: React.FC = () => {
             level={level}
             setLevel={setLevel}
             onStart={handleStart}
+            onRandomPractice={handleRandomPractice}
+            randomPracticeDisabled={isExploreLoading && exploreVideos.length === 0}
+            randomPracticeLoading={isExploreLoading && exploreVideos.length === 0}
             errorMsg={errorMsg}
           />
 
