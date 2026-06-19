@@ -151,16 +151,17 @@ router.post('/analyze-video-content', checkSubscriptionLimit('video_analysis'), 
       : `${totalDurationM}:${String(totalDurationS).padStart(2, '0')}`;
     const targetTopicCount = Math.max(3, Math.min(15, Math.ceil(durationMin / 3)));
 
-    // 這裡我們給出一個建議範圍，而不是死板的數字
-    // 例如：短影片 3-5 個章節，長影片 8-20 個章節
-    const minTopics = Math.max(5, Math.ceil(durationMin / 10));
-    const maxTopics = Math.max(9, Math.ceil(durationMin / 3));
+    // Give Gemini a practical range for semantic outline coverage.
+    // Long videos need enough chapters to avoid skipping huge sections.
+    const minTopics = Math.max(5, Math.ceil(durationMin / 12));
+    const maxTopics = Math.max(9, Math.min(30, Math.ceil(durationMin / 6)));
+    const maxOutlineGapMin = durationMin > 60 ? 20 : 12;
 
     // Calculate vocabulary target based on duration and level.
-    // Keep this to a single Gemini pass: enough words for long videos without
-    // making users wait on a second generation request.
-    const levelVocabBonus = level.toLowerCase() === 'easy' ? -4 : level.toLowerCase() === 'hard' ? 4 : 0;
-    const durationVocabTarget = Math.ceil(durationMin / 4) + levelVocabBonus;
+    // Medium-length videos should already feel vocabulary-rich; very long videos
+    // cap to keep the UI useful instead of overwhelming.
+    const levelVocabBonus = level.toLowerCase() === 'easy' ? -4 : level.toLowerCase() === 'hard' ? 5 : 0;
+    const durationVocabTarget = Math.ceil(durationMin / 2.25) + levelVocabBonus;
     const targetVocabCount = Math.max(10, Math.min(40, durationVocabTarget));
     const minVocab = Math.max(8, Math.floor(targetVocabCount * 0.8));
     const maxVocab = Math.max(12, Math.ceil(targetVocabCount * 1.25));
@@ -185,7 +186,9 @@ router.post('/analyze-video-content', checkSubscriptionLimit('video_analysis'), 
     - **Constraints:**
       1. **Coverage:** You must still cover the **entire video** from 00:00 to ${totalDurationStr}. The final outline point must reflect the video's conclusion.
       2. **Quantity:** Generate between ${minTopics} and ${maxTopics} outline points, depending on how many distinct topics are actually discussed.
-      3. **Timestamps:** Use the [MM:SS] markers in the text to identify exactly when the topic *starts*. The timestamp for each outline point should correspond to the first mention of that topic.
+      3. **Timestamps:** Use the transcript markers to identify exactly when the topic *starts*. Markers may be [MM:SS] or [HH:MM:SS] for videos over one hour.
+      4. **Long-video gap rule:** Do not leave a gap larger than about ${maxOutlineGapMin} minutes between outline points unless the same single topic truly continues without a meaningful subtopic. For long interviews or documentaries, create smaller semantic subchapters so the outline does not jump from one hour mark to another.
+      5. **Chronology:** Outline timestamps must be strictly increasing and should reflect the first mention of each topic.
 
     # CRITICAL CONSTRAINT: SOURCE OF TRUTH
     - You must ONLY select vocabulary words that **explicitly appear** in the provided transcript.
@@ -229,7 +232,7 @@ router.post('/analyze-video-content', checkSubscriptionLimit('video_analysis'), 
           - **For EASY Level:** The translation MUST be simple and direct, as if explaining to a friend.
     2.  **Vocabulary:** Generate between ${minVocab} and ${maxVocab} vocabulary items based on the level rules and video content.
         - **Target:** Return approximately ${targetVocabCount} vocabulary items that best represent the video's key concepts.
-        - **Count requirement:** Do NOT default to 10 items for long videos. If the transcript has enough useful candidates, return at least ${minVocab} items and no more than ${maxVocab}.
+        - **Count requirement:** Do NOT default to 10 items for medium or long videos. A 30-60 minute video should usually contain many useful phrases/collocations if the transcript has enough content. Return at least ${minVocab} items and no more than ${maxVocab}.
         - **Self-check before responding:** Count the final vocabulary array. If it has fewer than ${minVocab} items, add more valid transcript-based items before returning JSON.
         - **Coverage:** Spread vocabulary across the full video, not only the opening section. Include useful words/phrases from different major outline topics.
         - **Quality over Quantity:** Prioritize useful and relevant words, but ensure comprehensive coverage of the video's main topics.
@@ -250,8 +253,10 @@ router.post('/analyze-video-content', checkSubscriptionLimit('video_analysis'), 
         - **Target Words:** Select 3 words in ${targetLang} (from the video or relevant to the topic) that the user MUST try to use in their answer.
    
     4.  **Outline:** A chronological breakdown based on **topic shifts**. 
-        - Use the [MM:SS] markers from the transcript.
-        - Ensure the outline covers the full duration.
+        - Use the transcript markers: [MM:SS] for short videos and [HH:MM:SS] for videos over one hour.
+        - Return between ${minTopics} and ${maxTopics} outline items.
+        - Ensure the outline covers the full duration from 00:00 to ${totalDurationStr}.
+        - Avoid large missing middle sections: for this video, consecutive outline items should usually be no more than about ${maxOutlineGapMin} minutes apart.
 
     5.  **Video Category:** Pick the single most fitting category for this video overall (e.g., "Career", "Travel", "Daily Life", "Technology", "Culture", "Health", "Education", "Relationships", "Entertainment", "Society").
     
@@ -282,7 +287,7 @@ router.post('/analyze-video-content', checkSubscriptionLimit('video_analysis'), 
       ],
       "outline": [
         {
-          "time": "MM:SS",
+          "time": "MM:SS or H:MM:SS",
           "title": "...",
           "description": "..."
         }
@@ -381,9 +386,160 @@ router.post('/analyze-video-content', checkSubscriptionLimit('video_analysis'), 
     json.vocabulary = dedupeVocabulary(json.vocabulary).slice(0, maxVocab);
 
     if (json.vocabulary.length < minVocab) {
+      const missingVocabCount = Math.min(maxVocab - json.vocabulary.length, minVocab - json.vocabulary.length);
       console.warn(
         `[analyze-video-content] Gemini returned fewer vocabulary items than requested | ` +
-        `video: ${videoId || videoTitle}, returned=${json.vocabulary.length}, min=${minVocab}, target=${targetVocabCount}, max=${maxVocab}`
+        `video: ${videoId || videoTitle}, returned=${json.vocabulary.length}, min=${minVocab}, target=${targetVocabCount}, max=${maxVocab}, missing=${missingVocabCount}`
+      );
+
+      if (missingVocabCount > 0) {
+        try {
+          const existingWords = json.vocabulary
+            .map(item => item.word)
+            .filter(Boolean)
+            .join(', ');
+
+          const vocabTopUpPrompt = `
+          The previous analysis returned too few vocabulary items for this long video.
+
+          # Context
+          - Video Title: "${videoTitle}"
+          - Target Level: ${level.toUpperCase()}
+          - Target Language: ${targetLang}
+          - Native Language: ${nativeLang}
+          - Need exactly ${missingVocabCount} additional vocabulary items.
+          - Exclude these existing words/phrases: ${existingWords || '(none)'}
+
+          # Instructions
+          - Select ONLY words or phrases that explicitly appear in the transcript.
+          - Do NOT repeat or lightly rephrase the excluded words.
+          - Spread choices across the transcript, especially later sections.
+          - Match the ${level.toUpperCase()} vocabulary rules from the main analysis.
+          - Return ONLY valid JSON.
+
+          # Output Format
+          {
+            "vocabulary": [
+              {
+                "word": "...",
+                "word_translation": "...",
+                "definition": "...",
+                "context_sentence": "...",
+                "definition_translation": "...",
+                "native_context_translation": "..."
+              }
+            ]
+          }
+
+          # Transcript
+          ${formattedTranscript ? formattedTranscript.slice(0, 200000) : ''}
+          `.trim();
+
+          console.log(
+            `[analyze-video-content] Requesting vocabulary top-up | ` +
+            `video: ${videoId || videoTitle}, missing=${missingVocabCount}`
+          );
+
+          const vocabTopUpResponse = await generateWithRetry(ai, FAST_MODEL, {
+            model: FAST_MODEL,
+            contents: [{ role: 'user', parts: [{ text: vocabTopUpPrompt }] }],
+            config: {
+              responseMimeType: 'application/json',
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  vocabulary: {
+                    type: Type.ARRAY,
+                    items: {
+                      type: Type.OBJECT,
+                      properties: {
+                        word: { type: Type.STRING },
+                        word_translation: { type: Type.STRING },
+                        definition: { type: Type.STRING },
+                        context_sentence: { type: Type.STRING },
+                        definition_translation: { type: Type.STRING },
+                        native_context_translation: { type: Type.STRING },
+                      },
+                      required: ['word', 'word_translation', 'definition', 'context_sentence', 'definition_translation', 'native_context_translation'],
+                    },
+                  },
+                },
+                required: ['vocabulary'],
+              },
+            },
+          }, 1);
+
+          const topUpCandidates = vocabTopUpResponse.candidates || vocabTopUpResponse.data?.candidates;
+          const topUpText = topUpCandidates?.[0]?.content?.parts?.[0]?.text;
+
+          if (topUpText) {
+            const topUpJson = safeJsonParse(topUpText);
+            const topUpVocabulary = Array.isArray(topUpJson.vocabulary) ? topUpJson.vocabulary : [];
+            json.vocabulary = dedupeVocabulary([...json.vocabulary, ...topUpVocabulary]).slice(0, maxVocab);
+            console.log(
+              `[analyze-video-content] Vocabulary top-up completed | ` +
+              `video: ${videoId || videoTitle}, total=${json.vocabulary.length}, min=${minVocab}, max=${maxVocab}`
+            );
+          }
+        } catch (topUpErr) {
+          console.warn(
+            `[analyze-video-content] Vocabulary top-up failed | video: ${videoId || videoTitle}`,
+            topUpErr
+          );
+        }
+      }
+    }
+
+    const parseTimestampSeconds = (value) => {
+      const parts = String(value || '')
+        .replace(/[[\]]/g, '')
+        .trim()
+        .split(':')
+        .map(part => Number(part));
+
+      if (parts.some(part => Number.isNaN(part))) return 0;
+      if (parts.length === 2) return (parts[0] * 60) + parts[1];
+      if (parts.length === 3) return (parts[0] * 3600) + (parts[1] * 60) + parts[2];
+      return 0;
+    };
+
+    const formatTimestampSeconds = (seconds) => {
+      const safeSeconds = Math.max(0, Math.floor(seconds));
+      const hh = Math.floor(safeSeconds / 3600);
+      const mm = Math.floor((safeSeconds % 3600) / 60);
+      const ss = safeSeconds % 60;
+
+      if (hh > 0) return `${hh}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+      return `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+    };
+
+    json.outline = Array.isArray(json.outline) ? json.outline : [];
+    json.outline = json.outline
+      .map(item => ({
+        ...item,
+        timeSeconds: parseTimestampSeconds(item?.time)
+      }))
+      .sort((a, b) => a.timeSeconds - b.timeSeconds)
+      .filter((item, index, items) => index === 0 || item.timeSeconds > items[index - 1].timeSeconds)
+      .map(({ timeSeconds, ...item }) => ({
+        ...item,
+        time: formatTimestampSeconds(timeSeconds)
+      }));
+
+    const largeOutlineGaps = json.outline
+      .map((item, index, items) => {
+        if (index === 0) return null;
+        const previousSeconds = parseTimestampSeconds(items[index - 1]?.time);
+        const currentSeconds = parseTimestampSeconds(item?.time);
+        const gapMinutes = (currentSeconds - previousSeconds) / 60;
+        return gapMinutes > maxOutlineGapMin ? { from: items[index - 1]?.time, to: item?.time, gapMinutes } : null;
+      })
+      .filter(Boolean);
+
+    if (largeOutlineGaps.length > 0) {
+      console.warn(
+        `[analyze-video-content] Outline has large gaps | video: ${videoId || videoTitle}, ` +
+        `maxGap=${maxOutlineGapMin}m, gaps=${JSON.stringify(largeOutlineGaps)}`
       );
     }
 
