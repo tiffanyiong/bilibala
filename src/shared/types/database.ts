@@ -1,5 +1,9 @@
 import { TopicPoint, VocabularyItem, PracticeTopic } from './index';
-import { MONTHLY_MAX_MINUTES, PRO_VIDEOS_PER_MONTH } from '../config/aiTutorConfig';
+import {
+  FREE_VIDEO_LIBRARY_MAX,
+  MONTHLY_MAX_MINUTES,
+  PRO_VIDEOS_PER_MONTH,
+} from '../config/aiTutorConfig';
 
 // ============================================
 // DATABASE ROW TYPES (matching Supabase schema)
@@ -260,7 +264,7 @@ export interface DbUserSubscription {
   video_credits: number;
   // Set when user upgrades plan — usage_history only counts from this point
   usage_reset_at: string | null;
-  // Stripe cancel_at_period_end — user canceled but still active until period end
+  // Normalized scheduled cancellation from Stripe cancel_at_period_end or cancel_at
   cancel_at_period_end: boolean;
   created_at: string;
   updated_at: string;
@@ -292,7 +296,10 @@ export const TIER_LIMITS = {
     practiceSessionsPerDay: 5, // NEW: Free tier daily limit
     aiTutorMinutesPerMonth: 0,
     pdfExport: false,
-    videoLibraryMax: 10,
+    // Read at access time so updates loaded from app_config are reflected here.
+    get videoLibraryMax() {
+      return FREE_VIDEO_LIBRARY_MAX;
+    },
   },
   pro: {
     videosPerMonth: PRO_VIDEOS_PER_MONTH,

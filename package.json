@@ -1,7 +1,7 @@
 {
   "name": "bilibala",
   "private": true,
-  "version": "1.4.15",
+  "version": "1.4.16",
   "type": "module",
   "engines": {
     "node": ">=20"
