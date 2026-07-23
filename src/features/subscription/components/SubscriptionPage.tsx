@@ -129,8 +129,14 @@ const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ onOpenAuthModal }) 
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('success') === 'true') {
+    const checkoutSucceeded = params.get('success') === 'true';
+    const returnedFromPortal = params.get('portal_return') === 'true';
+
+    if (checkoutSucceeded) {
       setShowSuccess(true);
+    }
+
+    if (checkoutSucceeded || returnedFromPortal) {
       window.history.replaceState(null, '', '/subscription');
       syncWithStripe().then((synced) => {
         if (synced) {
@@ -187,6 +193,16 @@ const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ onOpenAuthModal }) 
 
   const freeLimits = TIER_LIMITS.free;
   const proLimits = TIER_LIMITS.pro;
+  const isScheduledToCancel = status === 'canceled' || Boolean(subscription?.cancel_at_period_end);
+  const monthlyAllowanceInfo = isScheduledToCancel && subscription?.current_period_end
+    ? `Available until ${formatDate(subscription.current_period_end)}`
+    : getMonthlyResetInfo(
+        tier,
+        billingInterval,
+        subscription?.current_period_start,
+        subscription?.current_period_end,
+        subscription?.created_at
+      );
 
   return (
     <div className="min-h-screen pt-20 pb-12 px-4">
@@ -260,13 +276,7 @@ const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ onOpenAuthModal }) 
                   label="Video Analysis"
                   used={usage.videosUsed}
                   limit={videosLimit}
-                  resetInfo={getMonthlyResetInfo(
-                    tier,
-                    billingInterval,
-                    subscription?.current_period_start,
-                    subscription?.current_period_end,
-                    subscription?.created_at
-                  )}
+                  resetInfo={monthlyAllowanceInfo}
                 />
                 <UsageMeter
                   label="AI Report"
@@ -279,15 +289,7 @@ const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ onOpenAuthModal }) 
                   used={usage.aiTutorMinutesUsed}
                   limit={aiTutorMinutesLimit}
                   unit="min"
-                  resetInfo={tier === 'pro'
-                    ? getMonthlyResetInfo(
-                        tier,
-                        billingInterval,
-                        subscription?.current_period_start,
-                        subscription?.current_period_end,
-                        subscription?.created_at
-                      )
-                    : undefined}
+                  resetInfo={tier === 'pro' ? monthlyAllowanceInfo : undefined}
                 />
                 <UsageMeter
                   label="PDF Export"
@@ -437,7 +439,7 @@ const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ onOpenAuthModal }) 
           
                 {subscription?.current_period_end && (
                   <p className="text-xs text-stone-500 mt-2 text-center">
-                    {status === 'canceled' || subscription?.cancel_at_period_end ? 'Access until: ' : 'Renews: '}
+                    {isScheduledToCancel ? 'Access until: ' : 'Renews: '}
                     {formatDate(subscription.current_period_end)}
                   </p>
                 )}
