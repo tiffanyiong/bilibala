@@ -82,18 +82,18 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
 
   // Load subscription and usage data when user changes
   useEffect(() => {
-    if (!user) {
-      setSubscription(null);
-      setUsage({ videosUsed: 0, practiceSessionsUsed: 0, aiTutorMinutesUsed: 0, pdfExportsUsed: 0, practiceSessionsDailyUsed: 0 });
-      setIsLoading(false);
-      return;
-    }
-
     const loadData = async () => {
       setIsLoading(true);
       try {
-        // Fetch app config from server (non-blocking, uses defaults if fails)
-        fetchAppConfig();
+        // Load app_config before calculating limits so Supabase values are used
+        // by both authenticated flows and the public pricing UI.
+        await fetchAppConfig();
+
+        if (!user) {
+          setSubscription(null);
+          setUsage({ videosUsed: 0, practiceSessionsUsed: 0, aiTutorMinutesUsed: 0, pdfExportsUsed: 0, practiceSessionsDailyUsed: 0 });
+          return;
+        }
 
         const [sub, monthlyUsage, dailyPracticeUsage] = await Promise.all([
           getOrCreateSubscription(user.id),
@@ -103,19 +103,11 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
         setSubscription(sub);
         setUsage({ ...monthlyUsage, practiceSessionsDailyUsed: dailyPracticeUsage });
 
-        // Smart sync: Sync with Stripe if there's a potential mismatch:
-        // 1. User has active subscription but tier is free (missed webhook)
-        // 2. User is pro but missing period dates or billing_interval (incomplete webhook data)
-        const hasMissingData = sub?.stripe_subscription_id &&
-                              sub?.subscription_status === 'active' &&
-                              sub?.tier === 'pro' &&
-                              (!sub.current_period_start || !sub.current_period_end || !sub.billing_interval);
-        const hasTierMismatch = sub?.stripe_subscription_id &&
-                          sub?.subscription_status === 'active' &&
-                          sub?.tier === 'free';
-        const shouldSync = (hasTierMismatch || hasMissingData) && session?.access_token;
+        // Always reconcile an existing Stripe subscription on app load. Local
+        // data cannot reveal a missed cancel_at_period_end webhook by itself.
+        const shouldSync = Boolean(sub?.stripe_subscription_id && session?.access_token);
         if (shouldSync) {
-          console.log('[SubscriptionContext] Sync needed:', hasTierMismatch ? 'tier mismatch' : 'missing period/billing data');
+          console.log('[SubscriptionContext] Reconciling subscription with Stripe');
           try {
             const res = await fetch(`${getBackendOrigin()}/api/subscriptions/sync`, {
               method: 'POST',
@@ -127,16 +119,17 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
             const data = await res.json();
             if (data.synced) {
               // Reload subscription AND usage data after sync (monthly usage may have been reset)
-              const [updatedSub, updatedUsage] = await Promise.all([
+              const [updatedSub, updatedUsage, updatedDailyPracticeUsage] = await Promise.all([
                 getOrCreateSubscription(user.id),
                 getMonthlyUsage(user.id),
+                getDailyPracticeUsage(user.id),
               ]);
               setSubscription(updatedSub);
-              setUsage(updatedUsage);
+              setUsage({ ...updatedUsage, practiceSessionsDailyUsed: updatedDailyPracticeUsage });
               console.log('[SubscriptionContext] Synced successfully:', { tier: data.tier, status: data.status });
             }
           } catch (syncErr) {
-            console.error('Error during smart sync:', syncErr);
+            console.error('Error reconciling subscription with Stripe:', syncErr);
           }
         }
       } catch (err) {
@@ -187,12 +180,13 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
       if (data.synced) {
         // Refresh local subscription AND usage data from database
         if (user) {
-          const [sub, updatedUsage] = await Promise.all([
+          const [sub, updatedUsage, updatedDailyPracticeUsage] = await Promise.all([
             getOrCreateSubscription(user.id),
             getMonthlyUsage(user.id),
+            getDailyPracticeUsage(user.id),
           ]);
           setSubscription(sub);
-          setUsage(updatedUsage);
+          setUsage({ ...updatedUsage, practiceSessionsDailyUsed: updatedDailyPracticeUsage });
         }
         return true;
       }
@@ -202,6 +196,19 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
       return false;
     }
   }, [session, user]);
+
+  // Browser Back can restore the app from the back/forward cache without
+  // remounting React. Reconcile again when returning from Stripe in that case.
+  useEffect(() => {
+    if (!user || tier !== 'pro') return;
+
+    const handlePageShow = () => {
+      void syncWithStripe();
+    };
+
+    window.addEventListener('pageshow', handlePageShow);
+    return () => window.removeEventListener('pageshow', handlePageShow);
+  }, [user?.id, tier, syncWithStripe]);
 
   const recordAction = useCallback(async (
     actionType: UsageActionType,
@@ -326,6 +333,7 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`,
         },
+        body: JSON.stringify({ origin: window.location.origin }),
       });
       const data = await res.json();
       return data.url || null;

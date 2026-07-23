@@ -144,6 +144,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenSubscription }) => {
     }
   };
 
+  const isScheduledToCancel = status === 'canceled' || Boolean(subscription?.cancel_at_period_end);
+
   return (
     <div className="min-h-screen pt-20 pb-12 px-4 bg-stone-100/60">
       <div className="max-w-md mx-auto">
@@ -189,8 +191,10 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenSubscription }) => {
                         : 'Free'}
                     </span>
                     {tier === 'pro' && status && (
-                      <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded-full ${getStatusColor(status)}`}>
-                        {getStatusLabel(status)}
+                      <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded-full ${
+                        isScheduledToCancel ? 'text-amber-600 bg-amber-50' : getStatusColor(status)
+                      }`}>
+                        {isScheduledToCancel ? 'Ending' : getStatusLabel(status)}
                       </span>
                     )}
                   </div>
@@ -217,7 +221,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenSubscription }) => {
                     <div className="h-px bg-stone-100 ml-4" />
                     <div className="flex items-center justify-between px-4 py-3">
                       <span className="text-sm text-stone-500">
-                        {status === 'canceled' || subscription?.cancel_at_period_end ? 'Access until' : 'Renews'}
+                        {isScheduledToCancel ? 'Access until' : 'Renews'}
                       </span>
                       <span className="text-sm text-stone-900">
                         {formatDate(subscription.current_period_end)}
@@ -238,13 +242,15 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenSubscription }) => {
                   <>
                     <div className="px-4 pt-3 pb-1">
                       <p className="text-[11px] text-stone-400">
-                        Monthly allowance {getMonthlyResetInfo(
-                          tier,
-                          billingInterval,
-                          subscription?.current_period_start,
-                          subscription?.current_period_end,
-                          subscription?.created_at
-                        ).toLowerCase()}
+                        {isScheduledToCancel && subscription?.current_period_end
+                          ? `Monthly allowance available until ${formatDate(subscription.current_period_end)}`
+                          : `Monthly allowance ${getMonthlyResetInfo(
+                              tier,
+                              billingInterval,
+                              subscription?.current_period_start,
+                              subscription?.current_period_end,
+                              subscription?.created_at
+                            ).toLowerCase()}`}
                       </p>
                     </div>
                     <UsageRow

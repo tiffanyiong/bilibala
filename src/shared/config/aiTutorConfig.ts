@@ -49,6 +49,12 @@ export let SPEECH_ANALYSIS_TIMEOUT_SECONDS = 150;
 
 let configLoaded = false;
 
+function configNumber(value: unknown, fallback: number): number {
+  if (value === null || value === undefined || value === '') return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 /**
  * Fetch app config from the server. Updates the exported variables in place.
  * Safe to call multiple times — only fetches once.
@@ -56,32 +62,34 @@ let configLoaded = false;
 export async function fetchAppConfig(): Promise<void> {
   if (configLoaded) return;
   try {
-    const res = await fetch(`${getBackendOrigin()}/api/config/app`);
+    // Read app_config directly so admin changes take effect on the next page load
+    // instead of waiting for the backend's periodic config-cache refresh.
+    const res = await fetch(`${getBackendOrigin()}/api/config`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
 
-    SESSION_MAX_MINUTES = data.ai_tutor_session_max_minutes ?? SESSION_MAX_MINUTES;
-    MONTHLY_MAX_MINUTES = data.ai_tutor_monthly_max_minutes ?? MONTHLY_MAX_MINUTES;
-    WARNING_BEFORE_END_SECONDS = data.ai_tutor_warning_before_end_seconds ?? WARNING_BEFORE_END_SECONDS;
-    FREE_VIDEOS_PER_MONTH = data.free_videos_per_month ?? FREE_VIDEOS_PER_MONTH;
-    FREE_PRACTICE_SESSIONS_PER_MONTH = data.free_practice_sessions_per_month ?? FREE_PRACTICE_SESSIONS_PER_MONTH;
-    FREE_VIDEO_LIBRARY_MAX = data.free_video_library_max ?? FREE_VIDEO_LIBRARY_MAX;
-    ANONYMOUS_VIDEO_LIMIT = data.anonymous_video_limit ?? ANONYMOUS_VIDEO_LIMIT;
-    ANONYMOUS_PRACTICE_LIMIT = data.anonymous_practice_limit ?? ANONYMOUS_PRACTICE_LIMIT;
-    PRO_VIDEOS_PER_MONTH = data.pro_videos_per_month ?? PRO_VIDEOS_PER_MONTH;
-    STARTER_PACK_VIDEO_CREDITS = data.starter_pack_video_credits ?? STARTER_PACK_VIDEO_CREDITS;
-    STARTER_PACK_AI_TUTOR_MINUTES = data.starter_pack_ai_tutor_minutes ?? STARTER_PACK_AI_TUTOR_MINUTES;
-    STARTER_PACK_PRACTICE_SESSIONS = data.starter_pack_practice_sessions ?? STARTER_PACK_PRACTICE_SESSIONS;
-    TOPUP_VIDEO_CREDITS = data.topup_video_credits ?? TOPUP_VIDEO_CREDITS;
-    TOPUP_AI_TUTOR_MINUTES = data.topup_ai_tutor_minutes ?? TOPUP_AI_TUTOR_MINUTES;
-    PRO_MONTHLY_PRICE = data.pro_monthly_price ?? PRO_MONTHLY_PRICE;
-    PRO_ANNUAL_PRICE = data.pro_annual_price ?? PRO_ANNUAL_PRICE;
-    PRO_ANNUAL_TOTAL = data.pro_annual_total ?? PRO_ANNUAL_TOTAL;
-    STARTER_PACK_PRICE = data.starter_pack_price ?? STARTER_PACK_PRICE;
-    TOPUP_PRICE = data.topup_price ?? TOPUP_PRICE;
-    PRACTICE_RECORDING_MAX_SECONDS = data.practice_recording_max_seconds ?? PRACTICE_RECORDING_MAX_SECONDS;
+    SESSION_MAX_MINUTES = configNumber(data.ai_tutor_session_max_minutes, SESSION_MAX_MINUTES);
+    MONTHLY_MAX_MINUTES = configNumber(data.ai_tutor_monthly_max_minutes, MONTHLY_MAX_MINUTES);
+    WARNING_BEFORE_END_SECONDS = configNumber(data.ai_tutor_warning_before_end_seconds, WARNING_BEFORE_END_SECONDS);
+    FREE_VIDEOS_PER_MONTH = configNumber(data.free_videos_per_month, FREE_VIDEOS_PER_MONTH);
+    FREE_PRACTICE_SESSIONS_PER_MONTH = configNumber(data.free_practice_sessions_per_month, FREE_PRACTICE_SESSIONS_PER_MONTH);
+    FREE_VIDEO_LIBRARY_MAX = configNumber(data.free_video_library_max, FREE_VIDEO_LIBRARY_MAX);
+    ANONYMOUS_VIDEO_LIMIT = configNumber(data.anonymous_video_limit, ANONYMOUS_VIDEO_LIMIT);
+    ANONYMOUS_PRACTICE_LIMIT = configNumber(data.anonymous_practice_limit, ANONYMOUS_PRACTICE_LIMIT);
+    PRO_VIDEOS_PER_MONTH = configNumber(data.pro_videos_per_month, PRO_VIDEOS_PER_MONTH);
+    STARTER_PACK_VIDEO_CREDITS = configNumber(data.starter_pack_video_credits, STARTER_PACK_VIDEO_CREDITS);
+    STARTER_PACK_AI_TUTOR_MINUTES = configNumber(data.starter_pack_ai_tutor_minutes, STARTER_PACK_AI_TUTOR_MINUTES);
+    STARTER_PACK_PRACTICE_SESSIONS = configNumber(data.starter_pack_practice_sessions, STARTER_PACK_PRACTICE_SESSIONS);
+    TOPUP_VIDEO_CREDITS = configNumber(data.topup_video_credits, TOPUP_VIDEO_CREDITS);
+    TOPUP_AI_TUTOR_MINUTES = configNumber(data.topup_ai_tutor_minutes, TOPUP_AI_TUTOR_MINUTES);
+    PRO_MONTHLY_PRICE = configNumber(data.pro_monthly_price, PRO_MONTHLY_PRICE);
+    PRO_ANNUAL_PRICE = configNumber(data.pro_annual_price, PRO_ANNUAL_PRICE);
+    PRO_ANNUAL_TOTAL = configNumber(data.pro_annual_total, PRO_ANNUAL_TOTAL);
+    STARTER_PACK_PRICE = configNumber(data.starter_pack_price, STARTER_PACK_PRICE);
+    TOPUP_PRICE = configNumber(data.topup_price, TOPUP_PRICE);
+    PRACTICE_RECORDING_MAX_SECONDS = configNumber(data.practice_recording_max_seconds, PRACTICE_RECORDING_MAX_SECONDS);
     updateMaxDuration(PRACTICE_RECORDING_MAX_SECONDS);
-    SPEECH_ANALYSIS_TIMEOUT_SECONDS = data.speech_analysis_timeout_seconds ?? SPEECH_ANALYSIS_TIMEOUT_SECONDS;
+    SPEECH_ANALYSIS_TIMEOUT_SECONDS = configNumber(data.speech_analysis_timeout_seconds, SPEECH_ANALYSIS_TIMEOUT_SECONDS);
 
     configLoaded = true;
     console.log('[AppConfig] Loaded from server');
