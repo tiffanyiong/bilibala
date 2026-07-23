@@ -3,6 +3,7 @@ import Stripe from 'stripe';
 import { config } from '../config/env.js';
 import { supabaseAdmin, getUserFromToken } from '../services/supabaseAdmin.js';
 import { getAllConfig, getConfigNumber } from '../services/configService.js';
+import { getScheduledCancellation } from '../utils/stripeSubscription.js';
 
 const router = express.Router();
 
@@ -38,7 +39,7 @@ router.post('/subscriptions/create-checkout', async (req, res) => {
     // Check if user already has a Stripe customer ID
     const { data: subscription } = await supabaseAdmin
       .from('user_subscriptions')
-      .select('stripe_customer_id')
+      .select('stripe_customer_id, stripe_subscription_id')
       .eq('user_id', user.id)
       .single();
 
@@ -228,9 +229,10 @@ router.post('/subscriptions/create-portal', async (req, res) => {
     }
 
     const origin = req.body?.origin || req.headers.origin || 'http://localhost:5173';
+    const returnUrl = `${origin}/subscription?portal_return=true`;
     const session = await stripe.billingPortal.sessions.create({
       customer: subscription.stripe_customer_id,
-      return_url: `${origin}/subscription`,
+      return_url: returnUrl,
     });
 
     res.json({ url: session.url });
@@ -306,10 +308,11 @@ router.post('/subscriptions/sync', async (req, res) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    // Get user's Stripe customer ID and current tier from database
+    // Get the exact Stripe subscription when available. This avoids syncing an
+    // older subscription when a customer has more than one test subscription.
     const { data: userSub } = await supabaseAdmin
       .from('user_subscriptions')
-      .select('stripe_customer_id, tier')
+      .select('stripe_customer_id, stripe_subscription_id, tier')
       .eq('user_id', user.id)
       .single();
 
@@ -317,14 +320,26 @@ router.post('/subscriptions/sync', async (req, res) => {
       return res.json({ synced: false, message: 'No Stripe customer found' });
     }
 
-    // Fetch active subscriptions from Stripe
-    const subscriptions = await stripe.subscriptions.list({
-      customer: userSub.stripe_customer_id,
-      status: 'all',
-      limit: 1,
-    });
+    let subscription = null;
 
-    if (subscriptions.data.length === 0) {
+    if (userSub.stripe_subscription_id) {
+      try {
+        subscription = await stripe.subscriptions.retrieve(userSub.stripe_subscription_id);
+      } catch (retrieveError) {
+        console.warn('[Sync] Stored Stripe subscription could not be retrieved; falling back to customer lookup:', retrieveError.message);
+      }
+    }
+
+    if (!subscription) {
+      const subscriptions = await stripe.subscriptions.list({
+        customer: userSub.stripe_customer_id,
+        status: 'all',
+        limit: 1,
+      });
+      subscription = subscriptions.data[0] || null;
+    }
+
+    if (!subscription) {
       // No subscription found in Stripe - ensure user is on free tier
       await supabaseAdmin
         .from('user_subscriptions')
@@ -339,19 +354,21 @@ router.post('/subscriptions/sync', async (req, res) => {
       return res.json({ synced: true, tier: 'free', status: 'none' });
     }
 
-    // Get the most recent subscription
-    const subscription = subscriptions.data[0];
     const isActive = subscription.status === 'active' || subscription.status === 'trialing';
 
     // Stripe API 2025-03-31+: period dates moved from subscription to subscription items
     const item = subscription.items?.data?.[0];
     const rawStart = item?.current_period_start ?? subscription.current_period_start;
     const rawEnd = item?.current_period_end ?? subscription.current_period_end;
+    const { isScheduledToCancel, cancelAt } = getScheduledCancellation(subscription);
 
     console.log('[Sync] Stripe subscription raw data:', {
       userId: user.id,
       subId: subscription.id,
       status: subscription.status,
+      cancelAtPeriodEnd: !!subscription.cancel_at_period_end,
+      cancelAt,
+      isScheduledToCancel,
       rawStart,
       rawEnd,
       interval: item?.plan?.interval,
@@ -361,8 +378,9 @@ router.post('/subscriptions/sync', async (req, res) => {
     const periodStart = rawStart
       ? new Date(rawStart * 1000).toISOString()
       : null;
-    const periodEnd = rawEnd
-      ? new Date(rawEnd * 1000).toISOString()
+    const effectiveEnd = isScheduledToCancel && cancelAt ? cancelAt : rawEnd;
+    const periodEnd = effectiveEnd
+      ? new Date(effectiveEnd * 1000).toISOString()
       : null;
 
     // Update database with current Stripe status — always include period dates
@@ -376,7 +394,8 @@ router.post('/subscriptions/sync', async (req, res) => {
       tier: newTier,
       stripe_subscription_id: subscription.id,
       subscription_status: subscription.status,
-      cancel_at_period_end: !!subscription.cancel_at_period_end,
+      // Store one UI-facing scheduled-cancellation flag for both Stripe modes.
+      cancel_at_period_end: isScheduledToCancel,
       billing_interval: billingInterval,
       current_period_start: periodStart,
       current_period_end: periodEnd,
@@ -395,7 +414,7 @@ router.post('/subscriptions/sync', async (req, res) => {
       .from('user_subscriptions')
       .update(updateData)
       .eq('user_id', user.id)
-      .select('current_period_start, current_period_end');
+      .select('current_period_start, current_period_end, cancel_at_period_end');
 
     console.log('[Sync] Updated subscription for user:', user.id, {
       tier: isActive ? 'pro' : 'free',
@@ -405,12 +424,18 @@ router.post('/subscriptions/sync', async (req, res) => {
       updateError,
       rowsUpdated: updateResult?.length,
       resultPeriodEnd: updateResult?.[0]?.current_period_end,
+      resultCancelAtPeriodEnd: updateResult?.[0]?.cancel_at_period_end,
     });
+
+    if (updateError || !updateResult?.length) {
+      return res.status(500).json({ error: 'Failed to persist Stripe subscription status' });
+    }
 
     res.json({
       synced: true,
       tier: isActive ? 'pro' : 'free',
       status: subscription.status,
+      cancelAtPeriodEnd: isScheduledToCancel,
       currentPeriodEnd: periodEnd,
     });
   } catch (error) {
@@ -650,8 +675,10 @@ router.post('/subscriptions/webhook', async (req, res) => {
           const billingInterval = subItem?.plan?.interval || 'month';
           const rawStart = subItem?.current_period_start ?? subscription.current_period_start;
           const rawEnd = subItem?.current_period_end ?? subscription.current_period_end;
+          const { isScheduledToCancel, cancelAt } = getScheduledCancellation(subscription);
           const periodStart = rawStart ? new Date(rawStart * 1000).toISOString() : null;
-          const periodEnd = rawEnd ? new Date(rawEnd * 1000).toISOString() : null;
+          const effectiveEnd = isScheduledToCancel && cancelAt ? cancelAt : rawEnd;
+          const periodEnd = effectiveEnd ? new Date(effectiveEnd * 1000).toISOString() : null;
 
           // Detect any tier change to reset monthly usage
           const tierChanged = userSub.tier !== newTier;
@@ -661,7 +688,7 @@ router.post('/subscriptions/webhook', async (req, res) => {
 
           console.log(`[Webhook] ${event.type} - updating user:`, userSub.user_id, {
             isActive, billingInterval, periodStart, periodEnd,
-            rawStart, rawEnd,
+            rawStart, rawEnd, cancelAt, isScheduledToCancel,
           });
 
           const { data: updateData, error: updateError } = await supabaseAdmin
@@ -669,7 +696,8 @@ router.post('/subscriptions/webhook', async (req, res) => {
             .update({
               tier: newTier,
               subscription_status: subscription.status,
-              cancel_at_period_end: !!subscription.cancel_at_period_end,
+              // Normalize Stripe Classic and Flexible billing-mode cancellations.
+              cancel_at_period_end: isScheduledToCancel,
               billing_interval: billingInterval,
               current_period_start: periodStart,
               current_period_end: periodEnd,
